@@ -1,5 +1,30 @@
 # Where this is, and what to do next
 
+> **Update, day two.** Two things below are now out of date and it is worth reading this
+> first.
+>
+> **The speed numbers everywhere in this file were measured wrong.** The metric smoothed
+> the magnitude of instantaneous centroid velocity, which counts the side-to-side slosh of
+> an undulating body as forward progress, and read about twenty times high. Measured the
+> way a tracker does — net displacement over a window — the model does **5 µm/s against a
+> real 219**, with a net-to-path ratio of **0.07**. The worm undulates almost exactly on
+> the spot. Every "speed" column in the tables below is the old, inflated quantity; treat
+> them as ordinal, not absolute. `sim.speed` is now honest and `sim.path_speed` keeps the
+> old one.
+>
+> **Question (a) is answered, and the answer was no.** Backing the head reflex off does
+> *not* help. Measured on net speed: shipped default 0.005 mm/s (ratio 0.07); the candidate
+> `moment=3.2, reach=0.30, pg=45` with the head left at 150 gives **0.013–0.018 mm/s (ratio
+> 0.15–0.20)**, a genuine 3× improvement; the same thing with the head backed off to 60
+> drops to 0.008 (ratio 0.16). So the candidate is real and worth keeping, but the head is
+> not what is holding it back. Do not spend more time on (a).
+>
+> **What replaced it:** `tools/optimise.py` searches the seven unmeasured parameters
+> against an objective built from the measured behaviour, with net speed and net/path
+> weighted most heavily. Hand-tuning one parameter at a time was never going to work on a
+> seven-dimensional interacting problem, and doing it against a broken metric was worse
+> than useless. See the note on fitting versus training at the top of that file.
+
 Written at the end of the first build. The model runs, is tested, and is honest about what
 it gets wrong. This is the plan for making it get less wrong, in priority order, with the
 reasoning and the measurements each item rests on so none of it has to be rediscovered.
