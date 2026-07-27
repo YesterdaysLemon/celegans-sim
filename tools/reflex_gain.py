@@ -9,8 +9,21 @@ and on, and compare how the bend amplitude decays along the body.
     gain(s) = amplitude_with_reflex(s) / amplitude_without_reflex(s)
 
 A gain that grows with distance from the head means the reflex is regenerating the wave.
-A gain that plateaus near 1 means it is not. Everything else -- wavelength, frequency,
-speed, gait modulation -- follows from which of those is true.
+A gain that plateaus near 1 means it is not.
+
+CAVEAT, and it is a serious one: this is a *ratio*, and towards the tail the denominator is
+nearly zero because the passive response has died away. A ratio of 15 there can mean a
+regenerated travelling wave, or it can mean a bigger standing oscillation over a very small
+number. Those are opposite outcomes and this metric cannot tell them apart.
+
+That is not hypothetical. This tool said peak_moment = 3.2 beat 2.6 in all twelve pairings,
+with tail gains up to 19. Tested in the closed loop, 3.2 is clearly *worse*: absolute tail
+amplitude rises from 2.4 to 8.4 /mm while the posterior travelling index stays at zero, net
+speed falls from 0.10 to 0.07 and net-to-path from 0.69 to 0.48. Bigger wave, still
+standing, less progress.
+
+So read this table for shape only, and decide with `tools/twi_by_region.py` and absolute
+amplitudes, which cannot be flattered by a dead denominator.
 
 Usage:
     PYTHONPATH=. python tools/reflex_gain.py                 # default sweep

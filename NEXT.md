@@ -46,11 +46,30 @@
 > 4. *AVB broadcasting a common rhythm through its gap junctions.* It swings 4 mV, and
 >    clamping it to a constant potential changes nothing.
 >
-> **So the next thing to do** is rerun `tools/reflex_gain.py`, whose conclusions were all
-> drawn with the *non-adapting* receptor and are therefore void. It measures per-segment
-> reflex gain directly, which is exactly the quantity that decides whether the wave
-> survives into the posterior half. Everything in the section below dates from before the
-> adaptation fix; read it for the method, not for the numbers.
+> **Fifth hypothesis, also refuted, and it discredits a tool.** The reflex-gain sweep was
+> rerun with the adapting receptor and said `peak_moment = 3.2` beat the current 2.6 in all
+> twelve pairings, with tail gains up to 19. In the closed loop it is clearly worse:
+>
+> ```
+> moment   TWI     TWI posterior   amp tail   net mm/s   net/path
+> 2.6     +0.48..+0.57   -0.02..+0.28    2.4-3.3     0.095-0.106   0.66-0.72   <- current
+> 3.2     +0.33..+0.42   -0.08..-0.01    8.3-8.6     0.068-0.071   0.46-0.50
+> 4.0     +0.14..+0.40   -0.14..+0.05   12.0-12.9    0.041-0.079   0.26-0.29
+> ```
+>
+> Absolute tail amplitude more than triples while the posterior travelling index stays at
+> zero. It is making a **bigger standing wave**, not a travelling one, and going slower for
+> it. `reflex_gain.py`'s headline number is a ratio whose denominator dies towards the tail,
+> so it cannot distinguish those two outcomes; the caveat is now written into the tool.
+> **Decide with `tools/twi_by_region.py` and absolute amplitudes instead.**
+>
+> **So the next thing to do** is not another parameter sweep. Five have now failed, and the
+> pattern across all of them is that the posterior travelling index will not move off zero
+> no matter what the parameters do. That points at structure rather than tuning -- most
+> likely hypotheses H1 (the graded synapse cannot more than double its conductance, which
+> caps how much a motor neuron can modulate its muscle) and H2 (proprioceptive input should
+> be a conductance, not a current) in the list below. Those are the two that change the
+> model rather than its numbers, and they are what is left.
 
 ## The one problem worth solving first
 
