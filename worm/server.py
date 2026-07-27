@@ -260,7 +260,7 @@ def run(http_port: int = 8080, ws_port: int = 8081, seed: int = 0,
     runner = Runner(params, seed=seed)
     runner.start()
     serve_static(http_port)
-    print("openworm-sim")
+    print("celegans-sim")
     print("  viewer     http://127.0.0.1:%d/" % http_port)
     print("  telemetry  ws://127.0.0.1:%d/" % ws_port)
     try:

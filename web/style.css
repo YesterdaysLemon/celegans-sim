@@ -1,4 +1,4 @@
-/* openworm-sim viewer.
+/* celegans-sim viewer.
    Colour roles follow the data-viz reference palette: sequential blue for magnitude
    (neuron activation, muscle tension), diverging blue-red with a neutral grey midpoint
    for signed curvature, and the fixed categorical order for identity. */

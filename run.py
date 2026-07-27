@@ -13,7 +13,7 @@ import sys
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="openworm-sim")
+    ap = argparse.ArgumentParser(description="celegans-sim")
     ap.add_argument("--port", type=int, default=8080, help="HTTP port for the viewer")
     ap.add_argument("--ws-port", type=int, default=8081, help="WebSocket telemetry port")
     ap.add_argument("--seed", type=int, default=0)

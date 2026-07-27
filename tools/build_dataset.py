@@ -431,7 +431,7 @@ def build() -> dict:
     dataset = {
         "meta": {
             "description": "C. elegans hermaphrodite connectome, muscle map and anatomy, "
-                           "assembled for the openworm-sim neuromechanical simulator.",
+                           "assembled for the celegans-sim neuromechanical simulator.",
             "sources": {
                 "CElegansNeuronTables.xls": {
                     "sha256": sha256(tables),

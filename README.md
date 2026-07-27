@@ -1,4 +1,8 @@
-# openworm-sim
+# celegans-sim
+
+> Not affiliated with the [OpenWorm](https://openworm.org) project. It uses connectome data
+> that OpenWorm publishes, and owes a lot to the modelling literature they have gathered,
+> but none of the code here is theirs and none of the results are their responsibility.
 
 A *Caenorhabditis elegans* simulated from its connectome down: 302 graded-potential
 neurons wired by the reconstructed synapse-by-synapse anatomy, driving 95 individually

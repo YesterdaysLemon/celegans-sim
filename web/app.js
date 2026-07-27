@@ -1,4 +1,4 @@
-/* openworm-sim viewer.
+/* celegans-sim viewer.
  *
  * Receives packed float32 telemetry over a WebSocket and draws four views: the dish, the
  * nervous system, the body-wall muscle sheets and a curvature kymograph.
