@@ -1,57 +1,56 @@
 # Where this is, and what to do next
 
-> **Update, day two.** Two things below are now out of date and it is worth reading this
-> first.
+> **Day two. The big one is fixed, and here is the state.**
 >
-> **The speed numbers everywhere in this file were measured wrong.** The metric smoothed
-> the magnitude of instantaneous centroid velocity, which counts the side-to-side slosh of
-> an undulating body as forward progress, and read about twenty times high. Measured the
-> way a tracker does — net displacement over a window — the model does **5 µm/s against a
-> real 219**, with a net-to-path ratio of **0.07**. The worm undulates almost exactly on
-> the spot. Every "speed" column in the tables below is the old, inflated quantity; treat
-> them as ordinal, not absolute. `sim.speed` is now honest and `sim.path_speed` keeps the
-> old one.
+> Proprioception was the one sensory channel still responding to absolute value rather than
+> to change. Making the stretch receptor adapt took net speed from 0.005 to **0.10 mm/s**
+> and the net-to-path ratio from 0.07 to **0.66-0.72** — inside the real animal's range.
+> The worm crawls. Details in the README; the rest of this file is what is still wrong.
 >
-> **Question (a) is answered, and the answer was no.** Backing the head reflex off does
-> *not* help. Measured on net speed: shipped default 0.005 mm/s (ratio 0.07); the candidate
-> `moment=3.2, reach=0.30, pg=45` with the head left at 150 gives **0.013–0.018 mm/s (ratio
-> 0.15–0.20)**, a genuine 3× improvement; the same thing with the head backed off to 60
-> drops to 0.008 (ratio 0.16). So the candidate is real and worth keeping, but the head is
-> not what is holding it back. Do not spend more time on (a).
+> **Everything below now hangs off one number,** the travelling-wave index. A standing wave
+> makes no net thrust at all, so this is the quantity that decides the speed:
 >
-> **The real diagnosis, and it is sharper than anything in the rest of this file.** The
-> body's oscillation is **two thirds a standing wave**. Decomposing curvature over (time,
-> arclength), the travelling-wave index is **+0.33**, where +1 is a pure travelling wave
-> and 0 is a pure standing one. A standing wave produces exactly zero net thrust however
-> large its amplitude — its drag forces cancel over the cycle — which is why a worm with
-> textbook-correct curvature amplitude goes nowhere.
+> | | TWI | net mm/s |
+> |---|---|---|
+> | this body, prescribed travelling wave | **+0.996** | **0.174** |
+> | the model today | +0.48 to +0.57 | 0.10 |
+> | the model yesterday | +0.33 | 0.005 |
+> | real animal | — | 0.219 |
 >
-> The control is decisive: the **same body, same drag**, driven by a clean prescribed
-> travelling wave instead of by the nervous system, gives **TWI +0.996 and 0.174 mm/s**,
-> very nearly the real animal's 0.219. The mechanics were never the problem. The nervous
-> system is producing a wave that stands still.
+> The relationship is close to linear, so closing the remaining gap gets to the animal's
+> speed and takes the wavelength and frequency errors with it — they are the same standing
+> wave seen from other angles.
 >
-> And this unifies the open faults rather than adding to them: at 1.4 body lengths of
-> wavelength, less than one full wave fits on the body, so there is almost no phase
-> progression along it — which *is* a standing wave. **Wavelength and thrust are one
-> problem.** Everything in the hypothesis list below should be judged on whether it raises
-> the travelling-wave index, not on speed, which is slow and noisy to measure by comparison.
-> `travelling_index` in `tools/diagnose_loop.py`; it is validated against synthetic
-> travelling and standing waves.
+> **Where the wave actually fails, measured by region** (`tools/twi_by_region.py`):
 >
-> **What replaced it:** `tools/optimise.py` searches the seven unmeasured parameters
-> against an objective built from the measured behaviour, with net speed and net/path
-> weighted most heavily. Hand-tuning one parameter at a time was never going to work on a
-> seven-dimensional interacting problem, and doing it against a broken metric was worse
-> than useless. See the note on fitting versus training at the top of that file.
-
-Written at the end of the first build. The model runs, is tested, and is honest about what
-it gets wrong. This is the plan for making it get less wrong, in priority order, with the
-reasoning and the measurements each item rests on so none of it has to be rediscovered.
-
-Read the README's *What it does not get right* section first — this file assumes it.
-
----
+> ```
+> head and neck   0.00-0.30    TWI -0.10    45-55% of all curvature power
+> body behind it  0.30-1.00    TWI +0.24 to +0.50
+> posterior half  0.45-1.00    TWI -0.02 to +0.18
+> ```
+>
+> So the head is a strong standing oscillator carrying about half the total power, the
+> mid-body travels weakly, and **the posterior half barely travels at all**. The wave is
+> generated at the front and dies before it gets down the body. That is the single
+> remaining problem, and it is the same one the per-segment reflex gain measures.
+>
+> **Four hypotheses tested and refuted today.** Do not redo these:
+> 1. *Back off the head reflex.* Tested from 150 down to 0: TWI goes **negative** (the wave
+>    reverses) and speed collapses. The head reflex is what makes the wave go head-to-tail.
+> 2. *Push the head reflex harder.* Tested 150 up to 900: TWI saturates flat at +0.58.
+>    Worth perhaps 15% more speed at a gain of 400, and nothing beyond that. The ceiling is
+>    not set by head gain in either direction.
+> 3. *Bending stiffness.* Swept over a 1600-fold range with muscle moment scaled to hold
+>    curvature fixed. A shallow 25% effect peaking 4-8x **above** the measured value, and
+>    the literature's low value (Sznitman) is much worse. Not the lever.
+> 4. *AVB broadcasting a common rhythm through its gap junctions.* It swings 4 mV, and
+>    clamping it to a constant potential changes nothing.
+>
+> **So the next thing to do** is rerun `tools/reflex_gain.py`, whose conclusions were all
+> drawn with the *non-adapting* receptor and are therefore void. It measures per-segment
+> reflex gain directly, which is exactly the quantity that decides whether the wave
+> survives into the posterior half. Everything in the section below dates from before the
+> adaptation fix; read it for the method, not for the numbers.
 
 ## The one problem worth solving first
 

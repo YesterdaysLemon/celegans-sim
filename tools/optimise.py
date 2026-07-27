@@ -46,7 +46,7 @@ SPACE = {
     "proprio_gain":      (20.0, 300.0),   # pA per unit normalised curvature
     "proprio_reach":     (0.08, 0.40),    # fraction of body length read anteriorly
     "peak_moment":       (0.8, 5.0),      # uN mm at full unilateral contraction
-    "head_proprio_gain": (0.0, 300.0),    # pA
+    "head_proprio_gain": (0.0, 700.0),    # pA
     "head_tau":          (0.05, 0.60),    # s
     "head_reach":        (0.08, 0.30),    # fraction of body length
     "tonic_forward":     (20.0, 160.0),   # pA
