@@ -33,8 +33,92 @@ Three independent measurements say the same thing:
    gait modulation would work. It acts mostly on the head, and gait modulation is inverted.
 
 `tools/reflex_gain.py` measures (2) directly and sweeps it over gain, reach and muscle
-strength. **Start there.** A first sweep was left running; if `scratch/reflex_gain.json`
-exists, it has the results.
+strength. **Start there.**
+
+### A first sweep already ran, and it changes the plan
+
+Partial results (each row is the gain at five positions from head to tail; a row that
+*rises* left to right is a reflex regenerating the wave rather than merely passing it on):
+
+```
+gain   reach  moment   s=0.25  s=0.40  s=0.55  s=0.70  s=0.85
+45     0.10   1.6        1.11    1.50    0.84    0.19    0.34
+45     0.10   3.2        1.25    1.28    1.42    2.33    2.58
+45     0.20   1.6        1.11    1.23    2.79    1.31    2.93
+45     0.20   3.2        1.30    2.03    2.99    2.00    3.58
+45     0.30   1.6        0.99    1.04    3.14    1.69    3.55
+45     0.30   3.2        1.43    2.04    4.45    3.76    5.92   <-- strongly regenerating
+90     0.10   1.6        1.21    1.27    1.47    1.55    1.51
+90     0.10   3.2        1.26    1.28    1.96    1.81    0.90
+90     0.20   1.6        1.24    1.96    2.00    1.08    1.69
+```
+
+Three things fall out of this, and the first two were not what I expected:
+
+1. **`proprio_gain` is not the main lever.** Going from 45 to 90 pA does not reliably help
+   and sometimes hurts. I had been treating it as the knob; it is not. Every hour spent
+   sweeping it was largely wasted, which is worth knowing before repeating it.
+2. **`proprio_reach` and `peak_moment` are the levers**, and they compound. The best row so
+   far is the *lowest* proprioceptive gain with the longest reach and the strongest muscle:
+   gain rising monotonically to 5.9 by the tail. That is the signature the model needs.
+3. The current defaults (gain 90, reach 0.20, moment 1.6) sit in the weak-reflex corner of
+   this table. That is precisely why the wave is passive.
+
+**So the concrete first experiment tomorrow is:** set `peak_moment ≈ 3.2` and
+`proprio_reach ≈ 0.30`, *drop* `proprio_gain` to ~45, and then **reduce
+`head_proprio_gain`** so the head stops dominating — the body should now be able to carry
+the wave itself. Then check with `tools/diagnose_loop.py` across at least three seeds
+whether the 0.31 Hz / 0.70 L attractor has become the robust one.
+
+Note that `peak_moment = 3.0` was rejected earlier in the build for producing twice the
+real curvature, but that was measured with the *old, unfiltered* head reflex at full gain.
+With the head backed off, the balance is different and it deserves re-testing rather than
+being ruled out. Watch `kappa_max` — it must stay near 10 /mm.
+
+The sweep was still running when this was written; re-run
+`PYTHONPATH=. python tools/reflex_gain.py --out scratch/reflex_gain.json` for the full
+24-row table (about 50 minutes; the `gain=180` and `gain=360` rows are the missing ones,
+and on this evidence they are the least interesting).
+
+### I then tried that configuration in the closed loop. It is the right direction.
+
+`peak_moment=3.2, proprio_reach=0.30, proprio_gain=45`, head reflex left at its current
+150, three seeds:
+
+```
+seed   freq   wavelen  direction    k_rms  k_max   speed   dv_corr
+0     1.111    1.00   head->tail     5.15  22.42   0.118    -0.80
+3     1.222    0.62   head->tail     8.32  23.88   0.118    -0.76
+7     0.111    1.09   tail->head     8.34  23.28   0.099    -0.80
+```
+
+Compare against the shipped defaults (1.2 Hz, 1.4 L, k_max ~10, speed 0.03–0.11,
+dv_corr −0.31). What improved, and it is not subtle:
+
+- **Dorsoventral antagonism goes from −0.31 to −0.80.** The two muscle sheets are now
+  genuinely alternating instead of half-heartedly. This is the single biggest jump I saw
+  from any parameter change in the whole build.
+- **Wavelength drops** from 1.4 L towards the measured 0.65 L (seed 3 hits 0.62 exactly).
+- **Speed rises** and becomes consistent across seeds at ~0.10–0.12 mm/s.
+
+What broke, and both look tractable:
+
+- **Peak curvature is 22–24 /mm against a measured 9.8.** The body is being over-bent by
+  roughly 2.3×. The obvious response is to back `peak_moment` down from 3.2 towards
+  ~2.0–2.4 and see how much of the dv_corr and wavelength gain survives. There may be a
+  sweet spot; there may not, and if not, that itself is informative about whether moment
+  and reflex gain are separable.
+- **Seed 7 runs backwards and very slow.** Reproducibility regressed, which is expected —
+  the head reflex is still at 150 and is now fighting a much stronger body reflex for
+  control of the wave. **Backing the head off is the untested half of this experiment**
+  and is the first thing to run. I had `head_proprio_gain` at 60 and 25 queued and did not
+  get to them.
+
+So the ordered plan is: (a) re-run this with `head_proprio_gain` at 60 and 25 across the
+same three seeds; (b) scale `peak_moment` down until `k_max` lands near 10; (c) confirm
+with `test_gait_is_reproducible_across_seeds`; (d) if frequency is still high, *then* look
+at H1 and H2 below. Do not touch H1/H2 before (a)–(c) — they are much more invasive and
+this cheaper change may make them unnecessary.
 
 ### Hypotheses for why the reflex gain is low, roughly in order of my confidence
 
@@ -138,6 +222,39 @@ table's five rows fix themselves at once.
   opening handshake. Already fixed, but it is the kind of thing that gets "optimised" back.
 
 ---
+
+## A ready-to-run first command for tomorrow
+
+This is (a) from the plan above — the untested half of the promising experiment. Paste it
+and go; it takes about six minutes.
+
+```bash
+PYTHONPATH=. .venv/bin/python -u - <<'EOF'
+from dataclasses import replace
+from worm.engine import Simulation
+from worm.params import Params
+from tools.diagnose_loop import analyse, bare_world
+print("%-6s %5s %8s %9s %11s %7s %8s %8s %8s" % (
+    "head","seed","freq","wavelen","direction","k_rms","k_max","speed","dvcorr"))
+for hg in (60.0, 25.0):
+    for seed in (0, 3, 7):
+        p = Params()
+        p = replace(p,
+            muscle=replace(p.muscle, peak_moment=3.2),
+            sensory=replace(p.sensory, proprio_gain=45.0, proprio_reach=0.30,
+                            head_proprio_gain=hg))
+        r = analyse(Simulation(p, seed=seed, world=bare_world(p)), seconds=18.0)
+        print("%-6.0f %5d %8.3f %9.2f %11s %7.2f %8.2f %8.4f %8.2f" % (
+            hg, seed, r["freq"], r["wavelength"], r["direction"],
+            r["kappa_rms"], r["kappa_max"], r["speed"], r["dv_corr"]), flush=True)
+EOF
+```
+
+Read it as: does backing the head off make all three seeds go head-to-tail again, and does
+the wavelength stay near 0.65 L? If yes, move to scaling `peak_moment` down for `k_max`.
+If the seeds still disagree, the head and body reflexes are competing for the wave and the
+next question is whether the head reflex should be weakened much further or removed
+entirely once the body can sustain itself.
 
 ## Useful commands
 
