@@ -233,7 +233,47 @@ class NeuralParams:
     # B-type motor neurons frankly binary. Interneurons and sensory neurons stay well
     # inside the range.
     v_clamp: tuple = (-80.0, 45.0)    # mV
-    oscillator_classes: tuple = ("DB", "VB")
+    # Both cords, not just the forward one. The B class got this treatment first because
+    # forward locomotion was what was being measured, and that asymmetry turned out to be
+    # the reason the animal could not reverse: dropping the descending forward drive took
+    # the B units off their bifurcation, and the A units waiting to take over were still
+    # passive relays with no way to regenerate a backward wave. The worm thrashed in place
+    # (net/path 0.05) instead of reversing.
+    #
+    # The anatomy says they should be symmetric, and if anything favours the backward
+    # cord: AVA makes 102 gap-junction contacts onto 20 of the 21 A-class units and rests
+    # at -26.7 mV, against AVB's 55 contacts onto 18 B-class units at -24.4 mV. Same
+    # architecture, same descending-drive-holds-it-at-the-bifurcation story.
+    oscillator_classes: tuple = ("DB", "VB", "DA", "VA")
+    # ...but scaled down, because the command circuit does not currently separate the two
+    # cords enough to do it for us. Measured during forward locomotion: the B class sits
+    # at calcium gate 0.780 and the A class at 0.670, both above the 0.5 bifurcation, only
+    # 2.2 mV apart. Held at equal strength both cords amplify at once and fight over the
+    # same muscles -- forward speed fell 23%, from 0.175 to 0.136 mm/s. This factor is the
+    # stopgap; the real fix is to give the AVA/AVB state some dynamic range, which is the
+    # same missing piece that blocks chemotaxis.
+    #
+    # It is zero, and that is a measured result rather than an omission. Sweeping it over
+    # 0 / 0.25 / 0.5 / 0.75 / 1.0, three seeds each (tools/reversal_test.py):
+    #
+    #   scale   forward mm/s   forward net/path   backward net/path   backward along-axis
+    #    0.00      0.1753           0.832               0.199              -0.0138
+    #    0.25      0.1713           0.828               0.253              -0.0111
+    #    0.50      0.1649           0.815               0.248              +0.0075
+    #    0.75      0.1532           0.786               0.221              +0.0133
+    #    1.00      0.1357           0.738               0.289              -0.0275
+    #
+    # Forward degrades monotonically and backward never reaches working locomotion at any
+    # value -- 0.289 against forward's 0.832, and the along-axis column changes sign, which
+    # means at the middle settings the animal is still creeping nose-first while being told
+    # to reverse. Those backward differences are within the seed spread. So there is no
+    # setting that buys anything, and the machinery stays switched off until the thing that
+    # actually blocks it is fixed.
+    #
+    # One caveat on that conclusion: the backward test commands a reversal by clamping AVB
+    # to -60 mV, which also strips the B class of its own Hopf drive. That is blunter than
+    # a real reversal and makes the backward numbers a lower bound rather than a verdict.
+    a_class_scale: float = 0.0   # multiplies ca_ratio/adapt_ratio for the DA/VA units
 
     # -- noise --------------------------------------------------------------------------
     # Real neurons are noisy, and a deterministic network settles into a fixed point and

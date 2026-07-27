@@ -1,5 +1,68 @@
 # Where this is, and what to do next
 
+> ## Day four. The senses are measured, and they do not work. One cause.
+>
+> `tools/assays.py` reproduces standard plate experiments and scores them the way the
+> original papers do. Locomotion is untouched (33 tests pass, 0.19 mm/s, TWI +0.75).
+>
+> | assay | result | real animal |
+> |---|---|---|
+> | chemotaxis index | **−0.014**, 7/16 animals approached | +0.5 or better |
+> | approach over 200 s | **−0.86 ± 5.35 mm** | — |
+> | aerotaxis, O2 occupied | **20.2%** (start 20.2, ambient 21) | 5–12% |
+> | reversals | **1 per 6 animal-minutes** | 1–2 per minute |
+>
+> **The cause is a single structural conflation, and it explains every row.**
+> `tonic_forward` injects 90 pA into AVB, which does two incompatible jobs at once:
+>
+> 1. it sets *which direction the animal goes*, via the cubed winner-take-all in
+>    `Senses.sense` (gate reads 0.91/0.25 → 98% forward, in every animal, all run); and
+> 2. since day three it also sets *whether the animal can walk at all*, because AVB's
+>    membrane potential is what holds the B-class motor neurons at their Hopf bifurcation.
+>
+> Lower it and the gait dies before the decision changes: at tonic 22 the gate has only
+> moved from 98% to 90% forward, but net/path has collapsed from 0.76 to 0.05. We
+> re-entered day two's failure through a different door.
+>
+> **What is NOT wrong, so nobody re-checks it:**
+> - *The wiring.* ASE reaches AVA and AVB in two hops via AIY/AIB, which is the real circuit.
+> - *The sensors.* Raising `chemo_gain` 46× does propagate: ASE moves 24.8 mV, AIY 5.1,
+>   AIB 1.05, AVA 0.35, DB/VB 2.72. It is real, and it deflects the path by 0.157 mm out of
+>   9.4 mm travelled — 1.7%. Gain alone cannot rescue this; sweeping it to 1200 pA/unit
+>   (drive 60 pA, well past the 10–250 pA anyone has injected experimentally) changes the
+>   chemotaxis outcome by less than the seed-to-seed spread.
+> - *Signal-to-noise alone.* The drive is 0.48 pA against a 2.2 pA noise floor, which is
+>   real but is not the binding constraint — see above.
+>
+> **The A-class mirror, tested and left off.** AVA makes 102 gap contacts onto 20 of 21
+> A-class units (AVB: 55 onto 18), so the backward cord has the same architecture and
+> should get the same regenerative treatment. It is implemented (`oscillator_classes` now
+> includes DA/VA, gated by `a_class_scale`) and switched off at 0.0, because the command
+> circuit does not separate the cords: during forward locomotion the B class sits at
+> calcium gate 0.780 and the A class at 0.670, **both above the 0.5 bifurcation**, 2.2 mV
+> apart. Both cords amplify at once and fight over the same muscles. Full sweep in
+> `NeuralParams.a_class_scale`. This unblocks the moment (1) is fixed.
+>
+> **So the next job is to decouple those two roles**, and the pieces are already in place:
+> the locomotor drive should come from the AVB→B gap junctions (real, in the connectome,
+> and since day three genuinely doing that job), leaving the forward/backward decision as a
+> separate contest between AVA and AVB that does not drag the gait's operating point with
+> it. In the animal the A and B classes are antagonistic at the motor level, not gated by
+> one scalar. Expect chemotaxis, aerotaxis, nociceptive escape and the A-class fix all to
+> move together, because they are all downstream of the same missing dynamic range.
+>
+> Thermotaxis and nociception assays are written but not yet run.
+>
+> **Tooling notes for whoever picks this up.** One trial of D simulated seconds costs
+> ~1.7 × D wall-seconds on one core (0.58× real time, flat regardless of BLAS threads --
+> the body's matrices are 49×49). `estimate()` prints the prediction; `pooled()` streams
+> per-trial progress, because a `pool.map` deadlocked silently at 0% CPU for thirteen
+> minutes and looked exactly like a slow run. Anything using the pool must live in a real
+> file: spawn cannot re-import `__main__` from a heredoc. And the reversal detector
+> (centroid velocity vs body axis) is only meaningful when net/path is above ~0.3 — below
+> that it reports slosh as turns, which is why an early sweep appeared to show 25 reversals
+> in a worm that was going nowhere.
+
 > ## Day three. The travelling wave is fixed. Read this part first.
 >
 > Two changes landed, and the control sweep separating them is `tools/osc_control.py`.

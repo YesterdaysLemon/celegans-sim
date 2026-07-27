@@ -33,7 +33,8 @@ from .world import World, default_world
 
 class Simulation:
     def __init__(self, params: Params | None = None, seed: int = 0,
-                 world: World | None = None):
+                 world: World | None = None,
+                 placement: tuple[float, float, float] | None = None):
         self.p = params or Params()
         self.rng = np.random.default_rng(seed)
         self.conn = dataset.load(e_exc=self.p.neural.E_exc, e_inh=self.p.neural.E_inh)
@@ -42,8 +43,11 @@ class Simulation:
         self.nervous = NervousSystem(self.conn, self.p.neural, self.rng)
         self.muscles = Muscles(self.conn, self.p.muscle, self.p.body, self.p.neural.dt,
                                s_eq=float(self.nervous.s[0]))
-        self.body = Body(self.p.body, self.p.medium,
-                         position=(-14.0, -2.0), heading=0.35)
+        # Where the animal is put down. Behavioural assays need to control this -- a
+        # chemotaxis index means nothing without a defined starting distance and bearing --
+        # so it is a parameter, defaulting to the viewer's usual corner of the dish.
+        px, py, phi = placement if placement is not None else (-14.0, -2.0, 0.35)
+        self.body = Body(self.p.body, self.p.medium, position=(px, py), heading=phi)
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
                              self.p.neural.dt, g_rest=self.nervous.g_rest)

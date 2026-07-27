@@ -57,6 +57,11 @@ class NervousSystem:
                                % (p.oscillator_classes,))
         self.g_ca[self.oscillators] = p.ca_ratio * g_rest[self.oscillators]
         self.g_adapt[self.oscillators] = p.adapt_ratio * g_rest[self.oscillators]
+        # The backward cord is scaled separately -- see NeuralParams.a_class_scale.
+        a_class = conn.group("DA", "VA")
+        a_class = np.intersect1d(a_class, self.oscillators)
+        self.g_ca[a_class] *= p.a_class_scale
+        self.g_adapt[a_class] *= p.a_class_scale
 
         # Gate values at rest. Because each half-activation is a fixed offset from that
         # neuron's own resting potential, these are constants -- which is what keeps the
