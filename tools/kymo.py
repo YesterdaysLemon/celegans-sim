@@ -86,7 +86,7 @@ def main(argv) -> int:
     print("  corr(dorsal, ventral)  %+.2f   (want negative: muscle antagonists)"
           % corr(rows[:, 0], rows[:, 1]))
     print("  speed %.4f mm/s   kappa rms %.2f   max %.2f"
-          % (sim._speed_smooth, float(np.sqrt((kap ** 2).mean())), float(np.abs(kap).max())))
+          % (sim.speed, float(np.sqrt((kap ** 2).mean())), float(np.abs(kap).max())))
     print("  gates: forward %.3f backward %.3f"
           % (sim.senses.readout["gate_forward"], sim.senses.readout["gate_backward"]))
     return 0

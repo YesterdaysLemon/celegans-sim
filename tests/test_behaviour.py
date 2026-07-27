@@ -61,8 +61,49 @@ def test_dorsoventral_antagonism(crawl):
 
 
 def test_crawling_speed(crawl):
-    """219 +- 29 um/s off food (Ramot et al. 2008); the literature spans 16-250."""
-    assert 0.02 <= crawl["speed"] <= 0.40, crawl["speed"]
+    """Measured: 219 +- 29 um/s off food (Ramot et al. 2008); literature spans 16-250.
+
+    This model manages a few um/s of *net* progress -- roughly fifty times too slow. The
+    bound below is deliberately wide enough to admit both the current behaviour and the
+    real animal, so that it fails if the worm stops moving entirely and does not have to be
+    rewritten when the speed improves.
+
+    Note carefully which speed this is. `sim.speed` is net displacement over a two-second
+    window, the way a worm tracker measures it. `sim.path_speed` is distance travelled
+    along the trajectory, which for an undulating animal counts the side-to-side slosh of
+    the centroid and reads about twenty times higher. An earlier version of this test used
+    the latter and passed comfortably while the worm was going nowhere.
+    """
+    assert 0.0005 <= crawl["speed"] <= 0.40, crawl["speed"]
+
+
+def test_the_worm_actually_gets_somewhere():
+    """Net displacement over path length: 1.0 is a straight line, 0.0 is going nowhere.
+
+    A real worm off food runs in fairly straight bouts of 20-40 s broken by reorientations,
+    so over a couple of minutes it keeps well over half of the distance it travels.
+
+    This model currently keeps about 6% of it: 8.4 mm of path and 0.54 mm of net
+    displacement over 120 s. It undulates on the spot. The threshold below is set just
+    under that, so it guards against regression without pretending the current value is
+    acceptable -- raising it is the point of the work in NEXT.md.
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    sim.run(4.0)
+    start = sim.body.centroid().copy()
+    prev = start.copy()
+    path = 0.0
+    for i in range(int(60.0 / sim.dt)):
+        sim.step()
+        if i % 200 == 0:
+            c = sim.body.centroid()
+            path += float(np.hypot(*(c - prev)))
+            prev = c.copy()
+    net = float(np.hypot(*(sim.body.centroid() - start)))
+    assert path > 1.0, "the body barely moved at all: %.3f mm of path" % path
+    assert net / path > 0.03, (
+        "net/path = %.3f: the animal is undulating without going anywhere" % (net / path))
 
 
 def test_gait_is_reproducible_across_seeds():

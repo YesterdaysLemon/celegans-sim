@@ -33,7 +33,8 @@ def main() -> int:
         k = sim.body.curvature()
         print("t=%.1f s" % sim.t)
         print("  centroid        (%.2f, %.2f) mm" % tuple(sim.body.centroid()))
-        print("  speed           %.3f mm/s (%s)" % (sim._speed_smooth, sim.direction()))
+        print("  net speed       %.4f mm/s (%s)" % (sim.speed, sim.direction()))
+        print("  path speed      %.4f mm/s  (includes undulatory sloshing)" % sim.path_speed)
         print("  curvature       rms %.2f, max %.2f /mm" %
               (float(np.sqrt((k ** 2).mean())), float(np.abs(k).max())))
         print("  food eaten      %.2f" % sim.food_eaten)

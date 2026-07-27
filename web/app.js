@@ -55,6 +55,7 @@ const S = {
   meta: null, frame: null, field: null,
   overlay: 'attractant',
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
+  follow: true,
   trail: [],
   kymo: null, kymoCtx: null,
   traces: [], selected: [],
@@ -101,6 +102,7 @@ function drawDish() {
   ctx.fillStyle = '#141413';
   ctx.fillRect(0, 0, w, h);
 
+  drawGrid(ctx, X, Y, scale, w, h, R);
   if (S.field && S.overlay !== 'none') drawField(ctx, X, Y, scale);
 
   // obstacles
@@ -127,6 +129,25 @@ function drawDish() {
   if (f) drawWorm(ctx, f, X, Y, scale);
   drawMinimap(ctx, w, h, R, f);
   drawScaleBar(ctx, w, h, scale);
+}
+
+// A grid fixed in the dish, not to the camera. Without a static reference an undulating
+// worm on an empty dark background is genuinely impossible to tell apart from one
+// swimming on the spot -- the eye has nothing to measure the translation against.
+function drawGrid(ctx, X, Y, scale, w, h, R) {
+  const span = S.view.span;
+  const step = span > 20 ? 5 : span > 8 ? 2 : span > 3 ? 1 : 0.5;
+  const x0 = Math.ceil((S.view.cx - span) / step) * step;
+  const y0 = Math.ceil((S.view.cy - span) / step) * step;
+  ctx.lineWidth = 1;
+  for (let x = x0; x < S.view.cx + span; x += step) {
+    ctx.strokeStyle = Math.abs(x) < 1e-9 ? 'rgba(195,194,183,0.16)' : 'rgba(195,194,183,0.055)';
+    ctx.beginPath(); ctx.moveTo(X(x), 0); ctx.lineTo(X(x), h); ctx.stroke();
+  }
+  for (let y = y0; y < S.view.cy + span; y += step) {
+    ctx.strokeStyle = Math.abs(y) < 1e-9 ? 'rgba(195,194,183,0.16)' : 'rgba(195,194,183,0.055)';
+    ctx.beginPath(); ctx.moveTo(0, Y(y)); ctx.lineTo(w, Y(y)); ctx.stroke();
+  }
 }
 
 function drawField(ctx, X, Y, scale) {
@@ -529,6 +550,12 @@ function wire() {
     el('o-rate').textContent = `${v.toFixed(v < 1 ? 2 : 1)}×`;
     send({ cmd: 'rate', value: v });
   });
+  el('b-follow').addEventListener('click', (e) => {
+    S.follow = !S.follow;
+    e.target.setAttribute('aria-pressed', String(S.follow));
+    e.target.textContent = S.follow ? 'Follow' : 'Fixed';
+    if (S.follow) S.recentre = true;
+  });
   el('b-poke-a').addEventListener('click', () => send({ cmd: 'poke', where: 'anterior', strength: 1.4 }));
   el('b-poke-p').addEventListener('click', () => send({ cmd: 'poke', where: 'posterior', strength: 1.4 }));
 
@@ -580,6 +607,7 @@ function onHello(m) {
   S.meta.muscleIndex = {};
   m.muscles.forEach((mu, i) => { S.meta.muscleIndex[mu.name] = i; });
   layout = null; S.kymo = null; S.trail = [];
+  S.recentre = true;
   const want = ['DB01', 'VB01', 'AVBL'];
   S.selected = want.map((n) => m.neurons.findIndex((x) => x.name === n)).filter((i) => i >= 0);
   S.traces = S.selected.map(() => []);
@@ -604,10 +632,26 @@ function onFrame(buf, dv) {
   const kappa = new Float32Array(buf, p, nJoint);
 
   S.frame = { t, speed, food, dir, achieved, nodes, act, V, tension, kappa, running };
-  S.view.cx = nodes[0]; S.view.cy = nodes[1];
 
   const cx = nodes.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / nNodes;
   const cy = nodes.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0) / nNodes;
+
+  // Follow the centroid, not the head, and only once the animal has drifted out of the
+  // middle of the frame. Locking the camera rigidly to the head was actively misleading:
+  // the head swings from side to side once per undulation, so the camera swung with it and
+  // cancelled out the very motion it was supposed to show. With a deadzone the worm
+  // visibly crawls across the frame before the view catches up.
+  if (S.recentre) { S.view.cx = cx; S.view.cy = cy; S.recentre = false; }
+  if (S.follow) {
+    const dead = S.view.span * 0.18;
+    const dx = cx - S.view.cx, dy = cy - S.view.cy;
+    const d = Math.hypot(dx, dy);
+    if (d > dead) {
+      const pull = (d - dead) / d;
+      S.view.cx += dx * pull;
+      S.view.cy += dy * pull;
+    }
+  }
   const last = S.trail[S.trail.length - 1];
   if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {
     S.trail.push([cx, cy]);

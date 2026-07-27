@@ -179,7 +179,7 @@ class Runner:
                 "<6I12f",
                 MAGIC, len(nodes) // 2, len(act), len(tension), len(kappa),
                 1 if self.running else 0,
-                sim.t, sim._speed_smooth, sim.food_eaten, direction, self.achieved,
+                sim.t, sim.speed, sim.food_eaten, direction, self.achieved,
                 r.get("attractant", 0.0), r.get("temperature", 20.0),
                 r.get("oxygen", 0.21), r.get("food", 0.0), r.get("touch", 0.0),
                 r.get("gate_forward", 0.0), r.get("gate_backward", 0.0),

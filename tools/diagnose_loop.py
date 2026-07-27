@@ -76,7 +76,8 @@ def analyse(sim: Simulation, seconds: float, warmup: float = 4.0) -> dict:
         "swing": {k: float(vlog[:, i].max() - vlog[:, i].min())
                   for i, k in enumerate(watch)},
         "mean_V": {k: float(vlog[:, i].mean()) for i, k in enumerate(watch)},
-        "speed": sim._speed_smooth,
+        "speed": sim.speed,
+        "path_speed": sim.path_speed,
         "dv_drive": float(np.abs(np.array(mrows)[:, :24] - np.array(mrows)[:, 24:]).mean()),
     }
 

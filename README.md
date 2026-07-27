@@ -173,7 +173,8 @@ measurements on live animals.
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed | **0.03–0.11 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Crawling speed (net) | **0.005 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.07** | well above 0.5 | — |
 | Undulation frequency, agar | **1.2 Hz** *(fast)* | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
 | Wavelength, agar | **1.4 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
@@ -215,8 +216,20 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
   and deliberately does not assert which way, because asserting the real direction would
   be asserting something this model does not do.
-- **Crawling speed is a third to a half of the measured value.** The model converts its
-  undulation to forward progress at U/c ≈ 0.4 where a real crawling worm manages 0.67.
+- **The worm undulates almost on the spot.** Over 120 simulated seconds it travels 8.4 mm
+  of path and ends up 0.54 mm from where it started — a net-to-path ratio of 0.07, where a
+  real animal keeps well over half of the distance it covers. Net speed is about 5 µm/s
+  against a measured 219 µm/s. It is a beautifully behaved undulation that does not
+  translate.
+
+  I originally reported this as "0.03–0.11 mm/s, about half the measured value", **and that
+  was wrong.** The metric was smoothing the *magnitude* of instantaneous centroid velocity,
+  which counts the side-to-side slosh of the centroid within each undulation cycle as if it
+  were forward progress, and read roughly twenty times high. Both numbers are now kept
+  separately — `sim.speed` is net displacement over a two-second window, the way a worm
+  tracker measures it, and `sim.path_speed` is the old path-length quantity — and the tests
+  assert on the honest one. Credit where due: this was caught by someone simply watching
+  the animation and saying it looked like it was wiggling in place.
 - **The head reflex loop has two stable limit cycles**, near 0.3 Hz and near 2.2 Hz, and
   before the stretch receptor was given its own kinetics, which one the animal fell into
   depended on the random seed — two thirds of seeds took the fast one. The receptor filter

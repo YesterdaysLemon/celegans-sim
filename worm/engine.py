@@ -65,8 +65,17 @@ class Simulation:
             "attractant": deque(maxlen=3000),
         }
         self._last_centroid = self.body.centroid().copy()
-        self._speed_smooth = 0.0
         self._velocity_smooth = np.zeros(2)
+        self.path_speed = 0.0        # distance travelled per second, including sloshing
+        self.speed = 0.0             # net progress per second -- the honest one
+
+        # A worm tracker measures how far the animal actually got over a window, not how
+        # fast its centroid was instantaneously moving. The difference is not cosmetic: an
+        # undulating body slews its centroid from side to side once per cycle, and
+        # smoothing the *magnitude* of that counts every slosh as progress. Measured on
+        # this model it inflated the number by a factor of twenty.
+        self._speed_window = 2.0     # s
+        self._centroid_history = deque()
 
     # ------------------------------------------------------------------------- stepping
     def step(self) -> None:
@@ -98,18 +107,24 @@ class Simulation:
         centroid = self.body.centroid()
         velocity = (centroid - self._last_centroid) / self.dt
         self._last_centroid = centroid.copy()
-        # Smoothed over about one undulation cycle, so neither readout tracks the
-        # side-to-side swing of the body within a stroke.
         blend = min(1.0, self.dt / 0.6)
         self._velocity_smooth += (velocity - self._velocity_smooth) * blend
         inst = float(np.hypot(*velocity))
-        self._speed_smooth += (inst - self._speed_smooth) * min(1.0, self.dt / 0.25)
+        self.path_speed += (inst - self.path_speed) * min(1.0, self.dt / 0.25)
+
+        hist = self._centroid_history
+        hist.append((self.t, centroid.copy()))
+        while len(hist) > 1 and self.t - hist[0][0] > self._speed_window:
+            hist.popleft()
+        span = self.t - hist[0][0]
+        if span > 0.5 * self._speed_window:
+            self.speed = float(np.hypot(*(centroid - hist[0][1]))) / span
 
         if self.steps % 20 == 0:
             self.trail.append((float(centroid[0]), float(centroid[1])))
             h = self.history
             h["t"].append(self.t)
-            h["speed"].append(self._speed_smooth)
+            h["speed"].append(self.speed)
             h["curvature_mid"].append(float(curvature[len(curvature) // 2]))
             h["attractant"].append(self.senses.readout.get("attractant", 0.0))
 
@@ -138,7 +153,7 @@ class Simulation:
         instantaneous velocity points backwards for a good part of every cycle even during
         steady forward locomotion.
         """
-        if self._speed_smooth < 5e-3:            # under 5 um/s is not going anywhere
+        if self.speed < 2e-3:                    # under 2 um/s is not going anywhere
             return "still"
         v = self._velocity_smooth
         if float(np.hypot(*v)) < 1e-6:
@@ -157,7 +172,8 @@ class Simulation:
             "muscle_dorsal": np.round(d, 4).tolist(),
             "muscle_ventral": np.round(v, 4).tolist(),
             "curvature": np.round(self.body.curvature(), 4).tolist(),
-            "speed": round(self._speed_smooth, 5),
+            "speed": round(self.speed, 6),
+            "path_speed": round(self.path_speed, 6),
             "direction": self.direction(),
             "food_eaten": round(self.food_eaten, 4),
             "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
