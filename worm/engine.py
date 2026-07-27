@@ -46,7 +46,7 @@ class Simulation:
                          position=(-14.0, -2.0), heading=0.35)
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
-                             self.p.neural.dt)
+                             self.p.neural.dt, g_rest=self.nervous.g_rest)
 
         self.dt = self.p.neural.dt
         self.t = 0.0

@@ -33,25 +33,44 @@ class NervousSystem:
         self.g_leak = p.g_leak
         self.E_leak = p.E_leak
 
-        # Slow calcium-activated potassium conductance, present only in the motor classes
-        # that are known to oscillate intrinsically. Everything else is purely passive.
+        # Steady-state synaptic activation when a presynaptic neuron sits exactly at its
+        # own half-activation voltage (phi = 1/2). Used to place the thresholds.
+        s_half = 0.5 * p.a_rise / (0.5 * p.a_rise + p.a_decay)
+
+        # Morris-Lecar conditional oscillator, in the motor classes known to oscillate.
+        # Everything else is purely passive: g_ca and g_adapt stay zero there, so the rest
+        # of the connectome is untouched by any of this.
+        #
+        # Both conductances scale with the neuron's own total resting conductance, so a
+        # unit the connectome loads heavily gets proportionally more channel. Without this
+        # the eightfold spread of resting conductance across the B class turns into the
+        # difference between silence and saturation. See NeuralParams for the measurements.
+        # g_rest is also read by the sensory system, which scales its input currents the
+        # same way and for the same reason.
+        self.g_rest = self.g_leak + self.gap_total + s_half * self.G_syn.sum(axis=1)
+        g_rest = self.g_rest
         self.g_adapt = np.zeros(n)
         self.g_ca = np.zeros(n)
         self.oscillators = conn.group(*p.oscillator_classes)
         if len(self.oscillators) == 0:
             raise RuntimeError("no neurons matched oscillator_classes=%r"
                                % (p.oscillator_classes,))
-        self.g_adapt[self.oscillators] = p.adapt_g
-        self.g_ca[self.oscillators] = p.ca_g
+        self.g_ca[self.oscillators] = p.ca_ratio * g_rest[self.oscillators]
+        self.g_adapt[self.oscillators] = p.adapt_ratio * g_rest[self.oscillators]
 
-        # Steady-state synaptic activation when a presynaptic neuron sits exactly at its
-        # own half-activation voltage (phi = 1/2). Used to place the thresholds.
-        s_half = 0.5 * p.a_rise / (0.5 * p.a_rise + p.a_decay)
+        # Gate values at rest. Because each half-activation is a fixed offset from that
+        # neuron's own resting potential, these are constants -- which is what keeps the
+        # threshold solve linear and its fixed point exact.
+        self.m0 = 0.5 * (1.0 + np.tanh(-p.ca_offset / p.ca_slope))
+        self.n0 = 0.5 * (1.0 + np.tanh(-p.k_offset / p.k_slope))
 
         self.V_th = self._resting_potentials(s_half)
+        self.ca_vhalf = self.V_th + p.ca_offset
+        self.k_vhalf = self.V_th + p.k_offset
+
         self.V = self.V_th.copy()
         self.s = np.full(n, s_half)
-        self.a = np.full(n, 0.5)
+        self.a = np.full(n, self.n0)
         self.I_noise = np.zeros(n)
         self.I_ext = np.zeros(n)
 
@@ -80,22 +99,21 @@ class NervousSystem:
         # only the gap junctions appear off the diagonal. The matrix is a strictly
         # diagonally dominant M-matrix (g_leak > 0 on every row), hence nonsingular.
         n = self.conn.n
-        # The slow potassium conductance is half-activated at rest too, so it belongs in
-        # the solve; leaving it out would put the oscillating classes' thresholds tens of
-        # millivolts away from where they actually sit.
-        # Both intrinsic conductances are half-activated at rest, because their activation
-        # curves are centred on the very threshold we are solving for. Including them here
-        # is what keeps the fixed point exact.
+        # The intrinsic gates are open by m0 and n0 at rest, by construction: their
+        # activation curves are placed at fixed offsets from the very potential being
+        # solved for. Including them at those constant values is what makes this fixed
+        # point exact rather than approximate, and it is why the solve stays linear even
+        # though the underlying currents are not.
         A = -self.G_gap.copy()
         A[np.diag_indices(n)] += (self.g_leak
                                   + self.gap_total
                                   + s_half * self.G_syn.sum(axis=1)
-                                  + 0.5 * self.g_adapt
-                                  + 0.5 * self.g_ca)
+                                  + self.n0 * self.g_adapt
+                                  + self.m0 * self.g_ca)
         b = (self.g_leak * self.E_leak
              + s_half * (self.G_syn @ self.E_pre)
-             + 0.5 * self.g_adapt * self.p.E_K
-             + 0.5 * self.g_ca * self.p.E_Ca)
+             + self.n0 * self.g_adapt * self.p.E_K
+             + self.m0 * self.g_ca * self.p.E_Ca)
         V = np.linalg.solve(A, b)
         if not np.all(np.isfinite(V)):
             raise RuntimeError("resting-potential solve did not converge")
@@ -118,11 +136,11 @@ class NervousSystem:
         # Conductances and their driving potentials.
         gs = self.G_syn @ s                       # (N,) total synaptic conductance
         Es = self.G_syn @ (s * self.E_pre)        # (N,) conductance-weighted reversal sum
-        g_ad = self.g_adapt * self.a              # (N,) slow K conductance
-        # Regenerative calcium conductance, activating instantaneously with voltage. This
-        # is the positive-feedback limb: depolarising opens it, and it pulls towards
-        # +120 mV, which opens it further.
-        g_c = self.g_ca * _sigmoid(p.ca_beta * (V - self.V_th))
+        g_ad = self.g_adapt * self.a              # (N,) delayed-rectifier K conductance
+        # Regenerative calcium conductance, activating instantaneously with voltage: the
+        # positive-feedback limb that folds the voltage nullcline and makes a limit cycle
+        # possible. Morris-Lecar form, m_inf = 0.5(1 + tanh((V - V_m)/theta_m)).
+        g_c = self.g_ca * 0.5 * (1.0 + np.tanh((V - self.ca_vhalf) / p.ca_slope))
         g_tot = self.g_leak + self.gap_total + gs + g_ad + g_c
         fixed = (self.g_leak * self.E_leak + Es
                  + g_ad * p.E_K + g_c * p.E_Ca + I)
@@ -144,10 +162,10 @@ class NervousSystem:
         # a consistent one-step delay everywhere rather than an index-order dependence.
         phi = _sigmoid(p.beta * (V - self.V_th))
 
-        # The slow conductance tracks the same sigmoid, but lags it by adapt_tau. That lag
-        # is the whole oscillator: by the time the conductance has built up enough to shut
-        # the neuron off, the neuron has been depolarised for most of a half-cycle.
-        self.a = phi + (self.a - phi) * self._adapt_decay
+        # Potassium activation relaxes towards its own voltage-dependent steady state with
+        # time constant tau_n. This is the slow, recovering limb of the Morris-Lecar pair.
+        n_inf = 0.5 * (1.0 + np.tanh((V - self.k_vhalf) / p.k_slope))
+        self.a = n_inf + (self.a - n_inf) * self._adapt_decay
 
         rise = p.a_rise * phi
         rate = rise + p.a_decay

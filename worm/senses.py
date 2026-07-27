@@ -24,7 +24,8 @@ from .world import World
 
 class Senses:
     def __init__(self, conn: Connectome, p: SensoryParams, world_p: WorldParams,
-                 body_n_links: int, proprio_reach: float, dt: float):
+                 body_n_links: int, proprio_reach: float, dt: float,
+                 g_rest: np.ndarray | None = None):
         self.conn = conn
         self.p = p
         self.dt = dt
@@ -82,6 +83,27 @@ class Senses:
         self.W_head_sign = np.zeros(conn.n)
         self.W_head_sign[head_d] = -1.0        # a dorsal bend inhibits the dorsal benders
         self.W_head_sign[head_v] = +1.0
+
+        # Proprioceptive drive is delivered as a current, but what a motor neuron actually
+        # responds to is the voltage that current produces, and that is the current divided
+        # by the cell's input conductance. Across the B class that conductance spans 0.63
+        # to 3.20 nS, so a uniform current hits the small posterior units five times harder
+        # than the large anterior ones. Left uncorrected it tilts the whole wave: measured
+        # here, tail bending amplitude ran 3.5x the head's at equal bending stiffness, and
+        # the posterior segments free-ran and dragged the wave backwards.
+        #
+        # Scaling the current by each target's own resting conductance says that a stretch
+        # receptor makes proportionally more synapses onto a larger cell, which is both the
+        # ordinary assumption and the same normalisation the intrinsic channels use. Each
+        # channel is normalised over its own targets so that proprio_gain and
+        # head_proprio_gain keep the magnitudes they were calibrated at.
+        if g_rest is None:
+            self.g_scale_prop = np.ones(conn.n)
+            self.g_scale_head = np.ones(conn.n)
+        else:
+            self.g_scale_prop = _normalise(g_rest, np.abs(self.W_b).sum(axis=1)
+                                           + np.abs(self.W_a).sum(axis=1))
+            self.g_scale_head = _normalise(g_rest, np.abs(self.W_head_sign))
 
         # --- adapting baselines ---------------------------------------------------------
         self.c_adapt = None
@@ -188,13 +210,14 @@ class Senses:
         # dynamic range is spent on the part of the bend that is actually changing.
         raw = (self.W_b @ k) * (gate_fwd / gate_sum) + (self.W_a @ k) * (gate_bwd / gate_sum)
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
-        I += np.tanh(raw - self.prop_adapt) * p.proprio_gain
+        I += np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
         raw = float(np.dot(self._head_window, k))
         self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
-        I += self.W_head_sign * (np.tanh(self.head_signal) * p.head_proprio_gain)
+        I += (self.W_head_sign * self.g_scale_head
+              * (np.tanh(self.head_signal) * p.head_proprio_gain))
 
         self.readout = {
             "attractant": c, "d_attractant": dc, "repellent": rep,
@@ -203,6 +226,19 @@ class Senses:
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
         }
         return I
+
+
+def _normalise(g_rest: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    """Per-neuron input scale, normalised to mean 1 over the cells a channel drives.
+
+    Multiplying an input current by this makes the *voltage* it produces uniform across
+    targets of differing input conductance, while leaving the channel's overall gain --
+    and therefore its calibration -- untouched.
+    """
+    hit = targets > 0
+    if not hit.any():
+        return np.ones_like(g_rest)
+    return g_rest / g_rest[hit].mean()
 
 
 def _output_position(conn: Connectome, i: int) -> float:

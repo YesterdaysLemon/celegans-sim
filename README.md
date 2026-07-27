@@ -127,13 +127,16 @@ A passive graded network **cannot oscillate** — it is a contraction mapping on
 point. And proprioception alone cannot either: it is a transport rule, it copies a bend
 backwards but never starts one. Something has to oscillate.
 
-Giving the motor neurons intrinsic oscillator currents (Morris-Lecar; the right biology,
-since every regenerative event in this animal is calcium-carried) *does* produce a rhythm —
-and it does not work. The dorsal and ventral members of a class have identical intrinsic
-dynamics and are coupled by gap junctions and reciprocal synapses, so they phase-lock **to
-each other**: the animal contracts both sides of its body in time with itself and does not
-bend at all. Measured directly, the presynaptic inputs to a single muscle had a pairwise
-correlation of 0.97. The rhythm has to come from somewhere dorsoventrally *anti*symmetric.
+Making the motor neurons into free-running intrinsic oscillators (Morris-Lecar; the right
+biology, since every regenerative event in this animal is calcium-carried) *does* produce a
+rhythm — and it does not work. The dorsal and ventral members of a class have identical
+intrinsic dynamics and are coupled by gap junctions and reciprocal synapses, so they
+phase-lock **to each other**: the animal contracts both sides of its body in time with
+itself and does not bend at all. Measured directly, the presynaptic inputs to a single
+muscle had a pairwise correlation of 0.97. Pushed hard enough to free-run they fail a
+second way as well — each segment locks to itself, the tail reaches four times the head's
+amplitude, and the wave travels backwards. The rhythm has to come from somewhere
+dorsoventrally *anti*symmetric.
 
 So it comes from the head, as it does in the animal (Wen et al. 2012 showed the body wave
 is initiated at the neck and propagated posteriorly by proprioceptive coupling). The head
@@ -155,6 +158,18 @@ muscles a neuron drives, not to its cell body. DB and VB somas are interleaved a
 ventral cord in a way that does not line up dorsoventrally, so referencing to the soma
 silently gives the two halves of the circuit different views of the same bend and they stop
 working as an antagonistic pair.
+
+Those two paragraphs describe where the rhythm is *born*. They do not explain how it
+survives the trip down the body, and it turns out that is a separate problem with a separate
+answer. A chain of passive relays must attenuate — Xu et al. (2018) show the decay is
+exponential and that head gain, muscle moment and bending stiffness can only trade against
+one another — and measured here the amplitude fell 2.5-fold from head to tail, with the
+tail's coherence at 0.03. So the B-type motor neurons are not passive relays. Each carries
+a Morris-Lecar pair sized as a fraction of its own resting conductance, and the descending
+AVB gap junctions already present in the connectome hold it **at** a Hopf bifurcation:
+enough regenerative gain to restore the amplitude the relay loses, not so much that it
+free-runs and stops listening. The head still sets the phase and the sign; each segment
+now pays for its own amplitude.
 
 ---
 
@@ -196,10 +211,18 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **On agar it undulates at about 1.2 Hz with a 1.4-body-length wavelength.** A real worm
-  crawling on agar does 0.30 Hz and 0.65 L; a real worm *swimming* does 1.76 Hz and 1.54 L.
-  So the model's default gait, whatever the medium, resembles swimming. It gets the shape
-  of the animal's undulation right and the timing of it wrong.
+- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
+  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
+  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
+  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
+  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
+  kinetics are where to look.
+
+- **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
+  hyperpolarised correctly hands the cord to the A-class backward generator and the wave
+  does reverse, but curvature r.m.s. goes to 7.5 and net speed to 0.018 mm/s. The intrinsic
+  gate offsets are placed relative to a resting potential solved with AVB intact and do not
+  follow it down when the drive is removed.
 
   This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
   proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
@@ -217,10 +240,10 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
   and deliberately does not assert which way, because asserting the real direction would
   be asserting something this model does not do.
-- **The worm crawls, but at half the animal's speed, and its wave is still only half
-  travelling.** Net speed is 0.095-0.106 mm/s against a measured 0.219, with a net-to-path
-  ratio of 0.66-0.72 (a real animal keeps well over half of the distance it covers, so this
-  one is now in range) and a travelling-wave index of +0.48 to +0.57.
+- **The worm crawls at 0.172 mm/s against the animal's 0.219**, with a net-to-path ratio of
+  0.86 and a travelling-wave index of +0.75. That is essentially the ceiling for this body:
+  driving the identical mechanics with a *prescribed* perfect travelling wave reaches
+  0.174 mm/s. Any further speed has to come from the mechanics, not the circuit.
 
   That index is the measure worth watching, and it is what unlocked this. Decomposing the
   body's curvature over (time, arclength) separates the travelling component from the
@@ -246,15 +269,49 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   drive broadcast by AVB through its gap junctions (that neuron swings 4 mV, and clamping
   it changes nothing).
 
-- **The curvature amplitude is now too low** — 2.4 /mm r.m.s. against a measured 4.3, with
-  peaks of 12-14 against 9.8, so the bend is more concentrated along the body than a real
-  worm's. This got worse as the translation got better and is the live trade-off: the
-  configuration with textbook curvature was the one going nowhere.
+  That left one thing the reflex model could not do at all. Xu et al. (2018) solve this
+  model class analytically: in a chain where motor neurons *passively* relay proprioceptive
+  input, bending amplitude must decay exponentially towards the tail, with a length constant
+  that head reflex gain, muscle moment and bending stiffness can only trade against one
+  another. Measured here, amplitude fell 2.5-fold head to tail and the tail's coherence —
+  the fraction of its motion that belongs to the undulation at all — was 0.03. The tail was
+  not undulating; it was being dragged.
 
-- **On agar it undulates at about 1.2 Hz with a 1.4-body-length wavelength.** A real worm
-  crawling on agar does 0.30 Hz and 0.65 L; a real worm *swimming* does 1.76 Hz and 1.54 L.
-  So the model's default gait, whatever the medium, resembles swimming. It gets the shape
-  of the animal's undulation right and the timing of it wrong.
+  The fix was to stop the segments being passive. Each B-type motor neuron gained a
+  Morris-Lecar pair (regenerative calcium, delayed potassium) sized as a fraction of its own
+  resting conductance, which the descending AVB gap junctions — already in the connectome,
+  55 contacts, resting at −21 mV — hold at a Hopf bifurcation. Amplitude is then regenerated
+  segment by segment and proprioception carries only phase. Coherence rose in every region
+  (head 0.4→0.90, mid 0.4→0.84, tail 0.03→0.35), the amplitude profile flattened from
+  2.5/1.3/1.0 to 2.6/1.9/1.9, and net speed went 0.105 → 0.172 mm/s.
+
+  **The interesting part is where the optimum sits.** Sweeping the calcium conductance and
+  scoring on net displacement peaks where the Hopf margin is 0.94 — the units are poised
+  *at* the bifurcation, not past it. Push them past and each segment free-runs, locks to
+  itself, the tail reaches four times the head's amplitude, and the wave travels
+  **backwards**. The useful regime is a critically-poised regenerative amplifier, which has
+  the gain to cancel the relay's decay while still following its input, rather than an
+  autonomous oscillator, which does not follow anything. A second change landed alongside
+  it and is separated by its own control sweep (`tools/osc_control.py`): sensory input is
+  now scaled by each target's resting conductance, because a fixed current across an
+  eightfold spread of input conductance was hitting the small posterior units five times
+  harder than the large anterior ones. That was worth +14%, the oscillator a further +31%.
+
+- **The curvature amplitude is too low** — 2.3 /mm r.m.s. against a measured 4.3, so the
+  worm undulates more shallowly than a real one.
+
+- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
+  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
+  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
+  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
+  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
+  kinetics are where to look.
+
+- **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
+  hyperpolarised correctly hands the cord to the A-class backward generator and the wave
+  does reverse, but curvature r.m.s. goes to 7.5 and net speed to 0.018 mm/s. The intrinsic
+  gate offsets are placed relative to a resting potential solved with AVB intact and do not
+  follow it down when the drive is removed.
 
   This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
   proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach

@@ -1,5 +1,56 @@
 # Where this is, and what to do next
 
+> ## Day three. The travelling wave is fixed. Read this part first.
+>
+> Two changes landed, and the control sweep separating them is `tools/osc_control.py`.
+>
+> **1. Sensory input is now scaled by each target's resting conductance.** A fixed current
+> produces a voltage inversely proportional to the cell's input conductance, and across the
+> B class that conductance spans 0.63 to 3.20 nS — so a uniform proprioceptive current was
+> hitting the small posterior units five times harder than the large anterior ones. Worth
+> +14% on its own.
+>
+> **2. The B-type motor neurons became Morris-Lecar regenerative units** (`ca_ratio`,
+> `adapt_ratio` in `NeuralParams`), poised at a Hopf bifurcation by the descending AVB gap
+> junctions that were already in the connectome. Worth a further +31%.
+>
+> | | TWI | net mm/s | net/path | amplitude head/mid/tail | tail coherence |
+> |---|---|---|---|---|---|
+> | day two | +0.60 | 0.105 | 0.70 | 2.5 / 1.3 / 1.0 | 0.03–0.05 |
+> | conductance scaling only | +0.64 | 0.120 | 0.71 | 2.5 / 1.3 / 1.0 | 0.08 |
+> | **today** | **+0.75** | **0.172** | **0.86** | **2.6 / 1.9 / 1.9** | **0.35** |
+> | this body, prescribed wave | +0.996 | 0.174 | — | — | — |
+> | real animal | — | 0.219 | — | roughly flat | — |
+>
+> Net speed is now at the prescribed-wave ceiling for this body, and 78% of the animal's.
+> The exponential amplitude decay down the body — the thing the whole day-two analysis was
+> about — is gone: 2.5/1.3/1.0 became 2.6/1.9/1.9. Coherence rose in *every* region
+> (head 0.4→0.90, mid 0.4→0.84, tail 0.03→0.35).
+>
+> **The result that surprised me, and the reason to keep the tooling.** Net speed peaks at
+> `ca_ratio` 0.20, where the Hopf margin is 0.94 — the units sit *at* the bifurcation, not
+> past it. Pushed past (0.26, 0.32, 0.55) each segment free-runs, locks to itself, the tail
+> reaches 4x the head's amplitude and **the wave runs backwards**. Xu et al.'s mechanism is
+> right; "just past the bifurcation" is doing a lot of work in that sentence, and the
+> useful regime is critically poised amplifier, not autonomous oscillator.
+>
+> **Still wrong, in priority order:**
+> 1. **Frequency: 1.17–1.24 Hz against 0.4–0.5 Hz for a real animal.** Sweeping `adapt_tau`
+>    over an eighteen-fold range moves it under 5%, so it is set by the body and the reflex
+>    loop, not the neurons. Go after drag, `internal_damping`, and muscle activation
+>    kinetics. This is now the biggest single discrepancy.
+> 2. **Wavelength 0.52 L against 0.65 L.** Probably the same cause as (1).
+> 3. **Curvature rms 2.3 against 4.3.** The worm undulates too shallowly.
+> 4. **Backward locomotion is known-poor.** Clamping AVB off correctly hands over to the
+>    A-class generator and the wave does reverse, but curvature rms goes to 7.5 and net
+>    speed to 0.018 mm/s. The gate offsets are placed relative to a resting potential solved
+>    with AVB intact and do not follow it down. Untested before today; do not cite it as
+>    working.
+> 5. Tail coherence is 0.35 — much better than 0.03, still the worst region.
+>
+> Everything below this line is from day two. The sections on *why* the wave decayed remain
+> the correct analysis; the "what to try" lists are superseded by the above.
+
 > **Day two. The big one is fixed, and here is the state.**
 >
 > Proprioception was the one sensory channel still responding to absolute value rather than

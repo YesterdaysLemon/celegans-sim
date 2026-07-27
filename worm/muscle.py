@@ -46,6 +46,8 @@ class Muscles:
         self.excitatory_pre = ~conn.inhibitory
         if p.normalise_nmj:
             self._balance(conn)
+        self.G_gap = self._muscle_coupling(conn, p)
+        self.gap_total = self.G_gap.sum(axis=1)
         # Row index 1..24 within each quadrant, and the normalised body position of each.
         self.row = np.array([int(name[3:]) for name in conn.muscle_names])
         self.pos = conn.muscle_pos
@@ -73,6 +75,26 @@ class Muscles:
         eff = np.interp(self.joint_s, [0.0, 1.0], [p.efficacy_head, p.efficacy_tail])
         arm = radius_profile(self.joint_s, body.radius_max) / body.radius_max
         self.joint_gain = p.peak_moment * eff * arm * body.muscle_moment_arm
+
+    def _muscle_coupling(self, conn: Connectome, p: MuscleParams) -> np.ndarray:
+        """(M, M) symmetric electrical coupling between body-wall muscle cells.
+
+        Neighbouring cells within a quadrant are strongly coupled; the four quadrants are
+        only weakly coupled to each other at the same body position, which matters because
+        strong coupling across quadrants would short out the dorsoventral difference the
+        animal bends with.
+        """
+        m = conn.n_muscles
+        G = np.zeros((m, m))
+        quad = [n[:3] for n in conn.muscle_names]
+        index = [int(n[3:]) for n in conn.muscle_names]
+        for a in range(m):
+            for b in range(a + 1, m):
+                if quad[a] == quad[b] and abs(index[a] - index[b]) == 1:
+                    G[a, b] = G[b, a] = p.g_muscle_gap
+                elif quad[a] != quad[b] and index[a] == index[b]:
+                    G[a, b] = G[b, a] = p.g_quadrant_gap
+        return G
 
     def _balance(self, conn: Connectome) -> None:
         """Give every muscle cell the same total drive, and both sheets the same resting tone.
@@ -125,9 +147,16 @@ class Muscles:
 
         g = self.G @ s_pre                              # (M,) total NMJ conductance
         e = self.G @ (s_pre * self.E_pre)               # (M,) conductance-weighted reversal
-        g_tot = p.g_leak + g
-        V_inf = (p.g_leak * p.E_leak + e) / g_tot
-        self.V = V_inf + (self.V - V_inf) * np.exp(-g_tot * dt / self._C_nF)
+        g_tot = p.g_leak + g + self.gap_total
+        fixed = p.g_leak * p.E_leak + e
+        decay = np.exp(-g_tot * dt / self._C_nF)
+        # Same treatment as the neurons: exponential Euler on the diagonal, with the
+        # electrical coupling between cells refined by a couple of fixed-point passes.
+        V_new = self.V
+        for _ in range(2):
+            V_inf = (fixed + self.G_gap @ V_new) / g_tot
+            V_new = V_inf + (self.V - V_inf) * decay
+        self.V = V_new
 
         target = _sigmoid(p.beta * (self.V - p.v_half))
         self.calcium = target + (self.calcium - target) * self._decay_ca

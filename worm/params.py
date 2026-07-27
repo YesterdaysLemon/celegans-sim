@@ -104,21 +104,128 @@ class NeuralParams:
     # no voltage-gated sodium channels at all, and every regenerative event in the animal
     # is carried by calcium (EGL-19, UNC-2) and terminated by potassium (SHK-1, SLO-1/2).
     # It is the same construction c302's graded parameter set C0 uses.
-    # These default to zero, and that is a result rather than an omission. An intrinsic
-    # oscillator in the motor neurons does produce a rhythm -- but the dorsal and ventral
-    # members of a class have identical intrinsic dynamics and are coupled by gap junctions
-    # and reciprocal synapses, so they phase-lock *to each other*. The animal then contracts
-    # both sides of its body in time with itself and does not bend at all. The rhythm has to
-    # come from somewhere that is dorsoventrally antisymmetric, and the head proprioceptive
-    # reflex (see SensoryParams.head_proprio_gain) is exactly that. Non-zero values here are
-    # kept because they are the right biology for RMD and AWA and are useful to experiment
-    # with, but the working model does not need them.
-    ca_g: float = 0.0            # nS   regenerative calcium conductance
-    ca_beta: float = 0.125       # 1/mV activation steepness, instantaneous
-    E_Ca: float = 120.0          # mV   calcium reversal
-    adapt_g: float = 0.0         # nS   slow calcium-activated potassium conductance
-    adapt_tau: float = 0.70      # s    its time constant
-    E_K: float = -80.0           # mV   potassium reversal
+    # An earlier version of this model set these to zero, on the following argument: the
+    # dorsal and ventral members of a class have identical intrinsic dynamics and are
+    # coupled by gap junctions and reciprocal synapses, so they phase-lock *to each other*,
+    # the animal contracts both sides in time with itself, and it does not bend at all.
+    # That observation is correct but the conclusion drawn from it was wrong. It argues
+    # that an intrinsic oscillator cannot be the source of dorsoventral *antisymmetry* --
+    # which the head proprioceptive reflex supplies (SensoryParams.head_proprio_gain) --
+    # not that it cannot be the source of amplitude down the body, which is a separate job
+    # and the one the analysis below shows nothing else can do.
+    # Xu, Kawano et al. (2018) PNAS 115:E4493 solved this model class analytically and the
+    # result is why none of the parameter sweeps above could ever have worked. For a chain
+    # in which motor neurons are *passive* recipients of proprioceptive input, bending
+    # amplitude decays exponentially towards the tail with a length constant
+    #
+    #     xi  ~  l / (1 - c * alpha_max / b)        subject to  c*alpha_max/b <= 1
+    #
+    # where l is the proprioceptive reach, c its gain, alpha_max the muscle torque and b the
+    # bending modulus. Head reflex gain, muscle moment, bending stiffness and the muscle
+    # taper are all just different ways of moving that one lumped quantity, which is capped
+    # at 1 -- so a flat wave demands sitting within a few percent of an instability bound.
+    # Measured here: 7-fold decay over one body length, i.e. c*alpha_max/b = 0.61. Not a
+    # local optimum with a better peak elsewhere; a razor's edge with no viable peak.
+    #
+    # Their resolution, and the one implemented here: each B-type motor neuron is a
+    # Morris-Lecar unit held at a Hopf bifurcation by tonic gap-junction current from AVB.
+    # Amplitude is then regenerated locally, segment by segment, and proprioception carries
+    # only *phase*. A regenerative segment restores amplitude; a passive filter cannot.
+    # Measured effect: bending amplitude head/mid/tail went from 2.5/1.3/1.0 to 2.6/1.9/1.9,
+    # and net speed from 0.105 to 0.172 mm/s against 0.219 for the animal.
+    #
+    # This also explains why clamping AVB earlier did nothing: in a *linear* chain, AVB
+    # coupling can only shunt, replacing c with c*g_m/(g_m+g), which makes the decay worse.
+    # That null result was evidence the units were linear, not evidence AVB is irrelevant.
+    #
+    # Xu et al.'s absolute conductances are not transplantable here, and the reason is
+    # worth recording. Their B-type unit is isolated: g_L = 100 pS is the whole of its
+    # resting conductance. In the reconstructed connectome a B neuron also carries its gap
+    # junctions and its synaptic load, which measure 0.38 to 2.95 nS -- a factor of eight
+    # between VB09 and DB07, and 1.5 to 12 times g_leak. Fixed conductances tuned for any
+    # one of those units leave the rest either silent or saturated, which is exactly what
+    # a first transplant attempt produced: every unit sat quiescent at -56 mV with the
+    # potassium gate 47% open at rest, holding the calcium gate shut at 0.5%.
+    #
+    # So the intrinsic conductances are specified as fractions of each neuron's *own*
+    # total resting conductance, and the half-activations as offsets from its *own*
+    # resting potential. Every B unit then sits at the same relative operating point
+    # regardless of how heavily the connectome loads it. This is also the more defensible
+    # biology -- channel count scales with membrane area, and so does leak -- and it has a
+    # useful side effect: because the gates take known constant values at rest, the
+    # release-threshold solve stays linear and stays exact.
+    #
+    # Instability of the fixed point (the Hopf condition) is then a pure ratio statement,
+    # independent of the individual neuron:
+    #
+    #     ca_ratio * [ m0' * (E_Ca - V_rest) - m0 ]  -  adapt_ratio * n0  >  1
+    #
+    # with m0, n0 the gate values at rest and m0' = 1/(2*ca_slope) * sech^2(ca_offset/
+    # ca_slope). At the values below it evaluates to 0.94 -- which is to say the working
+    # model sits *at* the bifurcation rather than past it, and that is a measured result,
+    # not a target. Sweeping ca_ratio over 0.00 to 0.45 and scoring on net displacement
+    # (tools/osc_control.py, tools/tau_sweep.py, three seeds each) peaks at 0.20:
+    #
+    #   ca_ratio   margin   free-running without proprioception?   net mm/s
+    #     0.00      0.00    no                                      0.120
+    #     0.13      0.64    no                                      0.145
+    #     0.20      0.94    marginal (4.0 mV sd)                    0.172   <-- best
+    #     0.26      1.17    yes      (7.4 mV sd)                    0.155
+    #     0.32      1.40    yes     (10.9 mV sd)                    0.139
+    #
+    # The peak is exactly where the units stop being entrainable and start free-running,
+    # and the reason is the one that makes critically-poised systems useful generally: the
+    # regenerative gain that cancels the relay's exponential decay is largest right at the
+    # bifurcation, while the cell still follows its input instead of ignoring it. Pushed
+    # past it -- ca_ratio 0.55, the first thing tried here -- each segment locks to itself,
+    # tail bending amplitude runs 4x the head's, and the wave runs *backwards* (travelling
+    # index -0.45): 18 autonomous oscillators with the posterior ones leading.
+    #
+    # So these are conditional oscillators in the sense that matters -- the descending AVB
+    # drive is what puts them near the bifurcation, and removing it drops them back to
+    # passive -- but in normal forward locomotion they are better described as critically
+    # poised regenerative amplifiers than as autonomous oscillators.
+    ca_ratio: float = 0.20       # g_Ca as a fraction of the neuron's resting conductance
+    adapt_ratio: float = 0.40    # g_K  as a fraction of the neuron's resting conductance
+    ca_offset: float = 0.0       # mV   Ca half-activation, relative to that neuron's rest
+    ca_slope: float = 8.0        # mV
+    k_offset: float = 10.0       # mV   K half-activation, relative to that neuron's rest
+    k_slope: float = 12.0        # mV
+    adapt_tau: float = 0.30      # s    interior optimum; see below
+    E_Ca: float = 60.0           # mV
+    E_K: float = -70.0           # mV
+
+    # The bifurcation parameter is the descending drive from AVB, and it needs no parameter
+    # at all: the reconstructed connectome already contains 55 AVB gap-junction contacts
+    # distributed over all 18 B-type units, and AVBL/AVBR rest at -21.2/-21.4 mV -- within
+    # 1.4 mV of the V_AVB = -20 mV Xu et al. had to assume. The drive is therefore real,
+    # already correctly placed, and correctly signed, and adding a synthetic conductance
+    # on top of it would double-count.
+    #
+    # Clamping AVB to -70 mV was expected to quiet the units and does not: their voltage
+    # swing nearly doubles (8.4 -> 15.7 mV sd), curvature rms goes from 2.1 to 7.5, the
+    # wave reverses to -0.69 and net speed collapses to 0.018 mm/s. Two things are mixed
+    # together there. The reversal is correct -- the proprioceptive command gate reads AVB
+    # activity, so silencing it hands the cord to the A-class backward generator, and a
+    # backward wave *should* travel tail to head. The rest is not: hyperpolarising past the
+    # potassium half-activation closes the restoring conductance faster than it closes the
+    # calcium one, so the unit gets less stable rather than more. The gate offsets are
+    # placed relative to a resting potential solved with AVB intact and do not follow it
+    # down. Backward locomotion is therefore known-poor in this model and is an open item,
+    # not a validated behaviour.
+    #
+    # adapt_tau is set by measurement, and it is a genuine interior optimum rather than a
+    # boundary: net displacement over 0.08/0.12/0.18/0.25/0.30/0.60/0.90/1.40 s runs
+    # 0.149/0.157/0.167/0.171/0.172/0.164/0.158/0.151 mm/s. Below the peak the potassium
+    # gate tracks the voltage too closely and cancels the calcium current; above it, the
+    # gate barely moves within a cycle and the amplifier stops being phasic.
+    #
+    # One thing this does NOT fix, and the honest place to record it: the model still
+    # undulates at 1.17 Hz against 0.4-0.5 Hz for a real animal on agar (Gray & Lissmann
+    # 1964; Berri et al. 2009). The frequency is set by the reflex loop and the body's
+    # mechanics, not by this time constant -- sweeping adapt_tau over an eighteen-fold
+    # range moves it by less than 5%. Correcting it means going after the mechanics
+    # (drag, internal damping, muscle activation kinetics), which is the next thread.
     # Physiological rail, set at the potassium and calcium reversals. Motor neurons under
     # strong proprioceptive drive do reach the lower rail at the extremes of each cycle.
     # That is saturation rather than instability, and it is consistent with how the
@@ -126,7 +233,7 @@ class NeuralParams:
     # B-type motor neurons frankly binary. Interneurons and sensory neurons stay well
     # inside the range.
     v_clamp: tuple = (-80.0, 45.0)    # mV
-    oscillator_classes: tuple = ("RMD", "SMD")
+    oscillator_classes: tuple = ("DB", "VB")
 
     # -- noise --------------------------------------------------------------------------
     # Real neurons are noisy, and a deterministic network settles into a fixed point and
@@ -186,6 +293,23 @@ class MuscleParams:
     # among a given muscle's presynaptic partners stays exactly as reconstructed.
     rest_tension: float = 0.50
     normalise_nmj: bool = True
+
+    # Body-wall muscle cells are electrically coupled to their neighbours. Boyle & Cohen
+    # (2008) Biosystems 94:170 measure 370 pS between adjacent cells within a quadrant and
+    # about 15 pS between quadrants, and this model omitted them entirely.
+    #
+    # That omission had a specific and measurable consequence. The tail muscle rows have
+    # seven presynaptic motor neurons where the head has twenty-five, and the per-cell
+    # conductance normalisation above then gives each of those few neurons roughly three
+    # times the weight of its counterpart at the head. With no coupling between muscle
+    # cells there is nothing to average across, so background noise in a single posterior
+    # motor neuron passed straight through to the body: the tail ended up with the largest
+    # oscillation amplitude anywhere on the animal and a coherence with the undulation of
+    # 0.05, thrashing hard and completely out of time with the wave it was supposed to be
+    # carrying. Coupling neighbouring cells low-passes the drive along the body, which is
+    # what the real tissue does.
+    g_muscle_gap: float = 0.37       # nS between adjacent cells in a quadrant
+    g_quadrant_gap: float = 0.015    # nS between quadrants at the same body position
 
     # Body-wall muscle is stronger at the head than the tail. Boyle et al. (2012) use a
     # linear efficacy ramp from 0.70 to 0.29 head-to-tail and report that without it the
