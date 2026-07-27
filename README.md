@@ -216,11 +216,27 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
   and deliberately does not assert which way, because asserting the real direction would
   be asserting something this model does not do.
-- **The worm undulates almost on the spot.** Over 120 simulated seconds it travels 8.4 mm
-  of path and ends up 0.54 mm from where it started — a net-to-path ratio of 0.07, where a
-  real animal keeps well over half of the distance it covers. Net speed is about 5 µm/s
-  against a measured 219 µm/s. It is a beautifully behaved undulation that does not
-  translate.
+- **The worm undulates almost on the spot, because its wave is mostly a standing wave.**
+  Over 120 simulated seconds it travels 8.4 mm of path and ends up 0.54 mm from where it
+  started — a net-to-path ratio of 0.07, where a real animal keeps well over half. Net
+  speed is about 5 µm/s against a measured 219.
+
+  The cause is specific and measurable. Decomposing the body's curvature over (time,
+  arclength) into travelling and standing components gives a travelling-wave index of
+  **+0.33** — two thirds of the oscillation is a standing wave, and a standing wave
+  produces *exactly zero* net thrust however large its amplitude, because its drag forces
+  cancel over a cycle. The control settles it: the identical body and drag, driven by a
+  clean prescribed travelling wave instead of by the nervous system, gives **+0.996 and
+  0.174 mm/s** — very nearly the real animal. So the mechanics are not the problem and
+  never were. The nervous system is producing a wave that mostly stands still.
+
+  This also explains the long wavelength, and the two are the same fact: at 1.4 body
+  lengths, less than one full wave fits on the animal, so there is almost no phase
+  progression along it, which *is* a standing wave. Fixing the wavelength and fixing the
+  thrust are one job, not two. `travelling_index` in `tools/diagnose_loop.py` measures it,
+  and it is the sharpest single diagnostic in the project — the phase-slope measure it
+  replaced will happily report a confident wavelength and direction for an animal that is
+  going nowhere.
 
   I originally reported this as "0.03–0.11 mm/s, about half the measured value", **and that
   was wrong.** The metric was smoothing the *magnitude* of instantaneous centroid velocity,

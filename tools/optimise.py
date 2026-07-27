@@ -55,7 +55,14 @@ SPACE = {
 # What a real worm does on agar, and how much each miss costs. Sources are in the README.
 TARGETS = {
     "speed":      dict(target=0.219, tol=0.06,  weight=3.0, kind="value"),
-    "net_ratio":  dict(target=0.60,  tol=0.15,  weight=3.0, kind="atleast"),
+    "net_ratio":  dict(target=0.60,  tol=0.15,  weight=2.0, kind="atleast"),
+    # How much of the oscillation is a travelling wave rather than a standing one. This is
+    # the term that matters most and the one that took longest to find. A standing wave
+    # generates no net thrust at all, and the shipped model sits at +0.33 -- two thirds
+    # standing -- while the same body driven by a clean prescribed travelling wave reaches
+    # +0.996 and moves at 0.174 mm/s. It is also far better conditioned than net
+    # displacement, which is slow and noisy to measure.
+    "twi":        dict(target=0.90,  tol=0.15,  weight=4.0, kind="atleast"),
     "freq":       dict(target=0.40,  tol=0.15,  weight=1.5, kind="value"),
     "wavelength": dict(target=0.65,  tol=0.15,  weight=1.5, kind="value"),
     "kappa_max":  dict(target=9.8,   tol=2.5,   weight=1.0, kind="value"),

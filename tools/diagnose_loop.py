@@ -66,6 +66,7 @@ def analyse(sim: Simulation, seconds: float, warmup: float = 4.0) -> dict:
     ])) if m.shape[0] > 4 else 0.0
 
     return {
+        "twi": travelling_index(kappa),
         "dv_corr": dv_corr,
         "freq": freq,
         "power": power,
@@ -80,6 +81,35 @@ def analyse(sim: Simulation, seconds: float, warmup: float = 4.0) -> dict:
         "path_speed": sim.path_speed,
         "dv_drive": float(np.abs(np.array(mrows)[:, :24] - np.array(mrows)[:, 24:]).mean()),
     }
+
+
+def travelling_index(kappa: np.ndarray) -> float:
+    """How much of the body's oscillation is a travelling wave rather than a standing one.
+
+    +1 is a pure head-to-tail travelling wave, -1 a pure tail-to-head one, and 0 a pure
+    standing wave -- one where the body oscillates with fixed nodes, like a plucked string.
+
+    This distinction is the whole game for locomotion. A standing wave produces exactly
+    zero net thrust however large its amplitude, because the drag forces it generates
+    cancel over a cycle. The phase-slope measure used for `wavelength` above cannot detect
+    it: a weak travelling component riding on a dominant standing wave still yields a
+    perfectly respectable phase slope, and will report a confident wavelength and
+    direction for an animal that is going nowhere.
+
+    Decomposed with a 2D FFT over (time, arclength): power at temporal and spatial
+    frequencies of opposite sign travels one way, same sign the other. Verified against
+    synthetic travelling and standing waves, which it returns as +/-1.000 and 0.000.
+    """
+    k = kappa - kappa.mean(axis=0)
+    if k.shape[0] < 16:
+        return 0.0
+    k = k * np.hanning(k.shape[0])[:, None] * np.hanning(k.shape[1])[None, :]
+    F = np.abs(np.fft.fft2(k)) ** 2
+    ft = np.fft.fftfreq(F.shape[0])[:, None]
+    fs_ = np.fft.fftfreq(F.shape[1])[None, :]
+    fwd = F[(ft > 0) & (fs_ < 0)].sum() + F[(ft < 0) & (fs_ > 0)].sum()
+    bwd = F[(ft > 0) & (fs_ > 0)].sum() + F[(ft < 0) & (fs_ < 0)].sum()
+    return float((fwd - bwd) / (fwd + bwd + 1e-12))
 
 
 def _dominant(x: np.ndarray, fs: float):
@@ -117,6 +147,8 @@ def main(argv) -> int:
              p.muscle.peak_moment, p.sensory.tonic_forward))
     print("  oscillation   %.3f Hz   spectral share %.3f   wavelength %.2f L  %s"
           % (r["freq"], r["power"], r["wavelength"], r["direction"]))
+    print("  travelling    %+.3f  (+1 pure travelling, 0 pure standing -> no thrust)"
+          % r["twi"])
     print("  curvature     rms %.2f  max %.2f /mm" % (r["kappa_rms"], r["kappa_max"]))
     print("  D/V drive     %.4f       centroid speed %.4f mm/s" % (r["dv_drive"], r["speed"]))
     print("  V swing (mV)  " + "  ".join("%s %.1f" % (k, v) for k, v in r["swing"].items()))

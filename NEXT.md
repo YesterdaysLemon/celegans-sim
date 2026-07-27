@@ -19,6 +19,26 @@
 > drops to 0.008 (ratio 0.16). So the candidate is real and worth keeping, but the head is
 > not what is holding it back. Do not spend more time on (a).
 >
+> **The real diagnosis, and it is sharper than anything in the rest of this file.** The
+> body's oscillation is **two thirds a standing wave**. Decomposing curvature over (time,
+> arclength), the travelling-wave index is **+0.33**, where +1 is a pure travelling wave
+> and 0 is a pure standing one. A standing wave produces exactly zero net thrust however
+> large its amplitude — its drag forces cancel over the cycle — which is why a worm with
+> textbook-correct curvature amplitude goes nowhere.
+>
+> The control is decisive: the **same body, same drag**, driven by a clean prescribed
+> travelling wave instead of by the nervous system, gives **TWI +0.996 and 0.174 mm/s**,
+> very nearly the real animal's 0.219. The mechanics were never the problem. The nervous
+> system is producing a wave that stands still.
+>
+> And this unifies the open faults rather than adding to them: at 1.4 body lengths of
+> wavelength, less than one full wave fits on the body, so there is almost no phase
+> progression along it — which *is* a standing wave. **Wavelength and thrust are one
+> problem.** Everything in the hypothesis list below should be judged on whether it raises
+> the travelling-wave index, not on speed, which is slow and noisy to measure by comparison.
+> `travelling_index` in `tools/diagnose_loop.py`; it is validated against synthetic
+> travelling and standing waves.
+>
 > **What replaced it:** `tools/optimise.py` searches the seven unmeasured parameters
 > against an objective built from the measured behaviour, with net speed and net/path
 > weighted most heavily. Hand-tuning one parameter at a time was never going to work on a

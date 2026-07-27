@@ -212,3 +212,25 @@ def test_anterior_touch_drives_a_reversal():
     after = float(np.mean(sim.nervous.activation()[sim.senses.ava]))
     assert after > before, "AVA did not depolarise after an anterior touch (%.3f -> %.3f)" % (
         before, after)
+
+
+def test_the_wave_travels_rather_than_standing():
+    """A standing wave produces no net thrust, so this is the measure that matters.
+
+    +1 is a pure head-to-tail travelling wave, 0 a pure standing one. The identical body
+    driven by a prescribed travelling wave reaches +0.996 and moves at 0.174 mm/s; driven
+    by the nervous system it manages about +0.33, and that gap is the whole reason the
+    animal goes nowhere. The threshold guards against losing what travelling component
+    there is; raising it is the point of the work in NEXT.md.
+    """
+    from tools.diagnose_loop import travelling_index
+    p = Params()
+    sim = Simulation(p, seed=3, world=bare_world(p))
+    sim.run(6.0)
+    kappa = []
+    for i in range(int(25.0 / sim.dt)):
+        sim.step()
+        if i % 40 == 0:
+            kappa.append(sim.body.curvature().copy())
+    twi = travelling_index(np.array(kappa))
+    assert twi > 0.15, "the body is oscillating as a standing wave (TWI %+.3f)" % twi
