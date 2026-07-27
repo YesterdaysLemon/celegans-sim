@@ -174,7 +174,7 @@ class MuscleParams:
     # Calibrated so the animal reaches the curvature amplitude real worms show on agar
     # (about 4-5 rad/mm); for scale, bending the body to that curvature against its own
     # elasticity alone costs EI*kappa ~ 0.45 uN mm.
-    peak_moment: float = 1.6        # uN*mm
+    peak_moment: float = 2.6        # uN*mm
 
     # Resting tension each muscle sheet is calibrated to, and the fact that both sheets are
     # calibrated to the *same* value, which is what makes the resting posture straight.
@@ -313,12 +313,26 @@ class SensoryParams:
     touch_gain: float = 34.0         # pA per uN of indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
     food_gain: float = 11.0          # pA  dopaminergic mechanosensation of the bacterial lawn
-    proprio_gain: float = 90.0       # pA per unit normalised curvature
+    proprio_gain: float = 30.0       # pA per unit normalised curvature
     # Wen et al. (2012) Neuron 76:750 showed by localised body restraint that B-type motor
     # neurons transduce the curvature of the region *anterior* to them, over roughly
     # 200 um -- a fifth of the body. Boyle et al.'s 2012 model, which predates that result,
     # integrates posteriorly over half the body instead; we follow the experiment.
     proprio_reach: float = 0.20      # fraction of body length sampled anteriorly
+
+    # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
+    # of this model that shipped first, where proprioception was the one sensory channel
+    # left responding to absolute value rather than to change.
+    #
+    # It matters more than it sounds. A worm holding any static bend puts a large constant
+    # offset on the receptor, six to eleven times the size of the oscillation riding on it,
+    # which both buries the signal and pushes the receptor's saturation far enough up its
+    # curve that only about half the remaining gain is available to the oscillation. It is
+    # also why the gain could never be raised: turning it up drove the animal into a
+    # permanent curl instead of a bigger undulation, because the static component was being
+    # amplified along with the dynamic one. High-passing the signal removes the curl as a
+    # failure mode and lets the gain go where it needs to.
+    proprio_tau_adapt: float = 2.5   # s   set well above the undulation period
 
     # The head is where the rhythm comes from. Proprioception alone cannot generate an
     # undulation -- it is a transport rule, it copies a bend backwards but never starts

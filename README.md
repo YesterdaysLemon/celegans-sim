@@ -165,16 +165,17 @@ measurements on live animals.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **4.1 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **9.9–10.1 /mm** | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **2.4 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **12–14 /mm** | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.005 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.07** | well above 0.5 | — |
+| Crawling speed (net) | **0.095–0.106 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.66–0.72** | well above 0.5 | — |
+| Travelling-wave index | **+0.48–0.57** | +1 for a pure travelling wave | — |
 | Undulation frequency, agar | **1.2 Hz** *(fast)* | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
 | Wavelength, agar | **1.4 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
@@ -194,6 +195,61 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
+
+- **On agar it undulates at about 1.2 Hz with a 1.4-body-length wavelength.** A real worm
+  crawling on agar does 0.30 Hz and 0.65 L; a real worm *swimming* does 1.76 Hz and 1.54 L.
+  So the model's default gait, whatever the medium, resembles swimming. It gets the shape
+  of the animal's undulation right and the timing of it wrong.
+
+  This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
+  proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
+  goes 0.10 → 0.20 L), and driving the head externally while measuring the body's response
+  gives a per-segment reflex gain near 1.4. Together those say the body wave here is
+  largely the **passive mechanical response** to the head's bending rather than a wave
+  regenerated segment by segment by proprioception. The reflex loop is present, measurable
+  and correctly signed — it just is not carrying as much of the wave as the animal's does,
+  so the head's own timing dominates and the body strings out behind it.
+- **Gait modulation runs backwards.** The medium does change the gait — 1.25 Hz on agar
+  against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz on agar and
+  1.76 Hz swimming. Same root cause: with the wave set by the head's own loop rather than
+  regenerated along the body, what the medium mostly changes is the mechanical load on the
+  *head*, and a heavier load there shifts that loop's crossover rather than slowing the
+  body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
+  and deliberately does not assert which way, because asserting the real direction would
+  be asserting something this model does not do.
+- **The worm crawls, but at half the animal's speed, and its wave is still only half
+  travelling.** Net speed is 0.095-0.106 mm/s against a measured 0.219, with a net-to-path
+  ratio of 0.66-0.72 (a real animal keeps well over half of the distance it covers, so this
+  one is now in range) and a travelling-wave index of +0.48 to +0.57.
+
+  That index is the measure worth watching, and it is what unlocked this. Decomposing the
+  body's curvature over (time, arclength) separates the travelling component from the
+  standing one; a standing wave produces *exactly zero* net thrust however large its
+  amplitude, because its drag forces cancel over a cycle. The model shipped at **+0.33 and
+  5 µm/s** -- two thirds standing, undulating almost on the spot -- while the identical body
+  driven by a clean prescribed travelling wave reaches **+0.996 and 0.174 mm/s**. So the
+  mechanics were never at fault; the nervous system was producing a wave that stood still.
+
+  Tracing the travelling index stage by stage put the fault at the motor neurons, whose
+  output was a *pure* standing wave (index -0.006) — and then the phase profile showed the
+  phase gradient was actually fine at every stage. The problem was amplitude: the B-type
+  motor neurons were barely modulating at all, because the stretch receptor did not adapt.
+  A static body bend sat on its input at six to eleven times the size of the oscillation
+  riding on it, burying the signal and eating half the receptor's remaining gain — and that
+  is also why the gain could never be raised before, since turning it up amplified the
+  static bend into a permanent curl. High-passing the receptor, which is what every other
+  sensory channel here already did, raised net displacement twenty-fold.
+
+  Three plausible explanations were tested and refuted along the way, all recorded in
+  `NEXT.md`: backing off the head reflex (makes it worse), bending stiffness (a shallow
+  25% effect over a 1600-fold range, in the wrong direction), and a common oscillating
+  drive broadcast by AVB through its gap junctions (that neuron swings 4 mV, and clamping
+  it changes nothing).
+
+- **The curvature amplitude is now too low** — 2.4 /mm r.m.s. against a measured 4.3, with
+  peaks of 12-14 against 9.8, so the bend is more concentrated along the body than a real
+  worm's. This got worse as the translation got better and is the live trade-off: the
+  configuration with textbook curvature was the one going nowhere.
 
 - **On agar it undulates at about 1.2 Hz with a 1.4-body-length wavelength.** A real worm
   crawling on agar does 0.30 Hz and 0.65 L; a real worm *swimming* does 1.76 Hz and 1.54 L.

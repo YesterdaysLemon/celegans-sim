@@ -92,6 +92,8 @@ class Senses:
 
         self.head_signal = 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
+        self.prop_adapt = np.zeros(conn.n)
+        self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
         self._chem_decay = np.exp(-dt / p.chemo_tau_adapt)
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
@@ -182,8 +184,11 @@ class Senses:
         # Stretch receptors saturate, and saying so here matters: without it a sharp body
         # bend delivers enough current to drive a motor neuron straight through the bottom
         # of its physiological range and pin it there.
-        I += np.tanh(self.W_b @ k) * p.proprio_gain * (gate_fwd / gate_sum)
-        I += np.tanh(self.W_a @ k) * p.proprio_gain * (gate_bwd / gate_sum)
+        # Adapt out the static component before the receptor saturates on it, so the whole
+        # dynamic range is spent on the part of the bend that is actually changing.
+        raw = (self.W_b @ k) * (gate_fwd / gate_sum) + (self.W_a @ k) * (gate_bwd / gate_sum)
+        self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
+        I += np.tanh(raw - self.prop_adapt) * p.proprio_gain
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
