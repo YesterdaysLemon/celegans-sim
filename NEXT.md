@@ -63,6 +63,39 @@
 > so it cannot distinguish those two outcomes; the caveat is now written into the tool.
 > **Decide with `tools/twi_by_region.py` and absolute amplitudes instead.**
 >
+> **Sixth hypothesis refuted, and it corrects the fifth.** After the adaptation fix the
+> phase profile reads completely differently: the phase gradient along the cord is now
+> **-379 degrees**, against the -300 a 0.65 L wavelength needs. It is clean, monotonic, and
+> more than sufficient. The circuit generates a properly travelling pattern; earlier
+> conclusions drawn from the pre-adaptation profile (-159 deg) are void.
+>
+> What decays sevenfold head to tail is the *coherent* component -- the amplitude at the
+> wave frequency. Total curvature variance is roughly equal head and tail. So the posterior
+> moves plenty; it just does not move in time with the wave. That is a different fault from
+> "the wave is attenuated", and it took a second measurement to tell them apart.
+>
+> The muscle efficacy taper looked like the obvious cause, since this model copies Boyle's
+> 1.0-to-0.41 head-to-tail ramp. Flattening it does raise posterior amplitude, dramatically
+> -- the head/tail ratio goes from about 1.0 to 0.17, so the tail ends up six times the head
+> -- and everything gets worse:
+>
+> ```
+> eff_tail   TWI            TWI post        head/tail   net mm/s      k_max
+> 0.41    +0.48..+0.57   -0.02..+0.28      1.0-1.4    0.095-0.106   12-14   <- current
+> 0.70    +0.18..+0.28   -0.06..+0.00      0.27-0.29  0.032-0.039   29-30
+> 1.00    -0.57..-0.21   -0.38..-0.26      0.20-0.21  0.009-0.017   38-40
+> 1.40    -0.01..+0.12   -0.05..+0.08      0.16-0.17  0.012-0.028   54
+> ```
+>
+> The taper is load-bearing: it is what stops the posterior thrashing incoherently. Boyle
+> was right and 0.41 is the best of the range.
+>
+> **Six parameter directions have now been tested and every one confirms the current
+> defaults sit at a local optimum**: head reflex weaker, head reflex stronger, bending
+> stiffness, AVB gap-junction broadcast, muscle moment, muscle taper. The travelling index
+> will not go above about +0.57 for any of them, and the failure mode is always the same --
+> the posterior moves, but incoherently.
+>
 > **So the next thing to do** is not another parameter sweep. Five have now failed, and the
 > pattern across all of them is that the posterior travelling index will not move off zero
 > no matter what the parameters do. That points at structure rather than tuning -- most
