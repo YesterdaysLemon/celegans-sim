@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Downloaded anatomy. Regenerate with tools/fetch_raw.sh; the built dataset
+# (data/celegans.json) is committed so a fresh clone runs immediately.
+data/raw/
+
+# Scratch output from parameter sweeps.
+scratch/

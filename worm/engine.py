@@ -1,0 +1,164 @@
+"""The simulation engine: one worm, one world, one closed loop.
+
+Each step runs the same cycle the animal does:
+
+    world  ->  sensory neurons  ->  connectome  ->  motor neurons
+       ^                                                   |
+       |                                                   v
+    body position <-  mechanics  <-  bending moment  <-  muscles
+       |                                                   ^
+       +----------------- proprioception ------------------+
+
+Nothing in the middle is scripted. The undulatory wave is not a pattern generator; it
+emerges because each B-type motor neuron senses the curvature of the body just in front of
+it and contracts the muscle on the same side, so a bend started at the head propagates
+backwards down the body and pushes the animal forward against an anisotropic drag.
+"""
+
+from __future__ import annotations
+
+import time
+from collections import deque
+
+import numpy as np
+
+from . import dataset
+from .body import Body
+from .muscle import Muscles
+from .nervous import NervousSystem
+from .params import MEDIA, Params
+from .senses import Senses
+from .world import World, default_world
+
+
+class Simulation:
+    def __init__(self, params: Params | None = None, seed: int = 0,
+                 world: World | None = None):
+        self.p = params or Params()
+        self.rng = np.random.default_rng(seed)
+        self.conn = dataset.load(e_exc=self.p.neural.E_exc, e_inh=self.p.neural.E_inh)
+
+        self.world = world if world is not None else default_world(self.p.world, self.rng)
+        self.nervous = NervousSystem(self.conn, self.p.neural, self.rng)
+        self.muscles = Muscles(self.conn, self.p.muscle, self.p.body, self.p.neural.dt,
+                               s_eq=float(self.nervous.s[0]))
+        self.body = Body(self.p.body, self.p.medium,
+                         position=(-14.0, -2.0), heading=0.35)
+        self.senses = Senses(self.conn, self.p.sensory, self.p.world,
+                             self.p.body.n_links, self.p.sensory.proprio_reach,
+                             self.p.neural.dt)
+
+        self.dt = self.p.neural.dt
+        self.t = 0.0
+        self.steps = 0
+        self.food_eaten = 0.0
+
+        self._contact = np.zeros((self.p.body.n_links + 1, 2))
+        self._nodes = self.body.nodes()
+
+        # Rolling history for the viewer and for the behavioural measurements.
+        self.trail = deque(maxlen=4000)
+        self.history = {
+            "t": deque(maxlen=3000),
+            "speed": deque(maxlen=3000),
+            "curvature_mid": deque(maxlen=3000),
+            "attractant": deque(maxlen=3000),
+        }
+        self._last_centroid = self.body.centroid().copy()
+        self._speed_smooth = 0.0
+        self._velocity_smooth = np.zeros(2)
+
+    # ------------------------------------------------------------------------- stepping
+    def step(self) -> None:
+        p = self.p
+        nodes = self._nodes
+
+        curvature = self.body.curvature()
+        activation = self.nervous.activation()
+        I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation)
+
+        self.nervous.step(I_ext)
+        self.muscles.step(self.nervous.s)
+
+        self._contact = self.world.contact_force(nodes)
+        self.body.step(self.muscles.joint_moment(), node_forces=self._contact)
+        self._nodes = self.body.nodes()
+
+        # Feeding. The worm pumps when its head is on a lawn; what it eats disappears.
+        head = self._nodes[0]
+        food_here = float(self.world.sample(self.world.food, head[0], head[1]))
+        if food_here > 0.01:
+            self.food_eaten += self.world.eat(
+                head[0], head[1], p.world.ingestion_rate * self.dt)
+
+        self.world.step(self.dt)
+        self.t += self.dt
+        self.steps += 1
+
+        centroid = self.body.centroid()
+        velocity = (centroid - self._last_centroid) / self.dt
+        self._last_centroid = centroid.copy()
+        # Smoothed over about one undulation cycle, so neither readout tracks the
+        # side-to-side swing of the body within a stroke.
+        blend = min(1.0, self.dt / 0.6)
+        self._velocity_smooth += (velocity - self._velocity_smooth) * blend
+        inst = float(np.hypot(*velocity))
+        self._speed_smooth += (inst - self._speed_smooth) * min(1.0, self.dt / 0.25)
+
+        if self.steps % 20 == 0:
+            self.trail.append((float(centroid[0]), float(centroid[1])))
+            h = self.history
+            h["t"].append(self.t)
+            h["speed"].append(self._speed_smooth)
+            h["curvature_mid"].append(float(curvature[len(curvature) // 2]))
+            h["attractant"].append(self.senses.readout.get("attractant", 0.0))
+
+    def run(self, seconds: float) -> None:
+        for _ in range(int(round(seconds / self.dt))):
+            self.step()
+
+    # -------------------------------------------------------------------------- control
+    def set_medium(self, name: str) -> None:
+        self.p = self.p.with_medium(name)
+        self.body.medium = MEDIA[name]
+
+    def poke(self, where: str = "anterior", strength: float = 1.0) -> None:
+        """Deliver an eyebrow-hair touch, as in the classic gentle-touch assay."""
+        if where == "anterior":
+            self.senses.poke[0] += strength
+        else:
+            self.senses.poke[1] += strength
+
+    # ------------------------------------------------------------------------- readouts
+    def direction(self) -> str:
+        """Whether the animal is going forwards or backwards, from the body frame.
+
+        Projected from the *smoothed centroid* velocity, not the head node's. The head of
+        an undulating worm swings from side to side faster than the animal travels, so its
+        instantaneous velocity points backwards for a good part of every cycle even during
+        steady forward locomotion.
+        """
+        if self._speed_smooth < 5e-3:            # under 5 um/s is not going anywhere
+            return "still"
+        v = self._velocity_smooth
+        if float(np.hypot(*v)) < 1e-6:
+            return "still"
+        return "forward" if float(v @ self.body.body_direction()) > 0 else "backward"
+
+    def snapshot(self) -> dict:
+        nodes = self._nodes
+        d, v = self.muscles.row_tension()
+        return {
+            "t": round(self.t, 4),
+            "nodes": np.round(nodes, 4).tolist(),
+            "radius": np.round(self.body.radius, 4).tolist(),
+            "V": np.round(self.nervous.V, 2).tolist(),
+            "activation": np.round(self.nervous.activation(), 4).tolist(),
+            "muscle_dorsal": np.round(d, 4).tolist(),
+            "muscle_ventral": np.round(v, 4).tolist(),
+            "curvature": np.round(self.body.curvature(), 4).tolist(),
+            "speed": round(self._speed_smooth, 5),
+            "direction": self.direction(),
+            "food_eaten": round(self.food_eaten, 4),
+            "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
+        }
