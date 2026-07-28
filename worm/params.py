@@ -776,7 +776,56 @@ class SensoryParams:
     # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
     # at which the animal is evenly poised, and gate_slope how sharply it commits.
     gate_slope: float = 30.0         # per unit of activation difference
-    gate_bias: float = 0.09          # activation difference at the 50/50 point
+    gate_bias: float = 0.16          # activation difference at the switch point
+
+    # Which cord, decided separately from how much drive it gets.
+    #
+    # The graded gate above does two jobs with one number, and that is the same conflation
+    # day five only half removed. `tonic_forward` was split into a decision bias and a cord
+    # drive, but the *fraction* still both chooses the direction and scales the descending
+    # current: at fwd_frac 0.5 both cords are driven at half strength, both proprioceptive
+    # fields are half engaged, and the two fight over the same muscles. So the decision
+    # cannot move without moving the gait, which is why every attempt to give the command
+    # layer dynamic range cost locomotion (see NeuralParams.command_ca_ratio), and why the
+    # reversals that did occur lasted 0.07 s -- a level hovering at a threshold rather than
+    # a state.
+    #
+    # Latched, the two jobs come apart. A Schmitt trigger picks a cord and commits: the
+    # selected cord gets the *whole* drive, the other goes passive, and the difference has
+    # to cross the far threshold to change anything. The difference is then free to wander
+    # as widely as the circuit wants without touching the gait, and a reversal is something
+    # the animal stays in until the command actually recovers -- which is what hysteresis
+    # buys, and what the 0.07 s flicker was missing.
+    #
+    # gate_hysteresis is the half-width of the dead zone, in the same activation-difference
+    # units as gate_bias.
+    #
+    # Measured (tools/command_sweep.py, three seeds, 60 s each). The first row is the
+    # graded gate this replaces; note that latching *improves* locomotion before it does
+    # anything else, because the two cords stop sharing the descending drive:
+    #
+    #   configuration        rev/min   dur s   %rev |  speed   net/path    TWI
+    #   graded (shipped)       1.67    0.06     0.2 |  0.1853   0.783    +0.767
+    #   latch b=0.12 h=0.02    0.33    0.34     0.2 |  0.2102   0.825    +0.785
+    #   latch b=0.14 h=0.02    2.67    0.27     1.2 |  0.2058   0.814    +0.782
+    #   latch b=0.15 h=0.02    7.33    0.37     4.2 |  0.1916   0.769    +0.768
+    #   latch b=0.16 h=0.02   11.67    0.41     7.9 |  0.1911   0.793    +0.751
+    #   latch b=0.16 h=0.04    2.67    0.44     1.8 |  0.2079   0.823    +0.781   <- adopted
+    #   latch b=0.16 h=0.01   23.00    0.35    13.4 |  0.1712   0.743    +0.718
+    #
+    # The column that matters is **dur**. The graded gate's "reversals" lasted 0.06 s, one
+    # fifteenth of an undulation cycle, which is a difference dipping below a threshold and
+    # bouncing straight back rather than an animal reversing. Every latched row is five to
+    # seven times longer, because that is what hysteresis is for: once committed, the
+    # animal stays committed until the command actually recovers.
+    #
+    # 2.67 reversals per minute against the animal's 3.2-3.5 off food (Zhao et al. 2003).
+    # Slightly low, and chosen over the rows nearer the target because those cost
+    # locomotion, while this one leaves it better than the graded gate on every measure:
+    # speed 0.208 against 0.185, net-to-path 0.823 against 0.783, travelling index +0.781
+    # against +0.767.
+    gate_latched: bool = True
+    gate_hysteresis: float = 0.04
 
 
 @dataclass(frozen=True)

@@ -57,29 +57,29 @@ SEEDS = (0, 3, 7)
 # the animal never reverses at all, and moving the calcium off AVB (which poises the B
 # cord through 58 gap contacts) onto AVA alone (whose 102 contacts land on an A cord that
 # carries no regenerative conductance, so it is poising nothing).
-BOTH = ("AVA", "AVD", "AVE", "AVB", "PVC")
-BWD = ("AVA", "AVD", "AVE")
-
+# Latched vs graded: does separating "which cord" from "how much" free the decision?
 JOBS = [
-    # (command_ca_ratio, command_adapt_ratio, gate_bias, ca classes, label)
-    (0.00, 0.00, 0.09, BOTH, "shipped"),
-    (0.35, 0.05, 0.09, BOTH, "both pools"),
-    (0.35, 0.05, 0.09, BWD,  "AVA only"),
-    (0.35, 0.05, 0.05, BWD,  "AVA only"),
-    (0.50, 0.05, 0.09, BWD,  "AVA only"),
-    (0.50, 0.10, 0.09, BWD,  "AVA only"),
+    (False, 0.00, 0.09, "graded (shipped)"),
+    (True,  0.01, 0.12, "latch b=0.12 h=0.01"),
+    (True,  0.02, 0.12, "latch b=0.12 h=0.02"),
+    (True,  0.04, 0.12, "latch b=0.12 h=0.04"),
+    (True,  0.01, 0.14, "latch b=0.14 h=0.01"),
+    (True,  0.02, 0.14, "latch b=0.14 h=0.02"),
+    (True,  0.04, 0.14, "latch b=0.14 h=0.04"),
+    (True,  0.01, 0.15, "latch b=0.15 h=0.01"),
+    (True,  0.02, 0.15, "latch b=0.15 h=0.02"),
+    (True,  0.04, 0.15, "latch b=0.15 h=0.04"),
+    (True,  0.01, 0.16, "latch b=0.16 h=0.01"),
+    (True,  0.02, 0.16, "latch b=0.16 h=0.02"),
+    (True,  0.04, 0.16, "latch b=0.16 h=0.04"),
 ]
 
 
 def _job(job):
-    ca, adapt, bias, classes, label, seed = job
+    latched, hyst, bias, label, seed = job
     p = Params()
-    p = dataclasses.replace(
-        p,
-        neural=dataclasses.replace(p.neural, command_ca_ratio=ca,
-                                   command_adapt_ratio=adapt,
-                                   command_ca_classes=tuple(classes)),
-        sensory=dataclasses.replace(p.sensory, gate_bias=bias))
+    p = dataclasses.replace(p, sensory=dataclasses.replace(
+        p.sensory, gate_latched=latched, gate_hysteresis=hyst, gate_bias=bias))
     sim = Simulation(p, seed=seed, world=World(p.world, np.random.default_rng(0)),
                      placement=(0.0, 0.0, 0.0))
     fwd_i, bwd_i = sim.senses.avb, sim.senses.ava
@@ -117,7 +117,7 @@ def _job(job):
     rev_dur = float(back.sum()) * sample / rev if rev else float("nan")
 
     return dict(
-        ca=ca, adapt=adapt, bias=bias, label=label, seed=seed,
+        latched=latched, hyst=hyst, bias=bias, label=label, seed=seed,
         fwd=float(fwd.mean()), bwd=float(bwd.mean()),
         corr=float(np.corrcoef(fwd, bwd)[0, 1]) if fwd.std() > 0 and bwd.std() > 0
         else float("nan"),
@@ -131,7 +131,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(c, a, b, cl, lb, s) for c, a, b, cl, lb in JOBS for s in SEEDS]
+    jobs = [(la, h, b, lb, s) for la, h, b, lb in JOBS for s in SEEDS]
     print("COMMAND SWEEP -- %d trials x %.0f s  (estimated %.0f s)"
           % (len(jobs), WARMUP + MEASURE, estimate(len(jobs), WARMUP + MEASURE)))
     rows = pooled(_job, jobs)
@@ -141,18 +141,18 @@ def main():
 
     agg = {}
     for r in rows:
-        agg.setdefault((r["label"], r["ca"], r["adapt"], r["bias"]), []).append(r)
+        agg.setdefault((r["label"],), []).append(r)
     f = lambda g, k: float(np.nanmean([x[k] for x in g]))         # noqa: E731
 
     print()
-    print("  where         ca   adapt  bias |  corr   difference   margin   rev/min   dur s  %rev |"
+    print("  configuration          |  corr   difference   margin   rev/min   dur s  %rev |"
           "  speed   net/path    TWI    k_rms")
     for key in sorted(agg):
         g = agg[key]
         mark = ""
-        print("  %-11s %5.2f  %5.2f  %5.2f | %+.3f   %+.4f     %5.2f    %5.2f   %5.2f  %4.1f |"
+        print("  %-22s | %+.3f   %+.4f     %5.2f    %5.2f   %5.2f  %4.1f |"
               "  %.4f   %.3f    %+.3f  %5.2f%s"
-              % (key[0], key[1], key[2], key[3], f(g, "corr"), f(g, "diff"), f(g, "margin"),
+              % (key[0], f(g, "corr"), f(g, "diff"), f(g, "margin"),
                  f(g, "rev_rate"), f(g, "rev_dur"), 100 * f(g, "frac_rev"),
                  f(g, "speed"), f(g, "net_path"), f(g, "twi"), f(g, "k_rms"), mark))
 

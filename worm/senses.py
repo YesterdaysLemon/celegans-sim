@@ -118,6 +118,10 @@ class Senses:
         self._hab_recover = 1.0 / p.touch_habituation_tau
         self._habituates = self._hab_use > 0.0
 
+        # Which way the animal is currently committed to going. Only read when the gate
+        # is latched; see SensoryParams.gate_latched.
+        self.going_forward = True
+
         self.head_signal = 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
         self.prop_adapt = np.zeros(conn.n)
@@ -238,8 +242,22 @@ class Senses:
         # one number is the roaming/dwelling competition, and it is the slow term the
         # command layer previously had no way of receiving.
         bias = p.gate_bias + (mods.turn_bias() if mods is not None else 0.0)
-        fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (fwd_act - bwd_act - bias)))
-        bwd_frac = 1.0 - fwd_frac
+        diff = fwd_act - bwd_act
+        if p.gate_latched:
+            # Which cord, decided separately from how much. See SensoryParams.gate_latched.
+            # A Schmitt trigger: the animal commits to a direction and holds it until the
+            # difference crosses the *far* threshold, so a reversal is a state it stays in
+            # rather than a level it hovers at.
+            if self.going_forward:
+                if diff < bias - p.gate_hysteresis:
+                    self.going_forward = False
+            elif diff > bias + p.gate_hysteresis:
+                self.going_forward = True
+            fwd_frac = 1.0 if self.going_forward else 0.0
+            bwd_frac = 1.0 - fwd_frac
+        else:
+            fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (diff - bias)))
+            bwd_frac = 1.0 - fwd_frac
 
         # Descending drive to the selected cord. This is the gait, and it is deliberately
         # no longer carried by AVB's own membrane potential: the B and A motor neurons only
