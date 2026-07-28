@@ -49,6 +49,15 @@ class Simulation:
         # so it is a parameter, defaulting to the viewer's usual corner of the dish.
         px, py, phi = placement if placement is not None else (-14.0, -2.0, 0.35)
         self.body = Body(self.p.body, self.p.medium, position=(px, py), heading=phi)
+        # The body keeps its own timestep so the mechanics tools can drive it standalone,
+        # but inside the closed loop it must run at the neural step. It did not: BodyParams
+        # .dt said "shared with the neural step" and was not shared with anything, so
+        # changing NeuralParams.dt left the body advancing 0.5 ms per call while the rest
+        # of the animal believed it had advanced by the neural step. At dt = 0.125 ms the
+        # body therefore ran four times fast relative to its own nervous system, and every
+        # timestep-convergence result in this project measured that desynchronisation
+        # rather than any numerical error.
+        self.body.dt = self.p.neural.dt
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
                              self.p.neural.dt, g_rest=self.nervous.g_rest)
@@ -103,7 +112,18 @@ class Simulation:
         self.muscles.step(self.nervous.s)
 
         self._contact = self.world.contact_force(nodes)
-        self.body.step(self.muscles.joint_moment(), node_forces=self._contact)
+        # The mechanics may be substepped: the body is far stiffer than the nervous
+        # system and its fast bending modes are what make the gait depend on dt. The
+        # muscle moment and the contact forces are held constant across the substeps,
+        # which is right -- they are outputs of the slow subsystem.
+        moment = self.muscles.joint_moment()
+        n_sub = self.p.body.substeps
+        if n_sub > 1:
+            sub = self.dt / n_sub
+            for _ in range(n_sub):
+                self.body.step(moment, dt=sub, node_forces=self._contact)
+        else:
+            self.body.step(moment, node_forces=self._contact)
         self._nodes = self.body.nodes()
 
         # Feeding. The worm pumps when its head is on a lawn; what it eats disappears.

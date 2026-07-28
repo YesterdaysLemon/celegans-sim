@@ -643,7 +643,24 @@ class BodyParams:
     # local body radius. The muscle sheets lie just under the cuticle.
     muscle_moment_arm: float = 0.85
 
-    dt: float = 0.0005              # s   shared with the neural step
+    # Substeps of the mechanics per neural step.
+    #
+    # The body is stiff and the step does not resolve it. Measured on the linearised
+    # bending problem, 33 of 48 modes relax faster than one 0.5 ms step, the fastest in
+    # 0.0055 ms -- ninety times faster than the step. The semi-implicit scheme is stable
+    # there, but its treatment of a mode with dt/tau of order one is neither resolved nor
+    # fully damped, and it therefore depends on dt.
+    #
+    # That is where the gait's step dependence lives, and the loop measurement is
+    # unambiguous about it. Driving the open head loop and reading each stage's phase at
+    # dt = 0.5 and 0.125 ms: the neurons agree to 0.3 degrees, the synapses to 0.1, the
+    # muscle to 1 -- and tension-to-curvature differs by 10 to 31 degrees across the band,
+    # with the plant gain differing by up to 86%. The nervous system is not the problem and
+    # never was.
+    substeps: int = 1
+
+    dt: float = 0.0005              # s   standalone default; Simulation
+                                    #     overrides this with NeuralParams.dt
 
 
 @dataclass(frozen=True)
