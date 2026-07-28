@@ -124,6 +124,12 @@ class Senses:
 
         self.head_signal = 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
+        # Ring buffer for the head reflex's transport delay. Sized in steps from a delay
+        # in seconds, so the delay the loop actually sees does not depend on dt. Length
+        # zero means no buffer and the previous behaviour exactly.
+        self._head_delay_n = max(0, int(round(p.head_delay / dt)))
+        self._head_hist = np.zeros(self._head_delay_n + 1)
+        self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
         self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
         self._chem_decay = np.exp(-dt / p.chemo_tau_adapt)
@@ -288,6 +294,12 @@ class Senses:
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
         raw = float(np.dot(self._head_window, k))
+        if self._head_delay_n:
+            # Write now, then step on: the slot just vacated holds the oldest sample,
+            # which is exactly _head_delay_n steps back.
+            self._head_hist[self._head_hist_i] = raw
+            self._head_hist_i = (self._head_hist_i + 1) % len(self._head_hist)
+            raw = float(self._head_hist[self._head_hist_i])
         self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
         I += (self.W_head_sign * self.g_scale_head
               * (np.tanh(self.head_signal) * p.head_proprio_gain))

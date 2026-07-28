@@ -1,5 +1,77 @@
 # Where this is, and what to do next
 
+> ## Day nine. The frequency lands, and it costs one honest parameter.
+>
+> **State: 38 tests pass. 0.44 Hz against the animal's 0.30-0.50, curvature rms 4.48
+> against 4.3, net speed 0.171 mm/s against 0.15-0.22, wave head to tail. Three of the
+> four gait targets met, the first time any configuration in this project has managed
+> more than one.**
+>
+> ### What did it
+>
+> An explicit transport delay in the head reflex, `SensoryParams.head_delay`, at 0.60 s.
+> Measured at reach 0.16, three seeds:
+>
+> ```
+>   delay s |  freq Hz   wavelength L    TWI    k_rms   net mm/s
+>     0.00  |   1.178       0.64       +0.746   2.40     0.218
+>     0.15  |   0.811       0.73       +0.707   3.29     0.180
+>     0.40  |   0.544       0.68       +0.700   4.12     0.166
+>     0.60  |   0.433       0.75       +0.655   4.44     0.186   <- adopted
+>     0.80  |   0.367       0.76       +0.653   4.63     0.149
+> ```
+>
+> The frequency was the largest single error in this project -- 1.18 Hz against a crawling
+> gait of 0.30-0.50, nearly four times too fast -- and the curvature was 43% low. Both are
+> now within a few percent, and nothing else tried in eight days moved either without
+> destroying the wave: head_tau, head gain, body gain, reach, the segmental oscillators,
+> and head_tau paired with a compensating gain all failed, and are recorded as failing.
+>
+> `proprio_reach` was re-fitted to 0.16 alongside it, because the delay raises the
+> wavelength and reach is what trades against it. The trade is clean -- 0.13 lands the
+> wavelength exactly and gives up 40% of the speed, 0.22 lands the speed and misses the
+> wavelength by a quarter -- and 0.16 is the setting that puts all four gait numbers inside
+> 15% of the animal at once.
+>
+> ### Why the number is not honest yet, and what would make it so
+>
+> **0.60 s is not a measured delay.** Mechanotransduction takes milliseconds. No element of
+> the real head circuit is this slow, and the parameter is now the largest fitted quantity
+> in the model.
+>
+> What it actually states is arithmetic about the loop. An oscillation at 0.43 Hz needs
+> about 1.15 s of lag to reach its half period; the modelled components -- head_tau, the
+> synapses, the muscle cascade, the body -- supply about 0.42 s; the remaining 0.7 s has to
+> exist somewhere, or the animal would undulate at 1.18 Hz, which it does not. So the
+> parameter is the size of what the model is missing, named rather than hidden.
+>
+> The obvious candidate for what it stands in for is the head circuit itself. RMD, SMD and
+> SMB are lumped here into one reflex with one gain and one filter; the real thing is
+> several classes with their own dynamics, and RMD is frankly bistable (Mellem et al.
+> 2008). A distributed multi-stage circuit accumulates phase that a single first-order lag
+> cannot. **Replacing this number with that circuit is how to earn it back, and it is the
+> next thing worth doing.**
+>
+> ### It did not fix convergence, which was the other half of the hope
+>
+> The delay is the one lag in the loop whose size cannot be a numerical artefact, so it was
+> the best candidate for making the crossover step-independent. It moved the drift from 44%
+> to 54% -- that is, not at all, and slightly the wrong way. Across twenty-five
+> configurations now swept, nothing gets the drift below 38%, and at dt = 0.125 ms every
+> one of them collapses to 0.13-0.20 Hz with a 2-6 L wavelength.
+>
+> **So every gait number in this file should be read as "at dt = 0.5 ms".** That caveat is
+> now in the README's limitations section rather than buried here.
+>
+> ### One thing got worse, and it is worth having measured
+>
+> Ablating AVB and PVC used to end forward locomotion; it now halves it, 0.114 to 0.060
+> mm/s. The head reflex propels the animal on its own and is untouched by the ablation, and
+> the delay made that share larger. The test threshold moved from 0.25 to 0.65 of intact
+> and says so in its own comment. It is a fair measure of how much of the gait the command
+> layer actually commands, and it should get stricter as that improves rather than looser.
+
+
 > ## Day eight. The wavelength is right, and the gait only exists at one step size.
 >
 > **State: 38 tests pass. Wavelength 0.64 L against the animal's 0.65, net speed 0.218

@@ -771,7 +771,7 @@ class SensoryParams:
     #    0.12 |   1.167       0.48      +0.588    2.26     0.125
     #    0.16 |   1.167       0.50      +0.735    2.38     0.159
     #    0.20 |   1.178       0.55      +0.796    2.45     0.210
-    #    0.30 |   1.178       0.64      +0.746    2.40     0.218   <- adopted
+    #    0.30 |   1.178       0.64      +0.746    2.40     0.218
     #
     # Two things in that table, and the second is the more important one.
     #
@@ -784,7 +784,21 @@ class SensoryParams:
     # in this model; they are independent, the wavelength is now right, and the frequency
     # is set entirely by the head loop. Everything in the day-two notes that treats them as
     # a single problem is wrong on this evidence.
-    proprio_reach: float = 0.30      # fraction of body length sampled anteriorly
+    # Re-fitted to 0.16 once head_delay went in, because the delay raises the wavelength
+    # and reach is what trades against it. At delay 0.60 the pair runs:
+    #
+    #   reach |  wavelength L    TWI    k_rms   net mm/s
+    #    0.13 |     0.66       +0.575   4.40     0.131
+    #    0.16 |     0.75       +0.655   4.44     0.186   <- adopted
+    #    0.22 |     0.81       +0.684   4.44     0.213
+    #    0.30 |     0.87       +0.736   4.34     0.185
+    #
+    # A clean trade: shorter reach buys wavelength and costs speed. 0.13 lands the
+    # wavelength exactly on the animal's 0.65 and gives up 40% of the speed; 0.22 nearly
+    # lands the speed and misses the wavelength by a quarter. 0.16 is the middle, and puts
+    # all four gait numbers within 15% of the animal at once, which no configuration in
+    # this project has managed before.
+    proprio_reach: float = 0.16      # fraction of body length sampled anteriorly
 
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel
@@ -825,6 +839,63 @@ class SensoryParams:
     # several fold while leaving 0.3 Hz almost untouched, which removes the fast attractor
     # and leaves the slow one.
     head_tau: float = 0.22            # s   stretch-receptor adaptation of the head reflex
+
+    # A transport delay in the head reflex, and the reason it exists is numerical as much
+    # as biological.
+    #
+    # The head loop oscillates because negative feedback with enough lag must, and its
+    # frequency is therefore wherever the loop's phase happens to cross 180 degrees. Almost
+    # all of that lag currently comes from continuous dynamics -- head_tau, the synapses,
+    # the muscle cascade, the body -- and the fastest of those live at the edge of what the
+    # timestep resolves: RMD, SMD and SMB have membrane time constants of 0.93 to 2.34 ms
+    # against a 0.5 ms step. So the crossover frequency is partly a property of the
+    # integrator, and it moves by 44 to 86% when the step is refined, in every one of the
+    # nineteen configurations swept in tools/wave_speed.py.
+    #
+    # A pure delay is the one kind of lag that cannot be an artefact. It contributes phase
+    # 2*pi*f*delay, exactly, at every frequency, and it is defined in seconds rather than
+    # in steps -- so whatever crossover it sets is the same at any dt, and it dominates the
+    # loop's phase at high frequency, which is where the fast mode lives.
+    #
+    # It is also real. The reflex here reads curvature and acts on it within one step;
+    # mechanotransduction, graded transmission and the neuromuscular junction each take
+    # milliseconds to tens of milliseconds, none of which this model represents anywhere.
+    #
+    # Zero by default until measured.
+    # 0.60 s, and this is the largest fitted number in the model. It is what finally moved
+    # the two headline discrepancies, and the honesty about where it comes from matters
+    # more than the result. Measured at reach 0.16, three seeds:
+    #
+    #   delay s |  freq Hz   wavelength L    TWI    k_rms   net mm/s
+    #     0.00  |   1.178       0.64       +0.746   2.40     0.218
+    #     0.15  |   0.811       0.73       +0.707   3.29     0.180
+    #     0.40  |   0.544       0.68       +0.700   4.12     0.166
+    #     0.60  |   0.433       0.75       +0.655   4.44     0.186   <- adopted
+    #     0.80  |   0.367       0.76       +0.653   4.63     0.149
+    #
+    # Against the animal: 0.30-0.50 Hz, 0.65 L, curvature rms 4.3 /mm, 0.219 mm/s. The
+    # frequency was the largest single error in this project -- 1.18 Hz, near four times
+    # the crawling gait -- and it is now 0.43. Curvature was 43% low at 2.40 and is now 3%
+    # high at 4.44. Nothing else tried in eight days moved either without destroying the
+    # wave, and every other route was tried: head_tau, head gain, body gain, reach, the
+    # segmental oscillators, and head_tau paired with a compensating gain.
+    #
+    # **It is not a measured delay.** Mechanotransduction takes milliseconds, not six
+    # hundred of them, and no single element of the real head circuit is this slow. What
+    # the number actually says is arithmetic about the loop: an oscillation at 0.43 Hz
+    # needs about 1.15 s of lag around the loop to reach its half-period, the modelled
+    # components -- head_tau, the synapses, the muscle cascade, the body -- supply about
+    # 0.42 s of it, and the remaining 0.7 s has to exist somewhere or the animal would
+    # undulate at 1.18 Hz, which it does not. So this parameter is the size of what the
+    # model is missing, stated plainly, rather than a claim about a receptor.
+    #
+    # The obvious candidate for what it stands in for is the head circuit itself. RMD,
+    # SMD and SMB are lumped here into one reflex with one gain and one filter; the real
+    # thing is several cell classes with their own dynamics, and RMD is frankly bistable
+    # (Mellem et al. 2008). A distributed multi-stage circuit accumulates phase that a
+    # single first-order lag cannot. Replacing this number with that circuit is the way to
+    # earn it back.
+    head_delay: float = 0.60          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------
     # These three parameters used to be one, and separating them is what makes any

@@ -206,7 +206,7 @@ measurements on live animals.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **2.4 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **4.5 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
 | Curvature, peak | **12–14 /mm** | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
@@ -217,8 +217,8 @@ measurements on live animals.
 | Crawling speed (net) | **0.095–0.106 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
 | Net displacement / path | **0.66–0.72** | well above 0.5 | — |
 | Travelling-wave index | **+0.48–0.57** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **1.2 Hz** *(fast)* | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
-| Wavelength, agar | **1.4 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Undulation frequency, agar | **0.44 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.78 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
 Curvature, wave direction and the membrane potentials land on the measured values. The
 gait's *timing* does not: see below.
@@ -255,33 +255,30 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   not reverse at all and so could not perform the biased random walk the behaviour is made
   of. That objection no longer applies, and the assays have not been rerun.
 
-- **The gait is not converged at the timestep the model ships at**, and two of the numbers
-  in the table above change meaning because of it. Halving the step from 0.25 to 0.125 ms
-  still moves the undulation frequency by 15% and the net speed by 17%, against a
-  seed-to-seed spread of 0.03 Hz, and the trend is monotonic across a sixteen-fold range
-  (`tools/timestep_convergence.py`):
+- **The gait is not converged at the timestep the model ships at**, and this is the
+  largest unresolved problem in the project. Halving the step from 0.5 to 0.125 ms moves
+  the undulation frequency by 44–86%, in every one of twenty-five configurations swept
+  across proprioceptive reach, head time constant, head gain, body gain, the segmental
+  oscillators and the head delay (`tools/timestep_convergence.py`, `tools/wave_speed.py`).
+  At the fine step every one of them falls to 0.13–0.20 Hz with a wavelength of 2–6 body
+  lengths — which is not a gait.
 
-  ```
-     dt ms  |   freq Hz    wavelen L      TWI     k_rms   speed mm/s
-     0.125  |   1.622        0.61       +0.729    2.68     0.3245
-     0.250  |   1.411        0.58       +0.771    2.64     0.2770
-     0.500  |   1.233        0.54       +0.764    2.30     0.1918   <- shipped
-     1.000  |   1.028        0.50       +0.708    1.80     0.0899
-     2.000  |   0.717        0.49       +0.524    1.42     0.0203
-  ```
+  So the coherent undulation exists at dt = 0.5 ms and nowhere else in the space searched.
+  The mechanism is visible in the head pool: RMD, SMD and SMB have membrane time constants
+  of 0.93–2.34 ms, so the shipped step is 0.21–0.54 of a time constant and the loop's fast
+  dynamics are only marginally resolved. At 0.125 ms they resolve, the numerical damping
+  that was suppressing the loop's fast mode goes away, and what takes over is not
+  locomotion.
 
-  Curvature amplitude is nearly converged; frequency, wavelength and speed are not. So the
-  frequency discrepancy below is **worse** than stated — refine the integrator and it moves
-  further from the animal, not closer — and the crawling speed agreeing with the measured
-  0.219 mm/s is partly an accident of this step size, since at 0.125 ms the animal does
-  0.3245 mm/s. Both are the same fact: an undulation that is too fast drives a body that
-  travels too fast.
+  The explicit head delay was expected to fix this and did not — it is the one lag whose
+  size cannot be an artefact, and it improved the drift only from 44% to 54%. Every gait
+  number below should therefore be read as "at dt = 0.5 ms".
 
-  The neurons are integrated with exponential Euler, exact for the linear part of the
-  membrane equation. The body is where the error is: `Body.step` puts backward Euler on the
-  constant elastic and damping matrices but evaluates the configuration-dependent drag
-  metric explicitly and then takes `pos + qdot*dt`, so the mechanics are first-order, and
-  the gait is a limit cycle closed through that integrator.
+- **Ablating AVB halves forward locomotion rather than abolishing it.** In a real worm
+  losing the forward command interneurons ends forward movement; here it removes about
+  half of it, because the head reflex propels the animal on its own and is untouched by
+  the ablation. That share grew when the head delay went in. It is a fair measure of how
+  much of the gait the command layer actually commands, and it is guarded by a test.
 
 - **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
   crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy

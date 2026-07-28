@@ -98,24 +98,28 @@ REACH = 0.30
 # factor of six. Every sweep so far moved one or the other, so the frequency always came
 # with a collapsed amplitude. These pair them: the filter picks the frequency, the gain
 # pays for what the filter costs.
-HEAD_TAU = (0.22, 1.00, 2.00)
-HEAD_GAIN = (150.0, 400.0, 900.0)
+# A pure transport delay contributes phase 2*pi*f*delay exactly, at every frequency, and
+# is specified in seconds -- so unlike every lag already in this loop, the crossover it
+# sets cannot depend on the step size. The honest expectation is modest: at 1.18 Hz a
+# physiological 50 ms is only 21 degrees, so it should shift the frequency by about a
+# tenth. The reason to run it anyway is the drift column, not the frequency column.
+HEAD_DELAY = (0.60,)
+REACHES = (0.10, 0.13, 0.16)
 STEPS_MS = (0.5, 0.125)
 
 
 def _job(job):
-    head_tau, head_gain, dt_ms, seed = job
+    delay, reach, dt_ms, seed = job
     p = Params()
     p = dataclasses.replace(
         p,
         neural=dataclasses.replace(p.neural, dt=dt_ms * 1e-3),
-        sensory=dataclasses.replace(p.sensory, proprio_reach=REACH,
-                                    head_tau=head_tau,
-                                    head_proprio_gain=head_gain))
+        sensory=dataclasses.replace(p.sensory, proprio_reach=reach,
+                                    head_delay=delay))
     sim = Simulation(p, seed=seed, world=bare_world(p))
     r = analyse(sim, seconds=MEASURE)
     lam = r["wavelength"]
-    return dict(head_tau=head_tau, head_gain=head_gain, dt_ms=dt_ms, seed=seed,
+    return dict(delay=delay, reach=reach, dt_ms=dt_ms, seed=seed,
                 freq=r["freq"], wavelength=lam,
                 phase_v=lam * r["freq"] if np.isfinite(lam) else float("nan"),
                 twi=r["twi"], speed=r["speed"], k_rms=r["kappa_rms"],
@@ -123,7 +127,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(t, g, d, s) for t in HEAD_TAU for g in HEAD_GAIN
+    jobs = [(dl, rc, d, s) for dl in HEAD_DELAY for rc in REACHES
             for d in STEPS_MS for s in SEEDS]
     print("WAVE SPEED -- %d trials x %.0f s" % (len(jobs), MEASURE))
     print("  testing  lambda * f  =  reach / delay\n")
@@ -134,30 +138,27 @@ def main():
 
     agg = {}
     for r in rows:
-        agg.setdefault((r["head_tau"], r["head_gain"], r["dt_ms"]), []).append(r)
+        agg.setdefault((r["delay"], r["reach"], r["dt_ms"]), []).append(r)
     f = lambda g, k: float(np.nanmean([x[k] for x in g]))          # noqa: E731
 
-    print("  tau  gain |  dt ms |  freq Hz  wavelen L  phase v |   TWI    k_rms   speed")
+    print("  delay  reach |  dt ms |  freq Hz  wavelen L |   TWI    k_rms   speed mm/s")
     for key in sorted(agg):
         g = agg[key]
-        mark = "  <- shipped" if key[0] == 0.22 and key[1] == 150.0 else ""
-        print("  %.2f  %4.0f | %5.3f |  %6.3f   %6.2f    %6.3f  |  %+.3f  %5.2f  %.4f%s"
+        print("   %.2f   %.2f  | %5.3f |  %6.3f   %6.2f   |  %+.3f  %5.2f   %.4f"
               % (key[0], key[1], key[2], f(g, "freq"), f(g, "wavelength"),
-                 f(g, "phase_v"), f(g, "twi"), f(g, "k_rms"), f(g, "speed"), mark))
-
+                 f(g, "twi"), f(g, "k_rms"), f(g, "speed")))
     print()
-    print("  drift in frequency between the two step sizes, which is the other half of")
-    print("  the problem: a head loop slow enough to be unambiguous should also stop the")
-    print("  integrator choosing which limit cycle the animal falls into.")
-    for t in HEAD_TAU:
-        for gn in HEAD_GAIN:
-            a, b = agg.get((t, gn, 0.5)), agg.get((t, gn, 0.125))
+    print("  drift between the two step sizes:")
+    for dl in HEAD_DELAY:
+        for rc in REACHES:
+            a, b = agg.get((dl, rc, 0.5)), agg.get((dl, rc, 0.125))
             if a and b:
                 fa, fb = f(a, "freq"), f(b, "freq")
-                print("    tau %.2f gain %4.0f:  %.3f -> %.3f Hz   drift %4.0f%%   "
+                print("    delay %.2f reach %.2f:  %.3f -> %.3f Hz   drift %4.0f%%   "
                       "TWI %+.2f -> %+.2f"
-                      % (t, gn, fa, fb, 100 * abs(fb - fa) / max(fa, 1e-9),
+                      % (dl, rc, fa, fb, 100 * abs(fb - fa) / max(fa, 1e-9),
                          f(a, "twi"), f(b, "twi")))
+
     print()
     print("  want: 0.40 Hz at 0.65 L, phase velocity 0.26 L/s, curvature rms 4.3 /mm,")
     print("  net speed 0.219 mm/s, and a frequency that does not move with the step.")
