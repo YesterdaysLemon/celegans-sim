@@ -53,7 +53,14 @@ class World:
                        length_scale: float = 9.0) -> None:
         """A bacterial lawn, with the chemical gradient it has had time to establish."""
         d = np.hypot(self.gx - x, self.gy - y)
-        lawn = density * _smoothstep(radius, radius * 0.75, d)
+        # Full density out to three quarters of the nominal radius, then a smooth edge.
+        # The arguments to _smoothstep were transposed here, which inverted every lawn in
+        # the dish: food density was 0 at the centre of a patch and 1 everywhere *outside*
+        # it, out to the dish wall. A 9 mm lawn sampled 0.002 at its own centre while the
+        # dish held 26,000 units of food. Oxygen is derived from this field, so the O2
+        # depression was inverted too, and the aerotaxis assay was scoring an animal
+        # against a gradient that pointed the wrong way.
+        lawn = density * _smoothstep(radius * 0.75, radius, d)
         self.food += lawn
         # Steady state of D grad^2 c = lambda c away from a finite source, which decays
         # exponentially with a length sqrt(D/lambda). Written directly rather than relaxed

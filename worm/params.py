@@ -581,12 +581,64 @@ class SensoryParams:
 
 
 @dataclass(frozen=True)
+class ModulatorParams:
+    """The monoamine and neuropeptide layer. See worm/modulators.py for the biology.
+
+    Sources are matched by name prefix against the connectome. Time constants are the slow
+    end of what these systems do -- seconds to tens of seconds -- because that is the whole
+    point: they are the only thing in this model that integrates rather than differentiates.
+    """
+
+    dopamine_sources: tuple = ("CEP", "ADE", "PDE")
+    dopamine_tau: float = 6.0        # s
+    serotonin_sources: tuple = ("NSM", "ADF", "HSN")
+    serotonin_tau: float = 10.0      # s
+    octopamine_sources: tuple = ("RIC",)
+    octopamine_tau: float = 20.0     # s
+    pdf_sources: tuple = ("AVB", "PVT")
+    pdf_tau: float = 25.0            # s
+
+    # Coefficients. Every one is zero-safe: set them all to zero and the wired model
+    # behaves exactly as it did before this layer existed, which is the control row of
+    # tools/modulator_sweep.py and is how these were calibrated.
+    #
+    # The assay is the basal slowing response (Sawin, Ranganathan & Horvitz 2000): drop a
+    # well-fed animal on a lawn and it halves its speed. Scored as speed-on-food over
+    # speed-off-food, two seeds, 55 s each:
+    #
+    #   da_slow  5ht_turn   off food   on food   ratio   gate sd off/on
+    #     0.0      0.0       0.1989    0.1981    1.00     0.04 / 0.04   <- inert control
+    #     3.0      0.0       0.2096    0.2145    1.02     0.05 / 0.06
+    #     6.0      0.0       0.2158    0.2154    1.00     0.06 / 0.08
+    #    10.0      0.0       0.2189    0.1022    0.47     0.08 / 0.23
+    #    10.0      0.6       0.2087    0.1094    0.52     0.10 / 0.26   <- adopted
+    #
+    # The response is strongly nonlinear in the coefficient, which is worth knowing: at 6.0
+    # there is no effect at all and at 10.0 there is a full one. The gate standard deviation
+    # is the other half of the result -- it roughly triples on food, which is dwelling:
+    # a worm that turns more often stays where the food is. That is the serotonergic arm
+    # (Flavell et al. 2013), and it is why 0.6 is taken over 0.0 despite scoring marginally
+    # further from 0.5 on slowing alone.
+    dopamine_slowing: float = 10.0
+    serotonin_slowing: float = 5.0
+    serotonin_turning: float = 0.6
+    # Implemented, wired, and deliberately left at zero: these two have not been calibrated
+    # against anything, and PDF in particular is sourced from AVB, so a non-zero coefficient
+    # would close a positive feedback loop (forward drive raises PDF raises forward drive).
+    # That loop is probably how roaming/dwelling hysteresis actually works and it deserves
+    # its own measurement rather than a guessed number.
+    octopamine_speeding: float = 0.0
+    pdf_roaming: float = 0.0
+
+
+@dataclass(frozen=True)
 class Params:
     neural: NeuralParams = field(default_factory=NeuralParams)
     muscle: MuscleParams = field(default_factory=MuscleParams)
     body: BodyParams = field(default_factory=BodyParams)
     world: WorldParams = field(default_factory=WorldParams)
     sensory: SensoryParams = field(default_factory=SensoryParams)
+    modulator: ModulatorParams = field(default_factory=ModulatorParams)
     medium: MediumParams = field(default_factory=lambda: MEDIA["agar"])
 
     def with_medium(self, name: str) -> "Params":

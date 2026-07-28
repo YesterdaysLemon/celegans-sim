@@ -24,6 +24,7 @@ import numpy as np
 
 from . import dataset
 from .body import Body
+from .modulators import Modulators
 from .muscle import Muscles
 from .nervous import NervousSystem
 from .params import MEDIA, Params
@@ -51,6 +52,7 @@ class Simulation:
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
                              self.p.neural.dt, g_rest=self.nervous.g_rest)
+        self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt)
 
         self.dt = self.p.neural.dt
         self.t = 0.0
@@ -88,7 +90,12 @@ class Simulation:
 
         curvature = self.body.curvature()
         activation = self.nervous.activation()
-        I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation)
+        # The modulators read the same activation the senses do and are updated first, so
+        # that within a step the wireless layer is one step behind the wired one -- the
+        # same consistent unit delay used everywhere else in this model.
+        self.modulators.step(activation)
+        I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
+                                  self.modulators)
 
         self.nervous.step(I_ext)
         self.muscles.step(self.nervous.s)

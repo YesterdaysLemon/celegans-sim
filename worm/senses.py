@@ -55,6 +55,7 @@ class Senses:
         # --- food, sensed by the dopaminergic mechanoreceptors --------------------------
         self.dopaminergic = idx("CEPDL", "CEPDR", "CEPVL", "CEPVR",
                                 "ADEL", "ADER", "PDEL", "PDER")
+        self.nsm = idx("NSML", "NSMR")
 
         # --- locomotory command ---------------------------------------------------------
         self.avb = idx("AVBL", "AVBR", "PVCL", "PVCR")   # forward
@@ -123,7 +124,8 @@ class Senses:
         self.readout = {}
 
     def sense(self, world: World, nodes: np.ndarray, contact: np.ndarray,
-              curvature: np.ndarray, activation: np.ndarray) -> np.ndarray:
+              curvature: np.ndarray, activation: np.ndarray,
+              mods=None) -> np.ndarray:
         """Build the (N,) external current vector for this step."""
         p = self.p
         n = self.conn.n
@@ -183,6 +185,10 @@ class Senses:
         # --------------------------------------------------------------------------- food
         f = float(world.sample(world.food, nose[0], nose[1]))
         I[self.dopaminergic] += p.food_gain * f
+        # NSM tastes food in the pharynx, and is the serotonergic arm of the response to
+        # it (Flavell et al. 2013). It was not previously given any food input at all,
+        # which left the serotonergic system with nothing to respond to.
+        I[self.nsm] += p.food_gain * f
 
         # --------------------------------------------------------- locomotory command bias
         # A bias, not a clamp. See SensoryParams for why these are now separate.
@@ -196,7 +202,11 @@ class Senses:
         # sensory neuron have any say in where the animal goes.
         fwd_act = float(np.mean(activation[self.avb]))
         bwd_act = float(np.mean(activation[self.ava]))
-        fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (fwd_act - bwd_act - p.gate_bias)))
+        # Serotonin shifts the 50/50 point towards reversal and PDF shifts it back: this
+        # one number is the roaming/dwelling competition, and it is the slow term the
+        # command layer previously had no way of receiving.
+        bias = p.gate_bias + (mods.turn_bias() if mods is not None else 0.0)
+        fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (fwd_act - bwd_act - bias)))
         bwd_frac = 1.0 - fwd_frac
 
         # Descending drive to the selected cord. This is the gait, and it is deliberately
@@ -204,10 +214,13 @@ class Senses:
         # oscillate when their command interneuron is engaged (Kawano et al. 2011; Fouad et
         # al. 2018), so the drive that holds them at their bifurcation follows the gate.
         # The unselected cord goes passive and stops competing for the same muscles.
-        I[self.db] += p.cord_drive * fwd_frac
-        I[self.vb] += p.cord_drive * fwd_frac
-        I[self.da] += p.cord_drive * bwd_frac
-        I[self.va] += p.cord_drive * bwd_frac
+        # Dopamine and serotonin scale the descending drive itself. This is the basal and
+        # enhanced slowing responses: an animal that finds food turns its motor drive down.
+        drive = p.cord_drive * (mods.locomotor_scale() if mods is not None else 1.0)
+        I[self.db] += drive * fwd_frac
+        I[self.vb] += drive * fwd_frac
+        I[self.da] += drive * bwd_frac
+        I[self.va] += drive * bwd_frac
 
         # ------------------------------------------------------------------ proprioception
         # Normalised curvature: 5 rad/mm is roughly the peak a crawling worm reaches.
@@ -234,6 +247,7 @@ class Senses:
             "temperature": T, "oxygen": o2, "food": f,
             "touch": float(self.touch_state.sum()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
+            **({} if mods is None else mods.readout()),
         }
         return I
 
