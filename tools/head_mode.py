@@ -19,13 +19,47 @@ mode takes back over. If that is right then head_tau is under-sized -- it was fi
 against a model that was getting help it did not know about -- and the honest fix is to
 converge first and re-tune it second.
 
-Two readings distinguish the possibilities:
+What the measurements actually said, in two passes.
 
-  * frequency rises with refinement at fixed head_tau, and a larger head_tau brings it
-    back down at the fine step -> the filter is the right knob, it is simply too small,
-    and the slow attractor is still reachable.
-  * frequency rises with refinement and head_tau cannot bring it back -> the fast mode is
-    not being held off by that filter at all and the head loop needs rethinking.
+First pass, head_tau from 0.22 to 1.20 at two step sizes. The hypothesis is confirmed
+outright. At dt = 0.5 ms the power above 1.5 Hz is 1.0-2.0% at *every* head_tau -- the
+fast mode is simply absent. At dt = 0.125 ms with the shipped head_tau = 0.22 it is
+**53%**: the fast mode owns the animal. So head_tau = 0.22 does not suppress the fast
+mode and never did; the coarse step was doing it, for free and invisibly.
+
+   dt ms   head_tau |   freq Hz    power above 1.5 Hz    k_rms    speed mm/s
+   0.125     0.22    |    1.633           53.2%           2.70    0.3398
+   0.125     0.35    |    1.483           15.1%           2.70    0.3123
+   0.125     0.50    |    0.733            3.1%           3.76    0.1503
+   0.125     0.80    |    0.150            1.7%           2.94    0.1527
+   0.500     0.22    |    1.250            1.5%           2.29    0.2086   <- shipped
+   0.500     0.80    |    0.967            1.3%           1.85    0.1269
+
+Second pass, refining further, looking for a head_tau at which the answer stops depending
+on the step. There is not one, and that is the more important result:
+
+   dt ms   head_tau |   freq Hz    power above 1.5 Hz    k_rms    speed mm/s
+   0.062     0.40    |    0.150            2.7%           5.15    0.0641
+   0.062     0.50    |    0.167            1.3%           5.12    0.0787
+   0.062     0.60    |    0.167            0.8%           5.04    0.0661
+   0.125     0.40    |    1.400            9.1%           2.61    0.3093
+   0.125     0.50    |    0.733            3.1%           3.76    0.1503
+   0.250     0.50    |    0.700            1.8%           3.14    0.1836
+   0.250     0.60    |    0.117            2.0%           2.74    0.1435
+   0.500     0.50    |    1.067            1.0%           2.31    0.2001
+
+The frequencies do not scatter smoothly. They cluster -- near 0.15, near 0.70, near 1.0
+to 1.4 -- and which cluster a run lands in flips on changes to dt and head_tau far too
+small to be moving any physical quantity. This is a head loop with several coexisting
+limit cycles and nothing principled selecting between them; the step size is acting as
+the selector. "The undulation frequency" is therefore not a well-defined property of this
+model as it stands, which is a stronger statement than the frequency merely being wrong.
+
+The way out is the one this project has circled since day two and never finished: make the
+*body* the oscillator rather than the head. A chain of segmental units coupled by
+proprioception has its frequency set by segmental dynamics and coupling delay, which is a
+far more robust selector than one loop's phase-crossover. The B-class Morris-Lecar units
+are already in place for it.
 
 Run:  PYTHONPATH=. .venv/bin/python tools/head_mode.py
 """
@@ -44,8 +78,8 @@ from worm.world import World
 
 WARMUP, MEASURE = 10.0, 30.0
 SEEDS = (0, 3)
-STEPS_MS = (0.5, 0.125)
-HEAD_TAU = (0.22, 0.35, 0.50, 0.80, 1.20)
+STEPS_MS = (0.5, 0.25, 0.125, 0.0625)
+HEAD_TAU = (0.40, 0.50, 0.60)
 
 
 def _job(job):
