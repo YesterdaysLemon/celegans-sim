@@ -958,6 +958,14 @@ class SensoryParams:
     # (see BodyParams.dt), and they meant nothing. The value stands -- it was fitted at
     # dt = 0.5 ms, where the coupling was correct -- but it is now unsupported by anything
     # except that it lands the frequency, which makes it a fit and not an explanation.
+    #
+    # And there is now direct evidence that it is the wrong *kind* of thing. A fixed delay
+    # contributes fixed phase at every frequency, so it pins the loop's crossover no matter
+    # what the medium does to the mechanical load -- and gait modulation, measured across
+    # three media, is correspondingly dead: 0.45 Hz on agar, 0.18 in viscous, 0.19 in
+    # buffer, where the animal goes 0.30 crawling to 1.76 swimming. The animal *cannot*
+    # speed up in water while this delay dominates the loop's phase. Whatever replaces it
+    # has to have a frequency that follows the load, which a transport delay never will.
     head_delay: float = 0.60          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------

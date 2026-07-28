@@ -26,8 +26,9 @@ MEASURE = 40.0
 SEEDS = (0, 1, 3, 5, 7)
 
 
-def _job(seed):
-    p = Params()
+def _job(job):
+    medium, seed = job
+    p = Params().with_medium(medium)
     sim = Simulation(p, seed=seed, world=bare_world(p))
 
     sim.run(6.0)
@@ -47,7 +48,8 @@ def _job(seed):
 
     # Gait metrics from a second stretch, so the two do not share a window.
     r = analyse(sim, seconds=MEASURE)
-    return dict(seed=seed, freq=r["freq"], wavelength=r["wavelength"], twi=r["twi"],
+    return dict(medium=medium, seed=seed, freq=r["freq"],
+                wavelength=r["wavelength"], twi=r["twi"],
                 k_rms=r["kappa_rms"], k_max=r["kappa_max"], dv_corr=r["dv_corr"],
                 direction=r["direction"], speed=net / span,
                 net_path=net / max(path, 1e-9),
@@ -68,11 +70,13 @@ ROWS = [
 
 
 def main():
+    jobs = [(m, s) for m in ("agar", "viscous", "buffer") for s in SEEDS]
     print("SCORECARD -- %d seeds x %.0f s, one configuration, one run\n" % (len(SEEDS), MEASURE))
-    rows = pooled(_job, list(SEEDS), procs=8)
-    if not rows:
+    allrows = pooled(_job, jobs, procs=8)
+    if not allrows:
         print("  no trials completed")
         return 1
+    rows = [r for r in allrows if r["medium"] == "agar"]
 
     print("  %-27s %18s   %s" % ("quantity", "model (mean +- sd)", "animal"))
     for label, key, unit, target, fmt in ROWS:
@@ -93,6 +97,31 @@ def main():
           % ("Muscle potentials", "%.0f to %.0f" % (np.mean([r["m_lo"] for r in rows]),
                                                     np.mean([r["m_hi"] for r in rows])),
              "mV", "-25.0 +- 1.0"))
+
+    # Gait modulation. The medium is the whole story of it: a real animal crawls slowly
+    # on agar and swims fast in water, and the *direction* of that change is what this
+    # model has historically got backwards.
+    print()
+    print("  GAIT MODULATION -- the same animal in three media")
+    print("  %-9s %14s %12s %12s   %s" % ("medium", "freq Hz", "wavelen L", "net mm/s", "animal"))
+    ref = {"agar": "0.30 Hz crawling", "viscous": "intermediate",
+           "buffer": "1.76 Hz swimming"}
+    for med in ("agar", "viscous", "buffer"):
+        g = [r for r in allrows if r["medium"] == med]
+        if not g:
+            continue
+        f_ = np.array([r["freq"] for r in g])
+        w_ = np.array([r["wavelength"] for r in g])
+        v_ = np.array([r["speed"] for r in g])
+        print("  %-9s %7.2f +- %.2f %7.2f +- %.2f %7.3f +- %.3f   %s"
+              % (med, f_.mean(), f_.std(), w_.mean(), w_.std(), v_.mean(), v_.std(),
+                 ref[med]))
+    fa = np.mean([r["freq"] for r in allrows if r["medium"] == "agar"])
+    fb = np.mean([r["freq"] for r in allrows if r["medium"] == "buffer"])
+    print()
+    print("  agar -> buffer: %.2f -> %.2f Hz. The animal goes 0.30 -> 1.76, so the model" % (fa, fb))
+    print("  has this %s." % ("the right way round" if fb > fa else
+                              "BACKWARDS -- it slows down in water where the animal speeds up"))
 
     print()
     print("  per-seed frequency: %s Hz"

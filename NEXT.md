@@ -70,6 +70,18 @@
 >
 > None of that is a sensory failure. It is the speed, and it is one problem.
 >
+> **And gait modulation is dead, which indicts head_delay directly.** Across three media:
+> 0.45 Hz on agar, 0.18 in viscous, 0.19 in buffer, against an animal that goes 0.30 Hz
+> crawling to 1.76 swimming. In buffer it does not undulate coherently at all -- a 2 L
+> wavelength is less than half a wave on the body -- and it travels 6 um/s.
+>
+> A fixed transport delay contributes fixed phase at every frequency, so it pins the loop's
+> crossover regardless of what the medium does to the mechanical load. The animal *cannot*
+> speed up in water while that delay dominates. So the 0.60 s is not merely unearned, it is
+> the wrong kind of object: whatever replaces it must have a frequency that follows the
+> load, and a delay never will. That is a sharp constraint on the head-circuit work in
+> task 9, and it is worth more than the frequency the delay bought.
+>
 > ### How it was found, because the method is the transferable part
 >
 > Not by sweeping. Eight days of parameter sweeps -- reach, head_tau, head gain, body gain,

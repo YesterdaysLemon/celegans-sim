@@ -316,17 +316,26 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   survive. With a travelling wave, reach is the one thing that *does* set the wavelength:
   0.49 to 0.64 L as reach goes 0.08 to 0.30, with the frequency flat to within 1% across
   the same range.
-- **Gait modulation runs backwards** — though the numbers here predate the frequency work
-  and have not been rechecked since. As last measured, the medium did change the gait —
-  1.25 Hz on agar against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz
-  on agar and 1.76 Hz swimming. Agar is now 0.45 Hz, so the agar figure at least is stale;
-  whether the *direction* is still inverted is an open question and `tools/scorecard.py`
-  would answer it in a couple of minutes. Same root cause: with the wave set by the head's own loop rather than
-  regenerated along the body, what the medium mostly changes is the mechanical load on the
-  *head*, and a heavier load there shifts that loop's crossover rather than slowing the
-  body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
-  and deliberately does not assert which way, because asserting the real direction would
-  be asserting something this model does not do.
+- **Gait modulation runs backwards, and worse than before.** Measured across five seeds
+  in each medium (`tools/scorecard.py`):
+
+  ```
+    medium      freq Hz        wavelength L     net mm/s      animal
+    agar      0.45 ± 0.01      0.73 ± 0.01    0.105 ± 0.025   0.30 Hz crawling
+    viscous   0.18 ± 0.00      3.32 ± 2.13    0.011 ± 0.004   intermediate
+    buffer    0.19 ± 0.02      2.07 ± 0.06    0.006 ± 0.001   1.76 Hz swimming
+  ```
+
+  A real animal speeds up in water, 0.30 Hz crawling to 1.76 Hz swimming. This one slows
+  down, and in buffer it stops undulating coherently at all — a 2 L wavelength means less
+  than half a wave on the body, and it travels 6 µm/s.
+
+  The cause is almost certainly `head_delay`. A fixed 0.60 s transport delay sets a fixed
+  phase at every frequency, so it pins the loop's crossover regardless of what the medium
+  does to the mechanical load — the animal *cannot* speed up in water while that delay
+  dominates the loop. This is the strongest evidence yet that the delay is a placeholder
+  standing in for something with its own dynamics rather than a mechanism, and it is a
+  concrete prediction: whatever replaces it must have a frequency that follows the load.
 - **The travelling-wave index is +0.61, against +0.996 for the same body driven by a
   prescribed perfect wave.** That control is the useful one: it says the mechanics can
   carry a wave the nervous system is not yet producing, and the gap between +0.61 and
