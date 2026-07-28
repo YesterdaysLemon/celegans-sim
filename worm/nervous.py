@@ -180,7 +180,7 @@ class NervousSystem:
 
         self._noise_decay = np.exp(-p.dt / p.noise_tau)
         self._noise_kick = p.noise_sigma * np.sqrt(1.0 - self._noise_decay ** 2)
-        self.gap_iters = 3
+        self.gap_iters = int(p.gap_iters)
         # Per-neuron, because the command layer's adaptation is fifty times slower than
         # the motor classes'. Broadcasting keeps `step` unchanged. Applied only when the
         # command conductance is actually present: with the ratio at zero those cells

@@ -81,6 +81,43 @@ class NeuralParams:
     # instead of silent or saturated, and removes 302 free parameters.
     v_th_from_rest: bool = True
 
+    # Fixed-point passes over the gap-junction coupling, per step.
+    #
+    # The step solves the gap coupling by iterating
+    #     V_inf = (fixed + G_gap @ V_new) / g_tot ;  V_new = V_inf + (V - V_inf) * decay
+    # whose contraction factor per pass is (1 - decay) * ||G_gap / g_tot||, with
+    # decay = exp(-g_tot dt / C). That factor *grows with dt*, so a coarser step converges
+    # this iteration more slowly and ends up with a different effective gap conductance.
+    #
+    # Measured, largest voltage error against the fully converged fixed point of the same
+    # step, mid-gait:
+    #
+    #   passes |  dt = 0.5 ms   dt = 0.125 ms
+    #      3   |   1.37e-01       6.79e-03
+    #      6   |   8.32e-03       3.46e-05
+    #     10   |   2.37e-04       4.15e-08
+    #
+    # Three passes leave the shipped step twenty times less converged than the fine one, so
+    # the two are not literally solving the same equations -- and AVB's gap junctions onto
+    # the B class set the bifurcation point of the entire motor cord, which is the most
+    # step-sensitive thing in the model. That made this a good candidate for the gait's
+    # step dependence, and a cheap one to rule out.
+    #
+    # **It is not the cause.** Raising the count from 3 to 24 changes the gait by nothing
+    # at either step size, and leaves the drift between them at exactly 54%:
+    #
+    #   passes |  freq @0.5   freq @0.125   drift |  TWI @0.5   k_rms @0.5   net mm/s
+    #      3   |    0.433       0.200        54%  |   +0.655      4.44        0.1860
+    #      6   |    0.433       0.200        54%  |   +0.659      4.48        0.1822
+    #     12   |    0.433       0.200        54%  |   +0.659      4.48        0.1821
+    #     24   |    0.433       0.200        54%  |   +0.659      4.48        0.1821
+    #
+    # So the residual is real, measurable, twenty times worse at the shipped step, and
+    # behaviourally irrelevant: 0.137 mV in the worst neuron does not move a gait. Left at
+    # 3, which is now a measured choice rather than an assumed one, and the step dependence
+    # has one fewer suspect.
+    gap_iters: int = 3
+
     # -- intrinsic oscillation ------------------------------------------------------------
     # A purely passive graded network cannot oscillate: it is a contraction mapping onto a
     # fixed point, and proprioception alone only copies a bend backwards, it does not start

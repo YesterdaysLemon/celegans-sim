@@ -103,23 +103,19 @@ REACH = 0.30
 # sets cannot depend on the step size. The honest expectation is modest: at 1.18 Hz a
 # physiological 50 ms is only 21 degrees, so it should shift the frequency by about a
 # tenth. The reason to run it anyway is the drift column, not the frequency column.
-HEAD_DELAY = (0.60,)
-REACHES = (0.10, 0.13, 0.16)
+GAP_ITERS = (3, 6, 12, 24)
 STEPS_MS = (0.5, 0.125)
 
 
 def _job(job):
-    delay, reach, dt_ms, seed = job
+    iters, dt_ms, seed = job
     p = Params()
     p = dataclasses.replace(
-        p,
-        neural=dataclasses.replace(p.neural, dt=dt_ms * 1e-3),
-        sensory=dataclasses.replace(p.sensory, proprio_reach=reach,
-                                    head_delay=delay))
+        p, neural=dataclasses.replace(p.neural, dt=dt_ms * 1e-3, gap_iters=iters))
     sim = Simulation(p, seed=seed, world=bare_world(p))
     r = analyse(sim, seconds=MEASURE)
     lam = r["wavelength"]
-    return dict(delay=delay, reach=reach, dt_ms=dt_ms, seed=seed,
+    return dict(iters=iters, dt_ms=dt_ms, seed=seed,
                 freq=r["freq"], wavelength=lam,
                 phase_v=lam * r["freq"] if np.isfinite(lam) else float("nan"),
                 twi=r["twi"], speed=r["speed"], k_rms=r["kappa_rms"],
@@ -127,8 +123,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(dl, rc, d, s) for dl in HEAD_DELAY for rc in REACHES
-            for d in STEPS_MS for s in SEEDS]
+    jobs = [(it, d, s) for it in GAP_ITERS for d in STEPS_MS for s in SEEDS]
     print("WAVE SPEED -- %d trials x %.0f s" % (len(jobs), MEASURE))
     print("  testing  lambda * f  =  reach / delay\n")
     rows = pooled(_job, jobs, procs=8)
@@ -138,26 +133,25 @@ def main():
 
     agg = {}
     for r in rows:
-        agg.setdefault((r["delay"], r["reach"], r["dt_ms"]), []).append(r)
+        agg.setdefault((r["iters"], r["dt_ms"]), []).append(r)
     f = lambda g, k: float(np.nanmean([x[k] for x in g]))          # noqa: E731
 
-    print("  delay  reach |  dt ms |  freq Hz  wavelen L |   TWI    k_rms   speed mm/s")
+    print("  gap passes |  dt ms |  freq Hz  wavelen L |   TWI    k_rms   speed mm/s")
     for key in sorted(agg):
         g = agg[key]
-        print("   %.2f   %.2f  | %5.3f |  %6.3f   %6.2f   |  %+.3f  %5.2f   %.4f"
-              % (key[0], key[1], key[2], f(g, "freq"), f(g, "wavelength"),
-                 f(g, "twi"), f(g, "k_rms"), f(g, "speed")))
+        mark = "  <- shipped" if key[0] == 3 else ""
+        print("      %2d     | %5.3f |  %6.3f   %6.2f   |  %+.3f  %5.2f   %.4f%s"
+              % (key[0], key[1], f(g, "freq"), f(g, "wavelength"),
+                 f(g, "twi"), f(g, "k_rms"), f(g, "speed"), mark))
     print()
-    print("  drift between the two step sizes:")
-    for dl in HEAD_DELAY:
-        for rc in REACHES:
-            a, b = agg.get((dl, rc, 0.5)), agg.get((dl, rc, 0.125))
-            if a and b:
-                fa, fb = f(a, "freq"), f(b, "freq")
-                print("    delay %.2f reach %.2f:  %.3f -> %.3f Hz   drift %4.0f%%   "
-                      "TWI %+.2f -> %+.2f"
-                      % (dl, rc, fa, fb, 100 * abs(fb - fa) / max(fa, 1e-9),
-                         f(a, "twi"), f(b, "twi")))
+    print("  drift between the two step sizes -- the whole point of this run:")
+    for it in GAP_ITERS:
+        a, b = agg.get((it, 0.5)), agg.get((it, 0.125))
+        if a and b:
+            fa, fb = f(a, "freq"), f(b, "freq")
+            print("    %2d passes:  %.3f -> %.3f Hz   drift %4.0f%%   TWI %+.2f -> %+.2f"
+                  % (it, fa, fb, 100 * abs(fb - fa) / max(fa, 1e-9),
+                     f(a, "twi"), f(b, "twi")))
 
     print()
     print("  want: 0.40 Hz at 0.65 L, phase velocity 0.26 L/s, curvature rms 4.3 /mm,")

@@ -52,6 +52,38 @@
 > cannot. **Replacing this number with that circuit is how to earn it back, and it is the
 > next thing worth doing.**
 >
+> ### And a suspect ruled out: the gap-junction solve
+>
+> The step solves the gap coupling by fixed-point iteration, and the contraction factor per
+> pass is `(1 - decay) * ||G_gap / g_tot||` with `decay = exp(-g_tot dt / C)`. That factor
+> *grows with dt*, so a coarser step converges the iteration more slowly and ends up with a
+> different effective gap conductance -- which, since AVB's gap junctions set the
+> bifurcation point of the whole motor cord, looked like an excellent candidate for the
+> step dependence.
+>
+> The residual is exactly as predicted. Largest voltage error against the fully converged
+> fixed point of the same step, mid-gait:
+>
+> ```
+>   passes |  dt = 0.5 ms   dt = 0.125 ms
+>      3   |   1.37e-01       6.79e-03
+>      6   |   8.32e-03       3.46e-05
+>     10   |   2.37e-04       4.15e-08
+> ```
+>
+> Twenty times less converged at the shipped step. And it makes **no difference at all**:
+> raising the count from 3 to 24 leaves the frequency identical to three decimals at both
+> step sizes and the drift at exactly 54%.
+>
+> So the residual is real, measurable, twenty times worse where it matters, and
+> behaviourally irrelevant -- 0.137 mV in the worst neuron does not move a gait. `gap_iters`
+> is now a parameter, still 3, and that is a measured choice rather than an assumed one.
+>
+> The step dependence has one fewer suspect and no new hypothesis. What is left, and
+> untested: the synaptic drive is held constant across each step and every synapse carries
+> an explicit one-step delay, which is the last first-order term in the neural integration.
+> Worth measuring the loop's phase directly at both step sizes rather than guessing again.
+>
 > ### It did not fix convergence, which was the other half of the hope
 >
 > The delay is the one lag in the loop whose size cannot be a numerical artefact, so it was
