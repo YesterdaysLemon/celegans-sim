@@ -150,6 +150,11 @@ class NervousSystem:
         self.a = np.full(n, self.n0)
         self.I_noise = np.zeros(n)
         self.I_ext = np.zeros(n)
+        # Ablation state. The guard flag keeps the ordinary path -- no cell ablated --
+        # arithmetically identical to what it was before ablation existed.
+        self.alive = np.ones(n, dtype=bool)
+        self._any_dead = False
+        self._pristine = None
 
         # Working in nS / nF / mV / pA / s makes every equation second-based:
         # nF * mV/s == pA and nS * mV == pA.
@@ -172,6 +177,47 @@ class NervousSystem:
         self._adapt_decay = np.exp(-p.dt / adapt_tau)
 
         self.t = 0.0
+
+    # --------------------------------------------------------------------- ablation
+    def set_ablated(self, idx) -> None:
+        """Remove neurons from the network, the way a laser ablation does.
+
+        Replaces the ablated set rather than adding to it, so passing nothing restores
+        everything; the pristine conductances are kept on first use and every change is
+        rebuilt from them, which avoids having to unpick overlapping removals.
+
+        Zeroing a cell's conductances is *not* enough on its own, and getting this wrong
+        is silent rather than loud. A cell whose synaptic and gap conductances are gone
+        still receives whatever external current the sensory layer injects, and it now has
+        only its leak to shunt that current -- so ablating AVB, which carries a 22 pA tonic
+        drive, drove it from -11.6 mV to +34.8 mV and its activation from 0.84 to 0.9994.
+        Silencing the forward command made it maximally active, and the direction gate,
+        which reads exactly that activation, saw the opposite of what the experiment
+        intended. So a dead cell is also cut off from external input, pinned at its leak
+        potential, and made to release nothing.
+        """
+        if self._pristine is None:
+            self._pristine = (self.G_gap.copy(), self.G_syn.copy())
+        g_gap, g_syn = self._pristine
+        idx = np.asarray(list(idx), dtype=np.intp)
+
+        self.alive = np.ones(self.conn.n, dtype=bool)
+        self.G_gap = g_gap.copy()
+        self.G_syn = g_syn.copy()
+        if len(idx):
+            self.alive[idx] = False
+            self.G_gap[idx, :] = 0.0
+            self.G_gap[:, idx] = 0.0
+            self.G_syn[idx, :] = 0.0        # what the cell receives
+            self.G_syn[:, idx] = 0.0        # what the cell delivers
+        self.gap_total = self.G_gap.sum(axis=1)
+        # The step reads this product, not G_syn, so it is the line that actually removes
+        # the cell's chemical drive; G_syn alone would leave its driving potential behind.
+        self.GE_syn = self.G_syn * self.E_syn
+        self._any_dead = not bool(self.alive.all())
+        if self._any_dead:
+            self.V[~self.alive] = self.E_leak
+            self.s[~self.alive] = 0.0
 
     # ------------------------------------------------------------------ initialisation
     def _apply_receptor_overrides(self, conn: Connectome, p: NeuralParams) -> None:
@@ -242,6 +288,8 @@ class NervousSystem:
         I = self.I_noise
         if I_ext is not None:
             I = I + I_ext
+        if self._any_dead:
+            I = I * self.alive          # an absent cell receives nothing
 
         # Conductances and their driving potentials.
         gs = self.G_syn @ s                       # (N,) total synaptic conductance
@@ -267,6 +315,8 @@ class NervousSystem:
             V_inf = (fixed + self.G_gap @ V_new) / g_tot
             V_new = V_inf + (V - V_inf) * decay
         self.V = np.clip(V_new, p.v_clamp[0], p.v_clamp[1])
+        if self._any_dead:
+            self.V[~self.alive] = self.E_leak
 
         # Presynaptic release, driven by the *pre-update* voltage so that the network has
         # a consistent one-step delay everywhere rather than an index-order dependence.
@@ -281,13 +331,21 @@ class NervousSystem:
         rate = rise + p.a_decay
         s_inf = rise / rate
         self.s = s_inf + (s - s_inf) * np.exp(-rate * self.dt)
+        if self._any_dead:
+            self.s[~self.alive] = 0.0
 
         self.t += self.dt
 
     # -------------------------------------------------------------------------- readout
     def activation(self) -> np.ndarray:
-        """Normalised 0..1 activity, using each neuron's own release curve."""
-        return _sigmoid(self.p.beta * (self.V - self.V_th))
+        """Normalised 0..1 activity, using each neuron's own release curve.
+
+        Zero for an ablated cell. This matters beyond tidiness: the direction gate reads
+        the mean activation of the command pools, so a dead neuron reporting anything but
+        zero votes in a decision it is not present for.
+        """
+        a = _sigmoid(self.p.beta * (self.V - self.V_th))
+        return a * self.alive if self._any_dead else a
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:

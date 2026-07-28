@@ -61,6 +61,8 @@ class Simulation:
 
         self._contact = np.zeros((self.p.body.n_links + 1, 2))
         self._nodes = self.body.nodes()
+        self.ablated: list[str] = []
+        self._nmj0 = None
 
         # Rolling history for the viewer and for the behavioural measurements.
         self.trail = deque(maxlen=4000)
@@ -147,6 +149,23 @@ class Simulation:
     def set_medium(self, name: str) -> None:
         self.p = self.p.with_medium(name)
         self.body.medium = MEDIA[name]
+
+    def set_ablated(self, names) -> None:
+        """Remove the named neurons from the animal. Replaces the set; empty restores.
+
+        Coordinates the two halves of the removal: the nervous system drops the cell from
+        the network and stops it responding to anything (see NervousSystem.set_ablated for
+        why zeroing conductances alone is not enough), and the neuromuscular map drops
+        whatever it drove directly.
+        """
+        idx = [self.conn.index[n] for n in names if n in self.conn.index]
+        self.nervous.set_ablated(idx)
+        if self._nmj0 is None:
+            self._nmj0 = self.muscles.G.copy()
+        self.muscles.G = self._nmj0.copy()
+        if idx:
+            self.muscles.G[:, idx] = 0.0
+        self.ablated = [self.conn.names[i] for i in idx]
 
     def poke(self, where: str = "anterior", strength: float = 1.0) -> None:
         """Deliver an eyebrow-hair touch, as in the classic gentle-touch assay."""
