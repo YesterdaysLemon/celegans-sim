@@ -244,6 +244,109 @@ class NeuralParams:
     # cord: AVA makes 102 gap-junction contacts onto 20 of the 21 A-class units and rests
     # at -26.7 mV, against AVB's 55 contacts onto 18 B-class units at -24.4 mV. Same
     # architecture, same descending-drive-holds-it-at-the-bifurcation story.
+    # -- the command layer's own dynamics --------------------------------------------------
+    # Two knobs, both zero by default, aimed at one measured failure: the animal does not
+    # spontaneously reverse. Measured with tools/assays.py triage, six animals for sixty
+    # seconds each: zero reversals, with the direction gate sitting at 0.95 forward in
+    # every animal for the whole run. That is not a small discrepancy against 3.2-3.5
+    # reversals per minute off food (Zhao et al. 2003), and it is not a cosmetic one
+    # either, because C. elegans chemotaxis *is* reversals: Pierce-Shimomura, Morse &
+    # Lockery (1999) showed the animal does not steer up a gradient, it suppresses sharp
+    # turns while conditions improve. A worm that never turns cannot chemotax however good
+    # its nose is, which is the most likely reading of the chemotaxis null in NEXT.md.
+    #
+    # There are two separate reasons the reversal never happens, and they need separate
+    # fixes.
+    #
+    # 1. The pools have no antagonism. Every command interneuron here is cholinergic or
+    #    glutamatergic and the model collapses both to a 0 mV reversal, so the forward
+    #    pool and the backward pool *excite each other*: 70 reconstructed contacts from
+    #    forward onto backward, 33 the other way, plus 10 gap junctions. Two pools that
+    #    excite each other rise and fall together, and the direction decision reads the one
+    #    quantity common drive cannot move -- their difference. This is a wiring statement,
+    #    not a gain one; it is why sweeping chemo_gain 46x moved the chemotaxis outcome by
+    #    less than the seed-to-seed spread. command_cross_inhibition retargets those
+    #    cross-pool synapses onto an inhibitory receptor, blending E_exc to E_inh, which
+    #    makes the pair a winner-take-all instead of a mutual amplifier.
+    #
+    #    The licence for that is the same one this model already uses in the other
+    #    direction. AVL and DVB stain for GABA and are inhibitory in every standard model,
+    #    and here they are excitatory, because their GABA lands on the cation channel
+    #    EXP-1. The mirror case is that C. elegans glutamate opens glutamate-gated chloride
+    #    channels (AVR-14, AVR-15, GLC-1/2/3) as well as the AMPA-type GLR-1, so a
+    #    glutamatergic synapse in this animal is inhibitory or excitatory according to the
+    #    receptor the postsynaptic cell expresses. Reversal potential is therefore a
+    #    property of the synapse, which is why NervousSystem now carries a (post, pre)
+    #    matrix rather than a per-neuron vector.
+    #
+    # 2. Nothing ends a forward run. Even a perfect winner-take-all is a latch: it picks a
+    #    side and holds it. Spontaneous alternation needs the winning side to tire, which
+    #    is the half-centre construction (Brown 1911) that CPG models have used ever since,
+    #    and which whole-brain imaging supports here -- Kato et al. (2015) find the motor
+    #    command state traversing a cyclic trajectory rather than resting in a stable
+    #    fixed point. command_adapt_ratio gives the command interneurons a potassium
+    #    conductance of their own, sized as a fraction of each cell's resting conductance
+    #    like every other intrinsic current in this model, and command_adapt_tau sets how
+    #    long a run lasts before it gives out.
+    #
+    # Neither is calibrated yet. Both are zero, which reproduces the current model exactly,
+    # and the measurement that will set them is tools/ethogram.py.
+    command_forward: tuple = ("AVB", "PVC")
+    command_backward: tuple = ("AVA", "AVD", "AVE")
+    # Measured, in the order the sweeps ran, and the order matters because the second
+    # result overturns the reasoning behind the first:
+    #
+    #   cross  adapt |  corr   difference   margin   rev/min   dur s |  speed   net/path
+    #    0.00   0.00 | +0.744   +0.2128      3.83     1.67     0.06  |  0.1853   0.783
+    #    1.00   0.00 | +0.737   +0.2316      4.30     1.00     0.02  |  0.2077   0.853
+    #    0.00   0.05 | +0.694   +0.1957      2.95    12.00     0.06  |  0.1839   0.798
+    #    0.00   0.10 | +0.611   +0.1808      2.18    30.00     0.07  |  0.1752   0.783
+    #    1.00   0.10 | +0.608   +0.1959      2.52    18.33     0.08  |  0.1954   0.843
+    #    0.00   0.30 | +0.473   +0.1220      0.42    82.33     0.22  |  0.0974   0.518
+    #
+    # Cross-inhibition alone does nothing: the correlation will not move and the margin
+    # gets worse, because the forward pool's 70 contacts outweigh the 33 coming back and
+    # because the pools are correlated by shared input rather than by the synapses between
+    # them. Adaptation alone moves the margin exactly as intended, 3.83 -> 2.18, and buys
+    # nothing behavioural, which the duration column gives away: **every episode lasts
+    # 0.06-0.08 s at every setting**, one fifteenth of an undulation cycle. That is the
+    # difference dipping below a threshold it still sits above, not an animal reversing.
+    # Pushed until the rate looks biological the margin collapses to 0.42 sigma and
+    # locomotion halves, which is the same failure with the threshold now inside the noise.
+    #
+    # So fatigue is not sufficient, and the missing property is *persistence*: a reversal
+    # is a state the animal stays in for seconds. command_ca_ratio adds the regenerative
+    # limb that makes the far side of the threshold somewhere it can stay -- see
+    # NervousSystem for why that is the right reading and where the biology comes from.
+    command_cross_inhibition: float = 0.0   # 0 = as reconstructed, 1 = fully inhibitory
+    command_adapt_ratio: float = 0.0        # g_K as a fraction of resting conductance
+    command_adapt_tau: float = 15.0         # s   the timescale of a forward run
+    command_ca_ratio: float = 0.0           # g_Ca as a fraction of resting conductance
+    # Which command cells carry it, and this is the parameter the measurements care about.
+    # Regenerative calcium on the *forward* pool costs half the locomotion whatever else is
+    # done with it -- with the gate held so that the animal never reversed once, net/path
+    # still fell 0.783 -> 0.400, and closing the calcium gate at rest (command_ca_offset
+    # 8 and 16 mV) made it slightly worse rather than better, which rules out the resting
+    # depolarisation as the cause. The remaining explanation is structural and is the same
+    # conflation day five only half removed: AVB's membrane potential is the bifurcation
+    # parameter for the entire B cord, delivered through 58 gap-junction contacts that the
+    # connectome already contains. Giving AVB dynamics of its own is therefore not a change
+    # to the decision, it is a change to the gait.
+    #
+    # AVA has no such conflict. Its 102 gap contacts land on the A class, which carries no
+    # regenerative conductance at all (a_class_scale is 0), so it is poising nothing. It is
+    # also where the biology puts the bistability in the first place: AVA is the cell with
+    # the documented all-or-none depolarised plateaus.
+    command_ca_classes: tuple = ("AVA", "AVD", "AVE", "AVB", "PVC")
+    # Calcium half-activation for the command layer, relative to each cell's own rest.
+    # The motor classes use 0, which leaves the gate half open at rest; that is a standing
+    # depolarising load, and on these cells it costs the gait directly -- with reversals
+    # switched off entirely, ca 0.35 still took net/path from 0.783 to 0.400, because
+    # AVB's resting potential is what poises the whole B cord. Placing this above rest
+    # keeps the conductance shut until the cell is driven. 0.0 reproduces the motor-class
+    # placement, and is the default only because it is the one already measured.
+    command_ca_offset: float = 0.0          # mV above each command cell's rest
+
     oscillator_classes: tuple = ("DB", "VB", "DA", "VA")
     # ...but scaled down, because the command circuit does not currently separate the two
     # cords enough to do it for us. Measured during forward locomotion: the B class sits

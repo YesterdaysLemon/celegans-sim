@@ -1,5 +1,206 @@
 # Where this is, and what to do next
 
+> ## Day six. The decision has no input, and that is now a number.
+>
+> **State: locomotion untouched, 33 tests pass. Everything below is diagnosis and four
+> refuted fixes. Nothing shipped is changed -- every parameter added today is zero.**
+>
+> ### The finding
+>
+> The forward/backward decision sits **3.81 standard deviations** from its own boundary,
+> and a physiological chemosensory signal moves it **0.008 of one standard deviation**.
+>
+> `tools/command_probe.py` drives named neurons with known currents and reports what the
+> command difference does. Bare plate, three seeds:
+>
+> ```
+>   probe          fwd act   bwd act   difference (sd)    gate    shift    crossings
+>   baseline       0.792     0.582     +0.2100 (0.0315)   0.952   +0.0000   1
+>   ASEL +1pA      0.793     0.583     +0.2097 (0.0315)   0.951   -0.0003   1
+>   ASEL +10pA     0.794     0.585     +0.2087 (0.0314)   0.946   -0.0013   3
+>   AVA +5pA       0.797     0.592     +0.2048 (0.0313)   0.944   -0.0051   3
+>   AVA +20pA      0.809     0.619     +0.1903 (0.0314)   0.917   -0.0196  13
+>   AVB -20pA      0.729     0.586     +0.1427 (0.0646)   0.744   -0.0672  153
+> ```
+>
+> ASE at 10 pA is **seventeen times** what the pathway actually delivers -- the triage
+> measures 0.58 pA rms on a real lawn gradient -- and it closes 1% of the distance to the
+> boundary. At the physiological 1 pA it closes nothing measurable. Even 20 pA injected
+> straight into the backward command pool gets 16% of the way.
+>
+> This is the day-four table's single cause, stated as a quantity. It is not a gain
+> problem: no gain multiplies 0.008 into 3.81.
+>
+> ### Why: the two pools are a mutual amplifier
+>
+> They **correlate at +0.76**. Read the AVA +20 pA row again -- driving the backward pool
+> raises it by 0.037 and drags the forward pool up by 0.017 at the same time. Nearly half
+> the injected current crosses over, because every command interneuron here is cholinergic
+> or glutamatergic and the model collapses both to a 0 mV reversal: the pools are wired to
+> each other *excitatorily*, 70 reconstructed contacts one way, 33 the other, 10 gap
+> junctions. The decision reads their difference, which is the one component that common
+> drive cannot move.
+>
+> ### Four fixes tried. All four refuted, and the last two are the interesting ones.
+>
+> **1. Reciprocal inhibition between the pools does nothing.** `command_cross_inhibition`
+> retargets the cross-pool synapses onto an inhibitory receptor -- licensed by the same
+> argument this model already uses for AVL and DVB, whose GABA lands on the cation channel
+> EXP-1, run in reverse: C. elegans glutamate opens the glutamate-gated chloride channels
+> AVR-14, AVR-15 and GLC-1/2/3 as well as the AMPA-type GLR-1, so reversal potential is a
+> property of the synapse rather than of the presynaptic cell.
+>
+> ```
+>   cross  adapt |  corr   difference   margin   rev/min |  speed   net/path    TWI
+>    0.00   0.00 | +0.744   +0.2128      3.83     1.67   |  0.1853   0.783    +0.767
+>    0.25   0.00 | +0.748   +0.2174      3.99     1.67   |  0.1935   0.812    +0.767
+>    0.50   0.00 | +0.746   +0.2221      4.10     1.00   |  0.1988   0.827    +0.770
+>    1.00   0.00 | +0.737   +0.2316      4.30     1.00   |  0.2077   0.853    +0.774
+> ```
+>
+> The correlation will not move and the margin gets *worse*. Both for the same reason: the
+> forward pool makes 70 contacts onto the backward one against 33 coming back, so making
+> the pair mutually inhibitory only lets the stronger side win harder -- and the pools were
+> never correlated *by* those synapses in the first place. They are correlated by shared
+> input, and retargeting a few percent of each pool's conductance cannot touch that.
+>
+> **2. Slow adaptation moves the margin and buys no behaviour.** `command_adapt_ratio`,
+> 15 s time constant, so the winning side tires:
+>
+> ```
+>   adapt |  corr   difference   margin   rev/min   dur s |  speed   net/path
+>    0.00 | +0.744   +0.2128      3.83     1.67     0.06  |  0.1853   0.783
+>    0.02 | +0.728   +0.2057      3.47     3.67     0.07  |  0.1855   0.790
+>    0.05 | +0.694   +0.1957      2.95    12.00     0.06  |  0.1839   0.798
+>    0.10 | +0.611   +0.1808      2.18    30.00     0.07  |  0.1752   0.783
+>    0.30 | +0.473   +0.1220      0.42    82.33     0.22  |  0.0974   0.518
+> ```
+>
+> The margin comes down monotonically at almost no cost to locomotion, and the reversals
+> are not reversals. **Every episode lasts 0.06 to 0.08 s** -- one fifteenth of an
+> undulation cycle -- at every setting, including the one producing thirty a minute. A body
+> cannot reverse in 0.07 s. What is counted is the difference dipping below a threshold it
+> still sits above and bouncing straight back. Turned up until the *rate* looks biological,
+> the margin collapses into the noise and net speed halves.
+>
+> So fatigue is not the missing property. **Persistence is**: a reversal is a state the
+> animal stays in for seconds. Adaptation lowers the mean of a noisy signal towards a
+> threshold; it does nothing to make the far side of that threshold somewhere the animal
+> can remain.
+>
+> **3. Bistability supplies both missing properties, and halves locomotion.**
+> `command_ca_ratio` adds the regenerative limb -- the same Morris-Lecar construction the
+> B-class motor neurons already carry, and where the recordings put it: AVA holds
+> depolarised plateaus lasting seconds.
+>
+> ```
+>    ca    adapt |  corr   difference   margin   rev/min   dur s |  speed  net/path   TWI
+>    0.00   0.05 | +0.694   +0.1957      2.95    12.00    0.06  |  0.1839   0.798   +0.757
+>    0.20   0.05 | +0.487   +0.2074      1.38    66.00    0.07  |  0.1111   0.537   +0.725
+>    0.35   0.05 | -0.042   +0.2274      1.15   104.00    0.13  |  0.0853   0.427   +0.719
+>    0.50   0.05 | -0.015   +0.3143      1.62    28.00    0.25  |  0.0851   0.385   +0.753
+>    0.50   0.15 | +0.714   +0.2160      0.44    10.33    3.19  |  0.0404   0.233   -0.096
+> ```
+>
+> **The correlation finally breaks** -- +0.69 to -0.04, the first thing all day to move it
+> -- and episodes leave the flicker floor, reaching 3.19 s. Those are precisely the two
+> properties that were missing. And every calcium row costs about half the locomotion.
+>
+> **4. Two explanations for that cost, both refuted.** This is where it stopped, and the
+> refutations are worth having because both were plausible enough to act on.
+>
+> *It is not the reversals.* Holding `gate_bias` at 0.00 so that the animal reversed **not
+> once** in the whole run still gave speed 0.091 and net/path 0.400, against 0.185 and
+> 0.783 shipped. The cost is there with the behaviour switched off.
+>
+> *It is not the resting depolarisation.* At `ca_offset` 0 the calcium gate is half open at
+> rest, a standing depolarising load on cells whose potential matters. Closing it at rest
+> (`command_ca_offset` 8 and 16 mV) made locomotion slightly **worse**, 0.091 -> 0.063 ->
+> 0.061.
+>
+> *And it is not AVB's gap junctions to the B cord*, which was the best structural guess:
+> AVB and PVC gap-junction onto the B class with 58 contacts and AVB's resting potential is
+> the bifurcation parameter that poises those units, whereas AVA/AVD/AVE put 102 contacts
+> onto the A class, which carries no regenerative conductance at all (`a_class_scale` is
+> 0) and is therefore poising nothing. Putting the calcium on AVA alone should then have
+> been free. It was not -- if anything it was slightly worse than doing both pools:
+>
+> ```
+>   where         ca   adapt  bias |  corr   difference  margin  rev/min  dur s | speed  net/path
+>   AVA only     0.35   0.05   0.09 | +0.046   +0.1551     0.46    95.00   0.23 | 0.0749   0.388
+>   AVA only     0.50   0.05   0.09 | +0.025   +0.2343     0.99    47.67   0.24 | 0.0678   0.313
+>   both pools   0.35   0.05   0.09 | -0.042   +0.2274     1.15   104.00   0.13 | 0.0853   0.427
+>   shipped      0.00   0.00   0.09 | +0.744   +0.2128     3.83     1.67   0.06 | 0.1853   0.783
+> ```
+>
+> ### What this says the next move is
+>
+> The mechanism is right and the *place* is wrong. Something about carrying dynamics on the
+> command interneurons costs the gait, and it is none of the three obvious routes. The
+> leading remaining candidate, and the first thing to measure, is that depolarising AVA
+> wakes the backward cord: `a_class_scale` is 0 precisely because "held at equal strength
+> both cords amplify at once and fight over the same muscles", and a bistable AVA drives
+> the A class through 102 gap contacts and its chemical synapses whether or not the
+> direction gate ever flips. That is testable directly -- measure A-class calcium gate and
+> muscle drive with and without the calcium, which needs no new parameter.
+>
+> There is also a structural reading worth taking seriously, because it is the same
+> conflation day five only half removed. `tonic_forward` was split into a decision bias and
+> a cord drive, but the *gate* still does both jobs: one scalar picks the direction **and**
+> apportions how much drive each cord receives. Giving the decision dynamic range therefore
+> necessarily modulates the gait. Separating "which cord" (a latched, hysteretic choice)
+> from "how much" (a constant) is the change that would let the decision move freely, and
+> it is a small change to `Senses.sense`.
+>
+> ### Added
+>
+> * `tools/command_probe.py` -- what each input is worth, in units of the decision's own
+>   fluctuation. This is the tool that turned "chemotaxis does not work" into a number.
+> * `tools/command_sweep.py` -- scores the behavioural and locomotor halves side by side,
+>   because either alone is easy to fake. The **duration** column is the one that matters;
+>   it is what separates a reversal from a threshold flicker, and without it configurations
+>   2 and 3 above both look like successes.
+> * `tools/ethogram.py` -- reversal rate, run durations and reorientation off food and on,
+>   against Zhao et al. Only smoke-tested so far, one animal for 20 s per condition, and
+>   even that turned up something: **the food dependence runs backwards.** Off food the gate
+>   never crosses at all; on a lawn it crosses 99 times a minute. The animal's ordering is
+>   3.2-3.5 per minute off food and 0.7-1.25 on it, so the model is inverted as well as
+>   mistimed. This is the serotonergic turning arm from day five doing exactly what it was
+>   calibrated to do -- `serotonin_turning` shifts the gate towards reversal on food, and it
+>   is the only reason the basal slowing response reproduces at all -- meeting a threshold
+>   that cannot tell dwelling from a flicker. Worth a proper run before anything is
+>   concluded from it, but it points at the same place everything else today does.
+> * `NervousSystem.E_syn`, a per-synapse reversal potential (post, pre) instead of a
+>   per-neuron one. Receptor identity belongs to the postsynaptic cell. Costs no arithmetic
+>   -- `G_syn @ (s * E_pre)` becomes `(G_syn * E) @ s` with the product taken once at
+>   construction -- and reproduces the previous model to 2e-15 relative, membrane potentials
+>   and synaptic activations exactly.
+> * Five zero-valued parameters in `NeuralParams`: `command_cross_inhibition`,
+>   `command_adapt_ratio`, `command_adapt_tau`, `command_ca_ratio`, `command_ca_offset`,
+>   `command_ca_classes`. All zero-safe, all with their measurements recorded next to them.
+>
+> ### Still outstanding from day five
+>
+> **The assay rerun did not complete.** Only `triage` finished before it had to be
+> abandoned (see the hazard below), and its result is the one that mattered: **zero
+> reversals across six animals in sixty seconds each**, gate pinned at 0.95 forward in every
+> one. Chemotaxis, aerotaxis, thermotaxis and nociception are still un-rerun since the food
+> fix. Aerotaxis remains the best bet.
+>
+> ### Do not repeat these
+>
+> * **Do not edit anything under `worm/` while a sweep is in flight.** `pooled()` launches
+>   a fresh OS process per trial that imports the package from disk, so an edit part-way
+>   through a run silently mixes two code versions in one result table. This cost a
+>   45-minute assay run today. Finish the code, then start the sweep.
+> * **Do not score a reversal by counting threshold crossings.** Every configuration in
+>   section 2 above looks like progress on rate alone and is worthless on duration. Any
+>   claim about reversals needs the episode length next to it.
+> * **Do not read a sweep whose threshold was calibrated for a different operating point.**
+>   `gate_bias` was placed against a difference of mean 0.21 and sd 0.032; calcium
+>   quadruples that sd, so the same number means something else. Re-place it per
+>   configuration or the rows are not comparable.
+
 > ## Day five. Modulators, and two real bugs in the world.
 >
 > **State: locomotion 0.246 mm/s (animal 0.219), TWI +0.778, net/path 0.905, 33 tests pass.**
@@ -543,9 +744,13 @@ entirely once the body can sustain itself.
 ```bash
 PYTHONPATH=. .venv/bin/python tools/kymo.py                 # look at the body, first
 PYTHONPATH=. .venv/bin/python tools/diagnose_loop.py        # gait metrics
+PYTHONPATH=. .venv/bin/python tools/command_probe.py        # can anything reach the decision?
+PYTHONPATH=. .venv/bin/python tools/command_sweep.py        # ...and does the gait survive it
+PYTHONPATH=. .venv/bin/python tools/ethogram.py             # reversal statistics, on food and off
+PYTHONPATH=. .venv/bin/python tools/assays.py triage        # two minutes; run before the full assay
 PYTHONPATH=. .venv/bin/python tools/reflex_gain.py          # the key measurement
 PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no biology
-PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # 31 tests, ~2.5 min
+PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # 33 tests, ~5 min
 .venv/bin/python run.py --headless 60
 ```
 

@@ -30,6 +30,31 @@ class NervousSystem:
         self.gap_total = self.G_gap.sum(axis=1)             # (N,)
         self.E_pre = conn.syn_reversal.copy()               # (N,) mV, reversal per presyn
 
+        # Reversal potential per *synapse*, not per presynaptic neuron.
+        #
+        # Which way a synapse pushes is a property of the receptor, and receptors are
+        # expressed by the postsynaptic cell -- so the same transmitter can excite one
+        # target and inhibit another. C. elegans makes that unusually concrete: glutamate
+        # opens the AMPA-type GLR-1 on some cells and the glutamate-gated *chloride*
+        # channels AVR-14, AVR-15 and GLC-1/2/3 on others, which is why ivermectin works
+        # on this animal at all. Collapsing every glutamatergic synapse to one reversal is
+        # therefore a known simplification rather than a fact, and this model already
+        # departs from transmitter identity in the other direction for AVL and DVB, whose
+        # GABA lands on the cation channel EXP-1 and so depolarises its targets.
+        #
+        # The (post, pre) matrix costs 730 kB at N=302 and no arithmetic at all: the step
+        # already formed G_syn @ (s * E_pre), which becomes (G_syn * E) @ s with the
+        # product taken once here. With no overrides configured every row is its
+        # presynaptic neuron's own reversal, and the two forms are the same sum with the
+        # multiplications reassociated -- so the model is identical to within floating
+        # point, not bit-for-bit. Measured over 20 s of the full closed loop against the
+        # previous code: membrane potentials and synaptic activations agree exactly, body
+        # node positions and net speed to 2e-15 relative. That is the same order as
+        # changing BLAS, and well inside the 4e-14 mV the noiseless fixed point is held to.
+        self.E_syn = np.broadcast_to(self.E_pre, (n, n)).copy()      # (N,N) [post, pre]
+        self._apply_receptor_overrides(conn, p)
+        self.GE_syn = self.G_syn * self.E_syn
+
         self.g_leak = p.g_leak
         self.E_leak = p.E_leak
 
@@ -63,14 +88,61 @@ class NervousSystem:
         self.g_ca[a_class] *= p.a_class_scale
         self.g_adapt[a_class] *= p.a_class_scale
 
+        # The command interneurons get a Morris-Lecar pair of their own, kept separate from
+        # the motor classes' because the two do unrelated jobs on unrelated timescales: the
+        # motor neurons' potassium gate is the recovery limb of a 1 Hz oscillator, while
+        # this one has to time a forward run that lasts tens of seconds.
+        #
+        # The adaptation went in first, on its own, on the argument that these cells were
+        # not being made into oscillators but only made to get tired. Measured, that was
+        # wrong, and the number that says so is the duration of a reversal: adaptation
+        # alone raised the crossing rate from 1.7 to 30 per minute but every episode lasted
+        # 0.07 s, one fifteenth of an undulation cycle, at every setting tried. A body
+        # cannot reverse in 0.07 s. Fatigue lowers the mean of a noisy signal towards a
+        # threshold; it does not make the far side of that threshold a place the animal can
+        # stay. Persistence needs the regenerative limb -- which is the same construction,
+        # and the same justification, as the B-class motor neurons above, and is what the
+        # recordings describe: Mellem et al. (2008) find RMD frankly bistable at -73 or
+        # -10 mV, and AVA holds depolarised plateaus lasting seconds. Zero by default.
+        self.command_fwd = conn.group(*p.command_forward)
+        self.command_bwd = conn.group(*p.command_backward)
+        self.command = np.union1d(self.command_fwd, self.command_bwd)
+        self.g_adapt[self.command] += p.command_adapt_ratio * g_rest[self.command]
+        # The regenerative half goes only where it is asked for, because which command
+        # cell carries it turns out to matter more than how much. AVB and PVC gap-junction
+        # onto the B cord with 58 contacts and AVA/AVD/AVE onto the A cord with 102, and
+        # AVB's resting potential is the bifurcation parameter that poises the B units --
+        # so a regenerative conductance on AVB is not a change to the decision, it is a
+        # change to the gait's operating point, delivered through the connectome. Measured
+        # both ways below; see NeuralParams.
+        self.command_ca = np.intersect1d(self.command, conn.group(*p.command_ca_classes))
+        self.g_ca[self.command_ca] += p.command_ca_ratio * g_rest[self.command_ca]
+
+        # Where each cell's calcium activation sits relative to its own rest. Per-neuron,
+        # because the command layer needs a different answer from the motor classes and
+        # the reason is measured. At the motor neurons' ca_offset of 0 the gate is half
+        # open at rest, so the conductance is a standing depolarising load -- fine there,
+        # because the whole gait was tuned around it. On the command interneurons it is
+        # not fine: AVB's resting potential is the bifurcation parameter for the entire
+        # B-class cord (see the note below on why that needs no parameter of its own), so
+        # depolarising AVB detunes the amplifier that carries the wave down the body.
+        # Measured, with the direction gate held so that the animal never reversed at all:
+        # net/path still fell from 0.783 to 0.400 and speed from 0.185 to 0.091. That
+        # isolates it -- the cost is not the reversals, it is the resting load. Placing
+        # the half-activation above rest closes the gate at rest, so the conductance
+        # contributes nothing until the cell depolarises and the operating point is left
+        # where it was.
+        ca_offset = np.full(n, p.ca_offset)
+        ca_offset[self.command_ca] = p.command_ca_offset
+
         # Gate values at rest. Because each half-activation is a fixed offset from that
         # neuron's own resting potential, these are constants -- which is what keeps the
         # threshold solve linear and its fixed point exact.
-        self.m0 = 0.5 * (1.0 + np.tanh(-p.ca_offset / p.ca_slope))
+        self.m0 = 0.5 * (1.0 + np.tanh(-ca_offset / p.ca_slope))
         self.n0 = 0.5 * (1.0 + np.tanh(-p.k_offset / p.k_slope))
 
         self.V_th = self._resting_potentials(s_half)
-        self.ca_vhalf = self.V_th + p.ca_offset
+        self.ca_vhalf = self.V_th + ca_offset
         self.k_vhalf = self.V_th + p.k_offset
 
         self.V = self.V_th.copy()
@@ -87,11 +159,44 @@ class NervousSystem:
         self._noise_decay = np.exp(-p.dt / p.noise_tau)
         self._noise_kick = p.noise_sigma * np.sqrt(1.0 - self._noise_decay ** 2)
         self.gap_iters = 3
-        self._adapt_decay = np.exp(-p.dt / p.adapt_tau)
+        # Per-neuron, because the command layer's adaptation is fifty times slower than
+        # the motor classes'. Broadcasting keeps `step` unchanged. Applied only when the
+        # command conductance is actually present: with the ratio at zero those cells
+        # carry no adaptation current, so retiming a gate that multiplies zero would
+        # change nothing except the value this array reports, and leaving it alone keeps
+        # "zero reproduces the previous model" true of every state variable rather than
+        # only of the ones that matter.
+        adapt_tau = np.full(n, p.adapt_tau)
+        if p.command_adapt_ratio > 0.0:
+            adapt_tau[self.command] = p.command_adapt_tau
+        self._adapt_decay = np.exp(-p.dt / adapt_tau)
 
         self.t = 0.0
 
     # ------------------------------------------------------------------ initialisation
+    def _apply_receptor_overrides(self, conn: Connectome, p: NeuralParams) -> None:
+        """Retarget named synapses onto an inhibitory receptor. Default: none.
+
+        Only one override is defined so far -- reciprocal inhibition between the forward
+        and backward command pools -- and it is off unless `command_cross_inhibition` is
+        raised. See NeuralParams for what it is for and what it is worth.
+        """
+        x = float(p.command_cross_inhibition)
+        if x <= 0.0:
+            return
+        fwd = conn.group(*p.command_forward)
+        bwd = conn.group(*p.command_backward)
+        if len(fwd) == 0 or len(bwd) == 0:
+            raise RuntimeError("command pools did not match the connectome: %r / %r"
+                               % (p.command_forward, p.command_backward))
+        # Blend rather than switch, so the coefficient is continuous and 0 is exactly the
+        # unmodified model. Both directions of the reciprocal pair, and only the chemical
+        # synapses -- the gap junctions between the pools are ohmic and have no reversal
+        # to change.
+        e = (1.0 - x) * p.E_exc + x * p.E_inh
+        self.E_syn[np.ix_(fwd, bwd)] = e
+        self.E_syn[np.ix_(bwd, fwd)] = e
+
     def _resting_potentials(self, s_half: float) -> np.ndarray:
         """Solve for the network's resting state with every release curve half-activated.
 
@@ -116,7 +221,7 @@ class NervousSystem:
                                   + self.n0 * self.g_adapt
                                   + self.m0 * self.g_ca)
         b = (self.g_leak * self.E_leak
-             + s_half * (self.G_syn @ self.E_pre)
+             + s_half * self.GE_syn.sum(axis=1)
              + self.n0 * self.g_adapt * self.p.E_K
              + self.m0 * self.g_ca * self.p.E_Ca)
         V = np.linalg.solve(A, b)
@@ -140,7 +245,7 @@ class NervousSystem:
 
         # Conductances and their driving potentials.
         gs = self.G_syn @ s                       # (N,) total synaptic conductance
-        Es = self.G_syn @ (s * self.E_pre)        # (N,) conductance-weighted reversal sum
+        Es = self.GE_syn @ s                      # (N,) conductance-weighted reversal sum
         g_ad = self.g_adapt * self.a              # (N,) delayed-rectifier K conductance
         # Regenerative calcium conductance, activating instantaneously with voltage: the
         # positive-feedback limb that folds the voltage nullcline and makes a limit cycle

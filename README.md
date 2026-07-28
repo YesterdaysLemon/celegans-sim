@@ -175,7 +175,7 @@ now pays for its own amplitude.
 
 ## Does it behave like a worm?
 
-`pytest tests/` — 30 tests, of which these are the load-bearing ones. Reference values are
+`pytest tests/` — 33 tests, of which these are the load-bearing ones. Reference values are
 measurements on live animals.
 
 | Quantity | Model | Measured | Source |
@@ -210,6 +210,25 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
+
+- **The animal does not spontaneously reverse, so it has no sensory behaviour at all.**
+  Zero reversals across six animals in sixty seconds each, against 3.2–3.5 per minute for a
+  real worm off food. That is not a missing flourish, it is the substrate every orienting
+  behaviour here is built from: C. elegans chemotaxis is a biased random walk, in which the
+  animal does not steer up a gradient but suppresses turns while conditions improve
+  (Pierce-Shimomura, Morse & Lockery 1999). A worm that never turns cannot chemotax however
+  good its nose is, and the measured chemotaxis index is −0.014 against +0.5 or better.
+
+  The cause is now a number rather than a suspicion. The forward/backward decision reads
+  the difference between two command pools, and that difference sits **3.81 standard
+  deviations** from its own decision boundary while a physiological chemosensory signal
+  moves it by **0.008 of one standard deviation** (`tools/command_probe.py`). No gain
+  multiplies the second into the first. The reason is structural: every command interneuron
+  here is cholinergic or glutamatergic and the model collapses both to a 0 mV reversal, so
+  the two pools *excite* each other — 70 reconstructed contacts one way, 33 the other, plus
+  10 gap junctions — and they correlate at +0.76. Driving one drags the other along, and
+  the decision reads the one component common drive cannot move. Four candidate fixes have
+  been tried and refuted; the measurements are in `NEXT.md`.
 
 - **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
   crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
@@ -299,66 +318,14 @@ Stated plainly, because a simulation that oversells itself is worse than useless
 
 - **The curvature amplitude is too low** — 2.3 /mm r.m.s. against a measured 4.3, so the
   worm undulates more shallowly than a real one.
-
-- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
-  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
-  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
-  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
-  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
-  kinetics are where to look.
-
-- **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
-  hyperpolarised correctly hands the cord to the A-class backward generator and the wave
-  does reverse, but curvature r.m.s. goes to 7.5 and net speed to 0.018 mm/s. The intrinsic
-  gate offsets are placed relative to a resting potential solved with AVB intact and do not
-  follow it down when the drive is removed.
-
-  This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
-  proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
-  goes 0.10 → 0.20 L), and driving the head externally while measuring the body's response
-  gives a per-segment reflex gain near 1.4. Together those say the body wave here is
-  largely the **passive mechanical response** to the head's bending rather than a wave
-  regenerated segment by segment by proprioception. The reflex loop is present, measurable
-  and correctly signed — it just is not carrying as much of the wave as the animal's does,
-  so the head's own timing dominates and the body strings out behind it.
-- **Gait modulation runs backwards.** The medium does change the gait — 1.25 Hz on agar
-  against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz on agar and
-  1.76 Hz swimming. Same root cause: with the wave set by the head's own loop rather than
-  regenerated along the body, what the medium mostly changes is the mechanical load on the
-  *head*, and a heavier load there shifts that loop's crossover rather than slowing the
-  body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
-  and deliberately does not assert which way, because asserting the real direction would
-  be asserting something this model does not do.
-- **The worm undulates almost on the spot, because its wave is mostly a standing wave.**
-  Over 120 simulated seconds it travels 8.4 mm of path and ends up 0.54 mm from where it
-  started — a net-to-path ratio of 0.07, where a real animal keeps well over half. Net
-  speed is about 5 µm/s against a measured 219.
-
-  The cause is specific and measurable. Decomposing the body's curvature over (time,
-  arclength) into travelling and standing components gives a travelling-wave index of
-  **+0.33** — two thirds of the oscillation is a standing wave, and a standing wave
-  produces *exactly zero* net thrust however large its amplitude, because its drag forces
-  cancel over a cycle. The control settles it: the identical body and drag, driven by a
-  clean prescribed travelling wave instead of by the nervous system, gives **+0.996 and
-  0.174 mm/s** — very nearly the real animal. So the mechanics are not the problem and
-  never were. The nervous system is producing a wave that mostly stands still.
-
-  This also explains the long wavelength, and the two are the same fact: at 1.4 body
-  lengths, less than one full wave fits on the animal, so there is almost no phase
-  progression along it, which *is* a standing wave. Fixing the wavelength and fixing the
-  thrust are one job, not two. `travelling_index` in `tools/diagnose_loop.py` measures it,
-  and it is the sharpest single diagnostic in the project — the phase-slope measure it
-  replaced will happily report a confident wavelength and direction for an animal that is
-  going nowhere.
-
-  I originally reported this as "0.03–0.11 mm/s, about half the measured value", **and that
-  was wrong.** The metric was smoothing the *magnitude* of instantaneous centroid velocity,
-  which counts the side-to-side slosh of the centroid within each undulation cycle as if it
-  were forward progress, and read roughly twenty times high. Both numbers are now kept
-  separately — `sim.speed` is net displacement over a two-second window, the way a worm
-  tracker measures it, and `sim.path_speed` is the old path-length quantity — and the tests
-  assert on the honest one. Credit where due: this was caught by someone simply watching
-  the animation and saying it looked like it was wiggling in place.
+- **The speed figure in this file was once twenty times too high**, and the reason is
+  worth keeping. `sim.speed` used to smooth the *magnitude* of instantaneous centroid
+  velocity, which counts the side-to-side slosh of the centroid within each undulation
+  cycle as though it were forward progress. The two quantities are now kept separately --
+  `sim.speed` is net displacement over a two-second window, the way a worm tracker
+  measures it, and `sim.path_speed` is the old path-length one -- and the tests assert on
+  the honest one. Credit where due: this was caught by someone simply watching the
+  animation and saying it looked like it was wiggling in place.
 - **The head reflex loop has two stable limit cycles**, near 0.3 Hz and near 2.2 Hz, and
   before the stretch receptor was given its own kinetics, which one the animal fell into
   depended on the random seed — two thirds of seeds took the fast one. The receptor filter
@@ -430,6 +397,10 @@ worm/server.py      WebSocket telemetry and static file serving
 tools/build_dataset.py  raw anatomy -> validated dataset, assertion-heavy
 tools/kymo.py           ASCII kymograph — the fastest way to see what the body is doing
 tools/diagnose_loop.py  frequency, wavelength, phase and antagonism metrics
+tools/command_probe.py  what each input is worth to the forward/backward decision
+tools/command_sweep.py  behavioural and locomotor scores side by side, for the command layer
+tools/ethogram.py       reversal rate, run lengths and reorientation, off food and on
+tools/assays.py         chemotaxis, aerotaxis, thermotaxis, nociception
 tools/calibrate_body.py mechanics checks, independent of the biology
 ```
 
