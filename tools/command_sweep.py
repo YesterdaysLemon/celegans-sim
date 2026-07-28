@@ -59,27 +59,26 @@ SEEDS = (0, 3, 7)
 # carries no regenerative conductance, so it is poising nothing).
 # Latched vs graded: does separating "which cord" from "how much" free the decision?
 JOBS = [
-    (False, 0.00, 0.09, "graded (shipped)"),
-    (True,  0.01, 0.12, "latch b=0.12 h=0.01"),
-    (True,  0.02, 0.12, "latch b=0.12 h=0.02"),
-    (True,  0.04, 0.12, "latch b=0.12 h=0.04"),
-    (True,  0.01, 0.14, "latch b=0.14 h=0.01"),
-    (True,  0.02, 0.14, "latch b=0.14 h=0.02"),
-    (True,  0.04, 0.14, "latch b=0.14 h=0.04"),
-    (True,  0.01, 0.15, "latch b=0.15 h=0.01"),
-    (True,  0.02, 0.15, "latch b=0.15 h=0.02"),
-    (True,  0.04, 0.15, "latch b=0.15 h=0.04"),
-    (True,  0.01, 0.16, "latch b=0.16 h=0.01"),
-    (True,  0.02, 0.16, "latch b=0.16 h=0.02"),
-    (True,  0.04, 0.16, "latch b=0.16 h=0.04"),
+    (0.00, 0.00, 0.16, "latched only"),
+    (0.00, 0.05, 0.11, "adapt=0.05 b=0.11"),
+    (0.00, 0.05, 0.12, "adapt=0.05 b=0.12"),
+    (0.00, 0.05, 0.13, "adapt=0.05 b=0.13"),
+    (0.00, 0.05, 0.14, "adapt=0.05 b=0.14"),
+    (0.00, 0.10, 0.11, "adapt=0.10 b=0.11"),
+    (0.00, 0.10, 0.12, "adapt=0.10 b=0.12"),
+    (0.00, 0.10, 0.13, "adapt=0.10 b=0.13"),
+    (0.00, 0.10, 0.14, "adapt=0.10 b=0.14"),
 ]
 
 
 def _job(job):
-    latched, hyst, bias, label, seed = job
+    ca, adapt, bias, label, seed = job
     p = Params()
-    p = dataclasses.replace(p, sensory=dataclasses.replace(
-        p.sensory, gate_latched=latched, gate_hysteresis=hyst, gate_bias=bias))
+    p = dataclasses.replace(
+        p,
+        neural=dataclasses.replace(p.neural, command_ca_ratio=ca,
+                                   command_adapt_ratio=adapt),
+        sensory=dataclasses.replace(p.sensory, gate_bias=bias))
     sim = Simulation(p, seed=seed, world=World(p.world, np.random.default_rng(0)),
                      placement=(0.0, 0.0, 0.0))
     fwd_i, bwd_i = sim.senses.avb, sim.senses.ava
@@ -117,7 +116,7 @@ def _job(job):
     rev_dur = float(back.sum()) * sample / rev if rev else float("nan")
 
     return dict(
-        latched=latched, hyst=hyst, bias=bias, label=label, seed=seed,
+        ca=ca, adapt=adapt, bias=bias, label=label, seed=seed,
         fwd=float(fwd.mean()), bwd=float(bwd.mean()),
         corr=float(np.corrcoef(fwd, bwd)[0, 1]) if fwd.std() > 0 and bwd.std() > 0
         else float("nan"),
@@ -131,7 +130,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(la, h, b, lb, s) for la, h, b, lb in JOBS for s in SEEDS]
+    jobs = [(c, a, b, lb, s) for c, a, b, lb in JOBS for s in SEEDS]
     print("COMMAND SWEEP -- %d trials x %.0f s  (estimated %.0f s)"
           % (len(jobs), WARMUP + MEASURE, estimate(len(jobs), WARMUP + MEASURE)))
     rows = pooled(_job, jobs)

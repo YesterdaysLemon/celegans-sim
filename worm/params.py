@@ -350,7 +350,28 @@ class NeuralParams:
     # limb that makes the far side of the threshold somewhere it can stay -- see
     # NervousSystem for why that is the right reading and where the biology comes from.
     command_cross_inhibition: float = 0.0   # 0 = as reconstructed, 1 = fully inhibitory
-    command_adapt_ratio: float = 0.0        # g_K as a fraction of resting conductance
+    # Adopted once the gate was latched, which is the whole story of this parameter.
+    # Under the graded gate it was worthless: it moved the margin exactly as intended and
+    # produced only 0.07 s flickers, because the drive to the cords was proportional to
+    # the very difference it was moving, so any dynamics in the command layer came
+    # straight out of the gait. With the drive constant and the choice latched, the same
+    # conductance does what it was always meant to -- it makes the winning side tire, so a
+    # reversal is something the animal falls into and climbs out of rather than a threshold
+    # crossing. Measured (tools/command_sweep.py, three seeds, gate_hysteresis 0.04):
+    #
+    #   adapt  gate_bias | rev/min   dur s   %rev |  speed   net/path    TWI
+    #    0.00     0.16       2.67     0.44    1.8 |  0.2079   0.823    +0.781
+    #    0.05     0.14       2.67     0.48    2.1 |  0.2182   0.849    +0.785
+    #    0.10     0.12       2.67     0.44    1.8 |  0.2190   0.842    +0.789
+    #    0.10     0.13       4.67     0.69    5.3 |  0.2077   0.813    +0.769   <- adopted
+    #    0.10     0.14      12.00     0.77   15.9 |  0.1556   0.640    +0.580
+    #
+    # 4.67 reversals per minute against the animal's 3.2-3.5 off food, and episodes of
+    # 0.69 s against the 0.06 s the graded gate produced -- eleven times longer, and within
+    # sight of the one to four seconds a real reversal lasts. Adaptation raises the mean
+    # difference as well as lengthening the episodes, so gate_bias comes down with it;
+    # rows at fixed bias are not comparable across this parameter.
+    command_adapt_ratio: float = 0.10       # g_K as a fraction of resting conductance
     command_adapt_tau: float = 15.0         # s   the timescale of a forward run
     command_ca_ratio: float = 0.0           # g_Ca as a fraction of resting conductance
     # Which command cells carry it, and this is the parameter the measurements care about.
@@ -776,7 +797,7 @@ class SensoryParams:
     # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
     # at which the animal is evenly poised, and gate_slope how sharply it commits.
     gate_slope: float = 30.0         # per unit of activation difference
-    gate_bias: float = 0.16          # activation difference at the switch point
+    gate_bias: float = 0.13          # activation difference at the switch point
 
     # Which cord, decided separately from how much drive it gets.
     #
