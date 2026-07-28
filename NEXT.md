@@ -1,5 +1,77 @@
 # Where this is, and what to do next
 
+> ## Day five. Modulators, and two real bugs in the world.
+>
+> **State: locomotion 0.246 mm/s (animal 0.219), TWI +0.778, net/path 0.905, 33 tests pass.**
+>
+> ### What landed
+>
+> **The command decision is decoupled from the gait drive.** `tonic_forward` was doing two
+> incompatible jobs -- choosing direction, and (since the Morris-Lecar work) deciding
+> whether the animal could walk at all. Now `tonic_forward` (22 pA) only biases the
+> decision, `cord_drive` (8 pA) feeds the gait to whichever cord the gate selects, and the
+> gate reads the *difference* between command pools instead of cubing absolute activities.
+> Worth +23% speed on its own, and the gate finally has dynamic range (sd 0.000 -> 0.038).
+>
+> **`worm/modulators.py`: the wireless connectome.** Four slow scalars -- dopamine,
+> serotonin, octopamine, PDF -- produced by their real source neurons, decaying on their own
+> time constants, acting by scaling gains rather than injecting current. Every coefficient
+> is zero-safe; zero reproduces the previous model exactly. Basal slowing response
+> calibrated to **0.50** against the animal's ~0.5.
+>
+> ### Two bugs that invalidated earlier results
+>
+> **Every bacterial lawn was inside-out.** Transposed `_smoothstep` arguments meant food was
+> 0 at a patch's centre and 1 everywhere *outside* it, out to the dish wall -- a 9 mm lawn
+> sampled 0.002 at its own centre while the dish held 26,000 units. Oxygen derives from that
+> field, so **the aerotaxis null in the day-four notes is withdrawn**; it was scored against
+> a backwards gradient. Now 6% on a lawn against 21% at the edge.
+>
+> **The animal ate a hole under itself in ~2 s.** `World.eat` subtracted the full requested
+> amount from each of nine cells, removing 9x what was asked, and `ingestion_rate` was 45x
+> too fast besides. "On food" was therefore a condition that decayed away during any
+> measurement. Fixed to a proportional total withdrawal at 0.02 units/s, which matches
+> `world.py`'s own stated intent of depletion mattering "over tens of minutes".
+>
+> ### The honest caveat on the slowing response
+>
+> We reproduce the behaviour by the wrong route. Dopamine scaling the cord drive turns out
+> to be a *weak* lever -- pinned at its 0.25 floor the animal still only slows 23%, because
+> speed here is set by the proprioceptive loop and the motor neurons' own dynamics, not by
+> how hard the cord is driven. All of our slowing comes from the serotonergic turning arm.
+> In the animal, cat-2 mutants that cannot make dopamine *fail to slow*, so dopamine is
+> necessary. Ours does not need it. Worth fixing, and worth not forgetting.
+>
+> ### Next, in order
+>
+> 1. **Rerun every assay.** All of them predate the food fix; aerotaxis is known-invalid and
+>    the rest are suspect. `PYTHONPATH=. .venv/bin/python tools/assays.py all`, ~45 min.
+>    Oxygen is the best bet: URX/AQR/PQR make 44 direct contacts onto the backward command
+>    pool, more than any other sensory pathway, and the gradient is now real.
+> 2. **Does the modulator layer unblock chemotaxis?** The dwelling result is a small
+>    existence proof -- food changed the gate's behaviour, which nothing sensory had managed
+>    before. Modulators act slowly and scale gains, so the 70x ASE->AVA attenuation that
+>    blocks the fast route may not apply to them.
+> 3. **Habituation.** Cheap, and Rankin's decrement and spontaneous-recovery curves are
+>    quantitative targets. First thing on the list that is memory rather than modulation.
+> 4. Fix the dopamine route above.
+>
+> ### Do not repeat these
+>
+> * **Do not use a process pool for sweeps.** `multiprocessing.Pool` and
+>   `ProcessPoolExecutor` both deadlocked -- four runs lost, every worker at 0% CPU, parent
+>   blocked on a lock, on an idle machine with 70% memory free. `pooled()` now launches one
+>   independent OS process per trial with results as JSON on stdout. It cannot deadlock and
+>   it reports per-job failures. Do not "optimise" it back into a pool.
+> * **Anything using `pooled()` must live in a real file.** Spawn cannot re-import
+>   `__main__` from a heredoc. This trap was documented, then walked into anyway.
+> * **Do not run sweeps and pytest together.** Not a correctness issue but the suite goes
+>   from ~5 min to 23 min.
+> * The reversal detector (centroid velocity vs body axis) is only meaningful when net/path
+>   is above ~0.3. Below that it reports slosh as turns.
+> * Timing: one trial of D simulated seconds costs ~1.7xD wall-seconds on one core (0.58x
+>   real time, flat regardless of BLAS threads). `estimate()` prints the prediction.
+
 > ## Day four. The senses are measured, and they do not work. One cause.
 >
 > `tools/assays.py` reproduces standard plate experiments and scores them the way the

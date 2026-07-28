@@ -40,9 +40,11 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
            "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_v, "1")
 
+import json  # noqa: E402
 import multiprocessing as mp  # noqa: E402
-from concurrent import futures  # noqa: E402
+import subprocess  # noqa: E402
 import sys  # noqa: E402
+import time  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -117,36 +119,62 @@ def estimate(n_trials, duration, procs=10):
     return batches * duration / RATE
 
 
-def pooled(fn, jobs, procs=10, timeout=1800):
-    """Run trials across processes, reporting each one as it lands.
+def pooled(fn, jobs, procs=10, timeout=2400):
+    """Run each job in its own short-lived process. No pool, no shared state.
 
-    ProcessPoolExecutor rather than multiprocessing.Pool, and the reason is scars: a Pool
-    whose worker dies leaves map()/imap() blocked on a lock forever, with no output and no
-    error. Two runs here sat at 0% CPU looking exactly like slow ones -- one for thirteen
-    minutes, one stalled at 10 of 12 trials. The executor raises BrokenProcessPool instead,
-    and the per-future timeout turns any remaining stall into a reported failure rather
-    than a hang. Failed trials come back as None; callers filter them.
+    This started as multiprocessing.Pool, became ProcessPoolExecutor, and is now neither,
+    because both deadlocked. Four separate runs stalled with every worker at 0% CPU and
+    the parent blocked on a lock -- at 10 of 12 trials, at 0 of 12, and twice more -- on an
+    idle machine with 70% of memory free. The executor at least reported it instead of
+    hanging silently, but reporting a hang is not the same as not hanging.
+
+    So: one OS process per job, launched directly, results returned as JSON on stdout.
+    Process startup costs a couple of seconds against trials that run for minutes, and in
+    exchange there is no shared interpreter state, no IPC, no semaphores, and nothing that
+    can deadlock -- a job either exits with output or it does not. Failures are reported
+    per job and come back as absent rather than taking the run down.
     """
     workers = max(1, min(procs, mp.cpu_count() - 2))
-    out, done = [], 0
-    with futures.ProcessPoolExecutor(max_workers=workers) as ex:
-        pending = {ex.submit(fn, j): j for j in jobs}
-        try:
-            for fut in futures.as_completed(pending, timeout=timeout):
-                done += 1
-                try:
-                    out.append(fut.result())
-                except Exception as exc:                      # noqa: BLE001
-                    print("    [%d/%d] FAILED %r: %s"
-                          % (done, len(jobs), pending[fut], exc),
-                          file=sys.stderr, flush=True)
-                else:
-                    print("    [%d/%d]" % (done, len(jobs)), file=sys.stderr, flush=True)
-        except futures.TimeoutError:
-            print("    STALLED: %d of %d trials never returned after %ds"
-                  % (len(jobs) - done, len(jobs), timeout), file=sys.stderr, flush=True)
-            for fut in pending:
-                fut.cancel()
+    # Loaded by file path rather than module name: a tool run as a script has
+    # fn.__module__ == "__main__", which a child process cannot import.
+    source = sys.modules[fn.__module__].__file__
+    runner = ("import json,sys,importlib.util as u;"
+              "sp=u.spec_from_file_location('_shard', %r);m=u.module_from_spec(sp);"
+              "sp.loader.exec_module(m);"
+              "sys.stdout.write(json.dumps(getattr(m,%r)(json.loads(sys.argv[1]))))"
+              % (source, fn.__name__))
+    env = dict(os.environ, PYTHONPATH=os.environ.get("PYTHONPATH", "."))
+
+    out, queue, running = [], list(enumerate(jobs)), {}
+    done = 0
+    deadline = time.monotonic() + timeout
+    while queue or running:
+        while queue and len(running) < workers:
+            i, job = queue.pop(0)
+            proc = subprocess.Popen(
+                [sys.executable, "-c", runner, json.dumps(job)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            running[proc] = (i, job)
+        for proc in list(running):
+            if proc.poll() is None:
+                continue
+            i, job = running.pop(proc)
+            done += 1
+            stdout, stderr = proc.communicate()
+            if proc.returncode == 0 and stdout.strip():
+                out.append(json.loads(stdout))
+                print("    [%d/%d]" % (done, len(jobs)), file=sys.stderr, flush=True)
+            else:
+                tail = stderr.decode("utf8", "replace").strip().splitlines()[-1:] or [""]
+                print("    [%d/%d] FAILED %r: %s" % (done, len(jobs), job, tail[0]),
+                      file=sys.stderr, flush=True)
+        if time.monotonic() > deadline:
+            for proc in running:
+                proc.kill()
+            print("    TIMED OUT with %d of %d unfinished" % (len(running), len(jobs)),
+                  file=sys.stderr, flush=True)
+            break
+        time.sleep(0.2)
     return out
 
 

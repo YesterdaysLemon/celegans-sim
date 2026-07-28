@@ -447,7 +447,14 @@ class WorldParams:
     food_diffusion_scale: float = 1.0
     # Bacteria are eaten, and eating is what makes a food patch a gradient source that
     # slowly disappears.
-    ingestion_rate: float = 0.9      # patch density units per second while pumping
+    # Calibrated to this file's own stated intent -- that depletion should change the
+    # animal's behaviour "over tens of minutes". At 0.02 units/s the 3x3 neighbourhood the
+    # animal feeds from (9 units at full density) halves in about four minutes of continuous
+    # occupancy and is stripped in eight, so a foraging worm thins its patch over tens of
+    # minutes rather than instantly. The previous 0.9 was both 45x too fast and applied per
+    # cell rather than as a total, which together removed 8.1 units/s and cleared the ground
+    # under the animal in roughly two seconds.
+    ingestion_rate: float = 0.02     # patch density units per second while pumping
     field_dt: float = 0.02           # s  chemical fields are updated at 50 Hz, not 2 kHz
     temp_cold: float = 17.0          # degC at one edge of the dish
     temp_warm: float = 25.0          # degC at the other
@@ -604,29 +611,41 @@ class ModulatorParams:
     #
     # The assay is the basal slowing response (Sawin, Ranganathan & Horvitz 2000): drop a
     # well-fed animal on a lawn and it halves its speed. Scored as speed-on-food over
-    # speed-off-food, two seeds, 55 s each:
+    # speed-off-food, two seeds, 55 s each. Recalibrated after the food field was fixed --
+    # the first attempt was fitted against lawns the animal ate away beneath itself in two
+    # seconds, so the on-food dopamine signal it saw was four times too small.
     #
     #   da_slow  5ht_turn   off food   on food   ratio   gate sd off/on
-    #     0.0      0.0       0.1989    0.1981    1.00     0.04 / 0.04   <- inert control
-    #     3.0      0.0       0.2096    0.2145    1.02     0.05 / 0.06
-    #     6.0      0.0       0.2158    0.2154    1.00     0.06 / 0.08
-    #    10.0      0.0       0.2189    0.1022    0.47     0.08 / 0.23
-    #    10.0      0.6       0.2087    0.1094    0.52     0.10 / 0.26   <- adopted
+    #     0.0      0.0       0.1989    0.1926    0.97     0.04 / 0.04   inert control
+    #     0.0      0.6       0.1886    0.0935    0.50     0.07 / 0.29   <- adopted
+    #     2.0      0.6       0.1935    0.0460    0.24     0.07 / 0.24
+    #     6.0      0.0       0.2158    0.1830    0.85     0.06 / 0.13
+    #    10.0      0.0       0.2189    0.1694    0.77     0.08 / 0.17
     #
-    # The response is strongly nonlinear in the coefficient, which is worth knowing: at 6.0
-    # there is no effect at all and at 10.0 there is a full one. The gate standard deviation
-    # is the other half of the result -- it roughly triples on food, which is dwelling:
-    # a worm that turns more often stays where the food is. That is the serotonergic arm
-    # (Flavell et al. 2013), and it is why 0.6 is taken over 0.0 despite scoring marginally
-    # further from 0.5 on slowing alone.
-    dopamine_slowing: float = 10.0
-    serotonin_slowing: float = 5.0
+    # Two things in that table are worth stating plainly, because neither is what was
+    # expected.
+    #
+    # First, dopamine acting on the descending cord drive is a *weak* lever here. At
+    # da_slow = 10 with [DA] near +0.3 the scale term is driven past its 0.25 floor and
+    # pinned there, and the animal still only slows by 23%. Locomotor speed in this model
+    # is set mostly by the proprioceptive loop and the motor neurons' own regenerative
+    # dynamics, not by how hard the cord is driven, so turning that knob down does much
+    # less than it looks like it should.
+    #
+    # Second, the response we do reproduce is carried entirely by the serotonergic arm:
+    # more turning on food, which cuts net displacement in half and also drops path speed
+    # by 30%. That is dwelling (Flavell et al. 2013) and it is real biology, but it is not
+    # the same mechanism the assay is usually taken to measure -- in the animal, cat-2
+    # mutants that cannot make dopamine fail to slow, so dopamine is *necessary*. Ours does
+    # not need it. That is a genuine discrepancy and it is recorded rather than papered
+    # over: the honest reading is that we reproduce the behaviour by the wrong route.
+    dopamine_slowing: float = 0.0
+    serotonin_slowing: float = 0.0
     serotonin_turning: float = 0.6
-    # Implemented, wired, and deliberately left at zero: these two have not been calibrated
-    # against anything, and PDF in particular is sourced from AVB, so a non-zero coefficient
-    # would close a positive feedback loop (forward drive raises PDF raises forward drive).
-    # That loop is probably how roaming/dwelling hysteresis actually works and it deserves
-    # its own measurement rather than a guessed number.
+    # Implemented, wired, and left at zero: not calibrated against anything. PDF in
+    # particular is sourced from AVB, so a non-zero coefficient closes a positive feedback
+    # loop (forward drive raises PDF raises forward drive) that is probably how
+    # roaming/dwelling hysteresis works and deserves its own measurement.
     octopamine_speeding: float = 0.0
     pdf_roaming: float = 0.0
 

@@ -74,7 +74,7 @@ def _job(job):
 
 
 def main():
-    jobs = list(itertools.product([0.0, 3.0, 6.0, 10.0], [0.0, 0.6],
+    jobs = list(itertools.product([0.0, 2.0, 4.0, 6.0, 10.0], [0.0, 0.6],
                                   [False, True], SEEDS))
     print("estimated %.0f s for %d trials" % (estimate(len(jobs), WARMUP + MEASURE), len(jobs)))
     rows = pooled(_job, jobs)

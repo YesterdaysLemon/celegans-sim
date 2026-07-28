@@ -114,15 +114,26 @@ class World:
                 + (f01 * (1 - tx) + f11 * tx) * ty)
 
     def eat(self, x: float, y: float, amount: float) -> float:
-        """Remove food near (x, y). Returns how much was actually ingested."""
+        """Remove `amount` of food from around (x, y). Returns how much was ingested.
+
+        `amount` is a total, withdrawn proportionally to what is present in the
+        neighbourhood. It used to be subtracted from every cell of the 3x3 patch
+        independently, which removed up to nine times the requested amount and stripped
+        the ground under the animal in about two seconds -- so "on food" was a condition
+        that decayed away during any measurement longer than a few seconds, and since
+        oxygen is derived from this field the animal was also eating its own O2 gradient.
+        """
         i = int(np.clip((y + self.extent) / self.h, 0, self.g - 1))
         j = int(np.clip((x + self.extent) / self.h, 0, self.g - 1))
         lo_i, hi_i = max(0, i - 1), min(self.g, i + 2)
         lo_j, hi_j = max(0, j - 1), min(self.g, j + 2)
         patch = self.food[lo_i:hi_i, lo_j:hi_j]
-        take = np.minimum(patch, amount)
-        patch -= take
-        return float(take.sum())
+        available = float(patch.sum())
+        if available <= 0.0:
+            return 0.0
+        take = min(amount, available)
+        patch *= 1.0 - take / available
+        return take
 
     def step(self, dt: float) -> None:
         """Advance the diffusing fields, in chunks of the field timestep."""
