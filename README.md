@@ -237,31 +237,23 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **The animal does not spontaneously reverse, so it has no sensory behaviour at all.**
-  Zero reversals across six animals in sixty seconds each, against 3.2–3.5 per minute for a
-  real worm off food. That is not a missing flourish, it is the substrate every orienting
-  behaviour here is built from: C. elegans chemotaxis is a biased random walk, in which the
-  animal does not steer up a gradient but suppresses turns while conditions improve
-  (Pierce-Shimomura, Morse & Lockery 1999). A worm that never turns cannot chemotax however
-  good its nose is, and the measured chemotaxis index is −0.014 against +0.5 or better.
+- **The tap-withdrawal reflex does not work, so the memory below has nothing to act on.**
+  Forward progress over the three seconds after a tap is +0.739 mm against +0.786 with no
+  tap. The animal now reverses spontaneously — 4.67 times a minute in episodes of 0.69 s,
+  against 3.2–3.5 a minute lasting 1–4 s in a real worm — but a tap is not enough to
+  trigger one: it moves the command difference about 0.53 of a standard deviation against
+  the 1.33 it would need.
 
-  The cause is now a number rather than a suspicion. The forward/backward decision reads
-  the difference between two command pools, and that difference sits **3.81 standard
-  deviations** from its own decision boundary while a physiological chemosensory signal
-  moves it by **0.008 of one standard deviation** (`tools/command_probe.py`). No gain
-  multiplies the second into the first. The reason is structural: every command interneuron
-  here is cholinergic or glutamatergic and the model collapses both to a 0 mV reversal, so
-  the two pools *excite* each other — 70 reconstructed contacts one way, 33 the other, plus
-  10 gap junctions — and they correlate at +0.76. Driving one drags the other along, and
-  the decision reads the one component common drive cannot move. Four candidate fixes have
-  been tried and refuted; the measurements are in `NEXT.md`.
+  The remaining gap is the touch pathway rather than the decision. In this reconstruction
+  anterior touch makes 12 chemical and 2 gap contacts onto the entire backward command
+  pool, against 27 chemical contacts onto the *forward* one — ALM and AVM drive AVB harder
+  than they drive AVA. That is a wiring fact and it deserves checking against a newer
+  reconstruction before anything is tuned around it.
 
-  Every other behaviour fails at this same junction, which is the reason to state it
-  first. A tap does not reverse the animal either — forward progress over the three
-  seconds after a tap is +0.675 mm against +0.686 with none, and +0.654 at three times the
-  strength — so there is no tap-withdrawal response for the habituation below to
-  decrement. Chemotaxis, aerotaxis, nociception, tap withdrawal and learning are one
-  problem, not five.
+- **Chemotaxis is still unmeasured since the command layer changed.** The last full run
+  gave a chemotaxis index of −0.014 against +0.5 or better, at a time when the animal could
+  not reverse at all and so could not perform the biased random walk the behaviour is made
+  of. That objection no longer applies, and the assays have not been rerun.
 
 - **The gait is not converged at the timestep the model ships at**, and two of the numbers
   in the table above change meaning because of it. Halving the step from 0.25 to 0.125 ms

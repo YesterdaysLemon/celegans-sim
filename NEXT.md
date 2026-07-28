@@ -1,32 +1,58 @@
 # Where this is, and what to do next
 
-> ## Day seven. Four bugs, three refutations, one memory, and one thing left to fix.
+> ## Day seven. The command layer moves, the animal reverses, and it remembers.
 >
-> **State: 37 tests pass. Locomotion untouched. The model has a memory for the first time,
-> and a clearer account of what is wrong with it than it has had.**
+> **State: 37 tests pass. Spontaneous reversals at 4.67/min in episodes of 0.69 s, where
+> there were none. Locomotion better than before: 0.208 mm/s, net/path 0.813, TWI +0.769.
+> The model has a memory for the first time.**
 >
-> ### Read this first: everything now fails at one junction
+> ### Read this first: the command layer moves now
 >
-> Chemotaxis, aerotaxis, nociception, tap withdrawal and now learning all fail, and after
-> today they all fail *for the same measured reason*. The direction gate sits **3.81
-> standard deviations** from its own decision boundary. A physiological chemosensory signal
-> moves it by 0.008 sigma. A tap moves the backward command pool by 0.02 in activation,
-> against the 0.107 it would need. So:
+> The day-six diagnosis was that every sensory behaviour failed at one junction -- the
+> direction gate, sitting 3.81 standard deviations from its own boundary with nothing able
+> to reach it. That junction is now fixed, and the fix was structural rather than a gain.
 >
-> * the animal never spontaneously reverses (zero in six animals over sixty seconds),
-> * a tap does not reverse it either (+0.675 mm of forward progress after a tap against
->   +0.686 with none, and +0.654 at three times the strength),
-> * and habituation, which is now implemented and provably works at the receptor, has no
->   behaviour to decrement.
+> **The gate did two jobs with one number.** `fwd_frac` chose the direction *and* scaled
+> the descending drive, so at 0.5 both cords were driven at half strength and fought over
+> the same muscles. The decision could not move without moving the gait, which is why every
+> attempt to give the command layer dynamic range cost locomotion. Latching it -- a Schmitt
+> trigger that picks a cord and commits, giving the selected cord the whole drive and
+> letting the other go passive -- separates them.
 >
-> There is no longer a list of separate sensory problems. There is one problem, it is
-> measured, and it is `Senses.sense`'s direction gate. **Fix that before anything else.**
+> With that done, the command adaptation that was worthless on day six works, because its
+> dynamics no longer come out of the gait:
 >
-> The leading structural idea is unchanged from day six and is a small change: the gate
-> still does two jobs -- it picks the direction *and* it apportions how much drive each
-> cord receives -- which is the same conflation day five only half removed. Separating the
-> latched, hysteretic choice of *which* cord from the constant *amount* is what would let
-> the decision move without dragging the gait with it.
+> ```
+>                          rev/min   episode s   %rev |  speed   net/path    TWI
+>   graded gate (day six)     1.67      0.06      0.2 |  0.1853   0.783    +0.767
+>   latched                   2.67      0.44      1.8 |  0.2079   0.823    +0.781
+>   latched + adaptation      4.67      0.69      5.3 |  0.2077   0.813    +0.769
+>   real animal, off food   3.2-3.5    1 to 4          |  0.219      --        --
+> ```
+>
+> Reversals went from **0.06 s to 0.69 s** -- eleven times longer, and the thing that was
+> catastrophically wrong, since a body cannot reverse in one fifteenth of an undulation
+> cycle. The rate is 4.67 per minute against 3.2-3.5. And locomotion came out *better* than
+> the graded model it replaces on every measure, because the cords stopped sharing drive.
+>
+> ### What still does not work, and it is now a narrower thing
+>
+> **A tap still does not reverse the animal.** Forward progress over three seconds is
+> +0.739 mm after a tap against +0.786 with none, and the animal spends 0.05 s in the
+> backward state. The margin is now 1.33 sigma and a tap moves the command difference by
+> about 0.53 sigma -- so it gets 40% of the way, against 0.6% before. Closer, and still
+> short.
+>
+> The remaining gap is the touch pathway itself rather than the gate. Anterior touch makes
+> 12 chemical contacts and 2 gap contacts onto the whole backward pool, against 27 chemical
+> contacts onto the *forward* one, so ALM and AVM in this reconstruction drive AVB harder
+> than they drive AVA. That is a wiring fact, and the two honest things to do with it are
+> to check it against a newer reconstruction, and to ask whether the tap-withdrawal circuit
+> needs AVD treated as its own stage rather than lumped into the backward pool.
+>
+> So habituation, which is implemented and works at the receptor, still has no
+> tap-withdrawal response to decrement. That is now one specific pathway rather than the
+> whole animal.
 >
 > ### Four bugs, in the order they were found
 >
