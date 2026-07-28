@@ -244,6 +244,16 @@ class NervousSystem:
         and backward command pools -- and it is off unless `command_cross_inhibition` is
         raised. See NeuralParams for what it is for and what it is worth.
         """
+        # Glutamate-gated chloride on named targets. See NeuralParams.glucl_strength.
+        gc = float(p.glucl_strength)
+        if gc > 0.0:
+            pre = conn.group(*p.glucl_pre)
+            post = conn.group(*p.glucl_post)
+            if len(pre) == 0 or len(post) == 0:
+                raise RuntimeError("glutamate-chloride sets matched nothing: %r -> %r"
+                                   % (p.glucl_pre, p.glucl_post))
+            self.E_syn[np.ix_(post, pre)] = (1.0 - gc) * p.E_exc + gc * p.E_inh
+
         x = float(p.command_cross_inhibition)
         if x <= 0.0:
             return

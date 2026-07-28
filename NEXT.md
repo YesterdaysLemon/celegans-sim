@@ -70,6 +70,43 @@
 > **Aerotaxis still does not work**: 20.4% oxygen occupied against an ambient 21% and a
 > preference of 5-12%. **Nociception did not run** -- see the timeout note below.
 >
+> ### The chemotaxis sign: half fixed, and the other half named
+>
+> The bias pointed the wrong way -- the animal turned *more* when conditions improved,
+> ratio 0.68 where the animal is about 2. The route is short enough to trace: ASEL and
+> ASER both project onto AIY (19 and 16 contacts), AIY projects onto AIZ (21), and AIZ
+> makes 10 contacts onto the backward command pool. AIY reaches the command layer only
+> through AIZ. Measured directly, 3 pA into AIY takes the reversal rate from 4.7 to 6.0 per
+> minute and the same current into AIZ does the same -- so exciting AIY makes the animal
+> turn, and a rising attractant excites AIY.
+>
+> In the animal AIY does the opposite, and the reason this model has it backwards is the
+> same simplification that made the command pools mutually excitatory: glutamate collapsed
+> to one excitatory reversal. Chalasani et al. (2007) showed the same glutamate release
+> inhibits AIY through the chloride channel GLC-3 while exciting AIB through GLR-1 -- one
+> transmitter, two receptors, opposite signs, and none of it survives deciding a synapse's
+> sign from the transmitter alone. `glucl_strength` applies that correction through the
+> per-synapse reversal matrix, and AIB is deliberately left excitatory.
+>
+> **The sign flips.** A steady 3 pA into ASEL takes the reversal rate from +0.33 to -0.33
+> against baseline: from promoting reversals while things improve to suppressing them.
+> Locomotion is untouched, and there is a test.
+>
+> **The bias does not yet win.** The pirouette ratio goes 0.68 -> 0.88, the right direction
+> and still the wrong side of 1, and the chemotaxis index stays near zero. Raising
+> `chemo_gain` six-fold makes it *worse*, back to 0.66, which says a second route from ASE
+> to the backward pool outruns the AIY arm when both are driven hard -- most likely ASE ->
+> AIB -> RIM, which reaches the backward pool through 16 gap junctions and is not
+> correctable the same way, because AIB holds GLR-1 and is supposed to be excited.
+>
+> **What is actually missing is the opponency.** ASEL should mean "better" and ASER "worse",
+> and in this reconstruction they are wired almost identically -- ASEL 19 contacts onto AIY
+> and 9 onto AIB, ASER 16 and 12. Their separation in the animal is functional rather than
+> anatomical, so contact counts cannot produce it and no gain on a symmetric pair will
+> either. That is the next thing, and it is a modelling decision rather than a bug: either
+> give ASEL and ASER different downstream receptors the way the AIY correction does, or
+> accept that salt chemotaxis needs more than the wiring diagram carries.
+>
 > ### What still does not work, and it is now a narrower thing
 >
 > **A tap still does not reverse the animal.** Forward progress over three seconds is

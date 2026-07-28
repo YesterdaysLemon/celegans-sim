@@ -59,26 +59,17 @@ SEEDS = (0, 3, 7)
 # carries no regenerative conductance, so it is poising nothing).
 # Latched vs graded: does separating "which cord" from "how much" free the decision?
 JOBS = [
-    (0.00, 0.00, 0.16, "latched only"),
-    (0.00, 0.05, 0.11, "adapt=0.05 b=0.11"),
-    (0.00, 0.05, 0.12, "adapt=0.05 b=0.12"),
-    (0.00, 0.05, 0.13, "adapt=0.05 b=0.13"),
-    (0.00, 0.05, 0.14, "adapt=0.05 b=0.14"),
-    (0.00, 0.10, 0.11, "adapt=0.10 b=0.11"),
-    (0.00, 0.10, 0.12, "adapt=0.10 b=0.12"),
-    (0.00, 0.10, 0.13, "adapt=0.10 b=0.13"),
-    (0.00, 0.10, 0.14, "adapt=0.10 b=0.14"),
+    (0.00, "glucl=0.00"),
+    (0.50, "glucl=0.50"),
+    (1.00, "glucl=1.00"),
 ]
 
 
 def _job(job):
-    ca, adapt, bias, label, seed = job
+    glucl, label, seed = job
     p = Params()
-    p = dataclasses.replace(
-        p,
-        neural=dataclasses.replace(p.neural, command_ca_ratio=ca,
-                                   command_adapt_ratio=adapt),
-        sensory=dataclasses.replace(p.sensory, gate_bias=bias))
+    p = dataclasses.replace(p, neural=dataclasses.replace(
+        p.neural, glucl_strength=glucl))
     sim = Simulation(p, seed=seed, world=World(p.world, np.random.default_rng(0)),
                      placement=(0.0, 0.0, 0.0))
     fwd_i, bwd_i = sim.senses.avb, sim.senses.ava
@@ -116,12 +107,13 @@ def _job(job):
     rev_dur = float(back.sum()) * sample / rev if rev else float("nan")
 
     return dict(
-        ca=ca, adapt=adapt, bias=bias, label=label, seed=seed,
+        glucl=glucl, label=label, seed=seed,
         fwd=float(fwd.mean()), bwd=float(bwd.mean()),
         corr=float(np.corrcoef(fwd, bwd)[0, 1]) if fwd.std() > 0 and bwd.std() > 0
         else float("nan"),
         diff=float(diff.mean()), diff_sd=sd,
-        margin=(float(diff.mean()) - bias) / sd if sd > 0 else float("nan"),
+        margin=(float(diff.mean()) - p.sensory.gate_bias) / sd if sd > 0
+        else float("nan"),
         gate=float(gate.mean()), rev_rate=rev * 60.0 / MEASURE, rev_dur=rev_dur,
         frac_rev=float(back.mean()),
         speed=net / MEASURE, net_path=net / max(path, 1e-9),
@@ -130,7 +122,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(c, a, b, lb, s) for c, a, b, lb in JOBS for s in SEEDS]
+    jobs = [(g, lb, s) for g, lb in JOBS for s in SEEDS]
     print("COMMAND SWEEP -- %d trials x %.0f s  (estimated %.0f s)"
           % (len(jobs), WARMUP + MEASURE, estimate(len(jobs), WARMUP + MEASURE)))
     rows = pooled(_job, jobs)

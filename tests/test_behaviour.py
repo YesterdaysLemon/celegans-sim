@@ -372,3 +372,54 @@ def test_habituation_is_independent_of_the_timestep():
     assert abs(coarse - fine) < 0.02, (
         "habituation depends on the timestep: %.4f at 2.0 ms vs %.4f at 0.5 ms"
         % (coarse, fine))
+
+
+def test_rising_attractant_inhibits_aiy():
+    """The sign of chemotaxis, tested where it is unambiguous.
+
+    C. elegans chemotaxis is a biased random walk: the animal does not steer up a
+    gradient, it suppresses turns while things improve (Pierce-Shimomura, Morse & Lockery
+    1999). In this connectome the route from the nose to that decision is ASE onto AIY
+    (19 contacts), AIY onto AIZ (21), and AIZ onto the backward command pool (10) -- AIY
+    reaches the command layer only through AIZ. So a rising attractant, which depolarises
+    the ON cell ASEL, must *hyperpolarise* AIY. It used to depolarise it, because the
+    model gave every glutamatergic synapse an excitatory reversal, and the measured
+    consequence was an animal that reversed more often the better things got.
+
+    Tested on the membrane potential rather than on the reversal rate: the behavioural
+    effect is real but small against this animal's spontaneous rate, and a test that has
+    to average several seeds to see it is a slow test that still fails sometimes.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def aiy_response(glucl):
+        p = P()
+        p = dataclasses.replace(p, neural=dataclasses.replace(
+            p.neural, glucl_strength=glucl, noise_sigma=0.0))
+        sim = Simulation(p, seed=3, world=bare_world(p))
+        sim.run(6.0)
+        aiy = sim.conn.group("AIY")
+        before = float(sim.nervous.V[aiy].mean())
+        idx = sim.conn.select("ASEL", "ASER")
+        base = sim.senses.sense
+
+        def wrapped(*a, **k):
+            I = base(*a, **k)
+            I[idx] += 20.0            # a large, unambiguous "attractant is rising"
+            return I
+
+        sim.senses.sense = wrapped
+        sim.run(3.0)
+        return float(sim.nervous.V[aiy].mean()) - before
+
+    excitatory = aiy_response(0.0)
+    chloride = aiy_response(1.0)
+
+    assert excitatory > 0, (
+        "the uncorrected model should depolarise AIY, so this test is not measuring what "
+        "it thinks it is (%.3f mV)" % excitatory)
+    assert chloride < 0, (
+        "driving ASE still depolarises AIY with the chloride receptor in place "
+        "(%.3f mV): a rising attractant would make the animal turn more, which is "
+        "chemotaxis with the sign inverted" % chloride)

@@ -322,6 +322,67 @@ class NeuralParams:
     #
     # Neither is calibrated yet. Both are zero, which reproduces the current model exactly,
     # and the measurement that will set them is tools/ethogram.py.
+    # -- glutamate-gated chloride, and the sign of chemotaxis -------------------------------
+    # The chemotaxis assay reproduces Pierce-Shimomura's biased random walk with the bias
+    # pointing the wrong way: the animal reverses 13.4 times a minute while conditions
+    # improve and 9.0 while they worsen, a ratio of 0.68 where the animal is about 2 and
+    # anything above 1 is chemotaxis. It turns *more* when things are getting better.
+    #
+    # The route is short and the sign error is in it. ASEL and ASER both project onto AIY
+    # (19 and 16 contacts), AIY projects onto AIZ (21), and AIZ makes 10 contacts onto the
+    # backward command pool -- AIY itself makes none. So rising attractant depolarises
+    # ASEL, which excites AIY, which excites AIZ, which drives a reversal. Measured
+    # directly: 3 pA into AIY takes the reversal rate from 4.7 to 6.0 per minute, and the
+    # same current into AIZ does the same thing.
+    #
+    # In the animal AIY does the opposite -- it sustains forward runs and suppresses
+    # turning -- and the reason this model has it backwards is the same simplification
+    # that made the command pools mutually excitatory: glutamate collapsed to a single
+    # excitatory reversal. Chalasani et al. (2007) Nature 450:63 showed that the same
+    # glutamate release inhibits AIY through the glutamate-gated chloride channel GLC-3
+    # while exciting AIB through the AMPA-type GLR-1. One transmitter, two receptors,
+    # opposite signs -- which is the whole mechanism, and none of it survives a model that
+    # decides a synapse's sign from the transmitter alone.
+    #
+    # So the correction is the same one already made for AVL and DVB, run the other way,
+    # and it uses the same per-synapse reversal machinery: name the glutamatergic senders
+    # and the cells that answer them with a chloride channel. AIB is deliberately not in
+    # the list -- it holds GLR-1 and should stay excited.
+    glucl_pre: tuple = ("ASE", "AWC")     # glutamatergic sensory neurons
+    glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
+    # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
+    # ASEL -- which is what "the attractant is rising" looks like to the circuit:
+    #
+    #   glucl   baseline   ASEL driven   effect of things improving
+    #    0.0      4.67        5.00        +0.33   promotes reversal  (wrong way)
+    #    1.0      5.00        4.67        -0.33   suppresses reversal (right way)
+    #
+    # The sign is now the animal's. The magnitude is small because the route is thin --
+    # see the note above on how few contacts carry it -- so this changes which way the
+    # bias points without yet making it strong. Locomotion is untouched: on a bare plate
+    # ASE is not driven at all, and speed, travelling index and reversal rate are the same
+    # to three decimal places at 0.0 and 1.0.
+    #
+    # On the plate it moves the bias without yet winning the argument. The chemotaxis
+    # assay's pirouette ratio -- reversals while worsening over reversals while improving,
+    # which is above 1 for any animal that chemotaxes and about 2 for a real one -- goes
+    # from 0.68 to 0.88. Better, and still the wrong side of 1.
+    #
+    # Raising chemo_gain does not close it and makes it worse: at 150 pA/unit, six times
+    # the calibrated value, the ratio falls back to 0.66. So there is a second route from
+    # ASE to the backward pool that promotes reversals as the attractant rises, and it
+    # outruns the AIY arm when both are driven hard. The likely one is ASE onto AIB onto
+    # RIM, which reaches the backward pool through 16 gap junctions, and it is not
+    # correctable the same way -- AIB holds GLR-1 and is *supposed* to be excited.
+    #
+    # What is missing is the opponency itself. ASEL should be the cell that says "better"
+    # and ASER the cell that says "worse", and in this reconstruction they are wired almost
+    # identically: ASEL makes 19 contacts onto AIY and 9 onto AIB, ASER makes 16 and 12.
+    # Their separation in the animal is functional -- different receptors and neuropeptides
+    # downstream -- rather than anatomical, so contact counts alone cannot produce it and
+    # no amount of gain on a symmetric pair will either.
+    glucl_strength: float = 1.0           # 0 = as reconstructed, 1 = fully inhibitory
+
     command_forward: tuple = ("AVB", "PVC")
     command_backward: tuple = ("AVA", "AVD", "AVE")
     # Measured, in the order the sweeps ran, and the order matters because the second
