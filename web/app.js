@@ -60,6 +60,7 @@ const S = {
   kymo: null, kymoCtx: null,
   traces: [], selected: [],
   hover: null,
+  ablateMode: false, ablated: new Set(),
   freq: 0, freqBuf: [],
   connected: false,
 };
@@ -307,9 +308,21 @@ function drawNeurons() {
 
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i], a = act ? act[i] : 0.5;
+    const dead = S.ablated.has(i);
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = seq(a);
-    ctx.fill();
+    if (dead) {
+      ctx.fillStyle = C('--bg'); ctx.fill();
+      ctx.strokeStyle = C('--text-muted'); ctx.lineWidth = 1;
+      ctx.stroke();
+      const q = p.r * 0.75;
+      ctx.beginPath();
+      ctx.moveTo(p.x - q, p.y - q); ctx.lineTo(p.x + q, p.y + q);
+      ctx.moveTo(p.x + q, p.y - q); ctx.lineTo(p.x - q, p.y + q);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = seq(a);
+      ctx.fill();
+    }
     const sel = S.selected.indexOf(i);
     if (sel >= 0) {
       ctx.strokeStyle = SERIES[sel]; ctx.lineWidth = 2;
@@ -528,6 +541,14 @@ function wire() {
   nc.addEventListener('click', (e) => {
     const i = neuronAt(nc, e);
     if (i == null) return;
+    if (S.ablateMode) {
+      const name = S.meta.neurons[i].name;
+      if (S.ablated.has(i)) return;              // ablation is not undone one cell at a time
+      S.ablated.add(i);
+      send({ cmd: 'ablate', neurons: [name] });
+      updateAblateUI();
+      return;
+    }
     const at = S.selected.indexOf(i);
     if (at >= 0) S.selected.splice(at, 1);
     else { S.selected.push(i); if (S.selected.length > 3) S.selected.shift(); }
@@ -542,6 +563,7 @@ function wire() {
     send({ cmd: playing ? 'pause' : 'play' });
   });
   el('b-reset').addEventListener('click', () => {
+    S.ablated.clear(); updateAblateUI();
     S.trail = []; S.kymo = null; S.traces = S.selected.map(() => []);
     send({ cmd: 'reset' });
   });
@@ -556,6 +578,17 @@ function wire() {
     e.target.textContent = S.follow ? 'Follow' : 'Fixed';
     if (S.follow) S.recentre = true;
   });
+  el('b-ablate').addEventListener('click', () => {
+    S.ablateMode = !S.ablateMode;
+    updateAblateUI();
+  });
+  el('b-restore').addEventListener('click', () => {
+    if (!S.ablated.size) return;
+    S.ablated.clear();
+    send({ cmd: 'restore' });
+    updateAblateUI();
+  });
+
   el('b-poke-a').addEventListener('click', () => send({ cmd: 'poke', where: 'anterior', strength: 1.4 }));
   el('b-poke-p').addEventListener('click', () => send({ cmd: 'poke', where: 'posterior', strength: 1.4 }));
 
@@ -574,6 +607,17 @@ function wire() {
 /* ------------------------------------------------------------------- transport ---- */
 
 let ws = null;
+function updateAblateUI() {
+  const b = el('b-ablate');
+  b.setAttribute('aria-pressed', String(S.ablateMode));
+  b.textContent = S.ablateMode ? 'Click a cell' : 'Ablate';
+  el('b-restore').disabled = S.ablated.size === 0;
+  const n = S.ablated.size;
+  el('neuron-hint').textContent = S.ablateMode
+    ? 'click a neuron to silence it'
+    : (n ? n + ' ablated' : 'hover a neuron');
+}
+
 function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 
 function connect() {

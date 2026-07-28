@@ -242,3 +242,61 @@ def test_the_wave_travels_rather_than_standing():
             kappa.append(sim.body.curvature().copy())
     twi = travelling_index(np.array(kappa))
     assert twi > 0.15, "the body is oscillating as a standing wave (TWI %+.3f)" % twi
+
+
+def test_ablation_silences_a_neuron_and_is_reversible():
+    """Killing a cell must remove its drive, and restoring must put it back.
+
+    This guards a failure mode that is silent rather than loud. The step reads the
+    precomputed product of conductance and reversal potential, `GE_syn`, not `G_syn`, so
+    an ablation that zeroes only `G_syn` removes a cell's conductance while leaving its
+    driving potential in place -- the neuron looks dead in every matrix anyone inspects
+    and still drives its targets. Checked on a GABAergic cell because for an excitatory
+    one `GE_syn` is zero anyway (E_exc is 0 mV) and the test would pass without testing.
+    """
+    from worm.server import Runner
+    r = Runner()
+    i = r.sim.conn.index["DD01"]
+    out = lambda: (float(r.sim.nervous.G_syn[:, i].sum()),          # noqa: E731
+                   float(np.abs(r.sim.nervous.GE_syn[:, i]).sum()),
+                   float(r.sim.nervous.G_gap[i].sum()))
+    before = out()
+    assert before[0] > 0 and before[1] > 0 and before[2] > 0, "DD01 has no output to remove"
+
+    r.command({"cmd": "ablate", "neurons": ["DD01"]})
+    assert out() == (0.0, 0.0, 0.0), "ablation left drive behind: %r" % (out(),)
+
+    r.command({"cmd": "restore"})
+    assert out() == pytest.approx(before), "restore did not put the cell back"
+
+
+def test_ablating_the_forward_command_ends_forward_locomotion():
+    """The classic experiment: without AVB the animal stops going forwards.
+
+    Measured as *signed* progress along the body axis, which matters here -- the first
+    version of this test used unsigned speed and passed the ablated animal at 0.24 mm/s,
+    faster than the intact one, because silencing the forward command hands the cord to
+    the backward generator and the animal crawls away tail-first. Speed alone cannot see
+    that; the sign is the whole phenotype.
+    """
+    from worm.server import Runner
+    r = Runner()
+    r.sim = Simulation(r.params, seed=3, world=bare_world(r.params))
+    r.sim.run(8.0)
+
+    def along(seconds):
+        start = r.sim.body.centroid().copy()
+        axis = r.sim.body.body_direction().copy()
+        r.sim.run(seconds)
+        return float(np.dot(r.sim.body.centroid() - start, axis)) / seconds
+
+    intact = along(12.0)
+    r.command({"cmd": "ablate", "neurons": ["AVBL", "AVBR", "PVCL", "PVCR"]})
+    r.sim.run(4.0)                       # let the cord fall off its bifurcation
+    ablated = along(12.0)
+
+    assert intact > 0.05, (
+        "the intact animal was not crawling forwards to begin with (%.4f mm/s)" % intact)
+    assert ablated < 0.25 * intact, (
+        "ablating the forward command left the animal still going forwards: "
+        "%.4f -> %.4f mm/s along the body axis" % (intact, ablated))

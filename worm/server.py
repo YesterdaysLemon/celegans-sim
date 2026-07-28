@@ -41,6 +41,10 @@ class Runner:
         self.seed = seed
         self.sim = Simulation(self.params, seed=seed)
         self.lock = threading.Lock()
+        # Ablation state. Kept here rather than on the simulation because it is an
+        # experimental intervention on the model, not a property of the animal.
+        self.ablated: set[str] = set()
+        self._pristine = None
         self.running = True
         self.rate = 1.0                # requested multiple of real time
         self.achieved = 0.0
@@ -107,28 +111,52 @@ class Runner:
             elif kind == "reset":
                 self.seed = int(msg.get("seed", self.seed + 1))
                 self.sim = Simulation(self.params, seed=self.seed)
+                self.ablated.clear()
+                self._pristine = None
             elif kind == "drop_food":
                 self.sim.world.add_food_patch(
                     float(msg["x"]), float(msg["y"]), float(msg.get("r", 3.0)),
                     density=1.0, attractant=1.0, length_scale=7.0)
             elif kind == "ablate":
-                names = msg.get("neurons", [])
-                self._ablate(names)
+                self._ablate(msg.get("neurons", []))
+            elif kind == "restore":
+                self._ablate([], restore=True)
 
-    def _ablate(self, names) -> None:
-        """Silence neurons, the way a laser ablation experiment does."""
-        ns = self.sim.nervous
+    def _ablate(self, names, restore: bool = False) -> None:
+        """Silence neurons, the way a laser ablation experiment does.
+
+        Reversible, because the interesting thing about an ablation is the comparison
+        either side of it: kill AVB and forward locomotion should stop, restore it and the
+        animal should crawl again. The pristine conductances are kept once, on first use,
+        and every change is applied by rebuilding from them -- which is also what makes
+        restoring a single cell out of several possible without bookkeeping the overlaps.
+        """
+        ns, sim = self.sim.nervous, self.sim
+        if self._pristine is None:
+            self._pristine = (ns.G_gap.copy(), ns.G_syn.copy(), ns.E_syn.copy(),
+                              sim.muscles.G.copy())
+        if restore:
+            self.ablated.clear()
         for name in names:
-            i = self.sim.conn.index.get(name)
-            if i is None:
-                continue
+            if name in sim.conn.index:
+                self.ablated.add(name)
+
+        g_gap, g_syn, e_syn, nmj = self._pristine
+        ns.G_gap = g_gap.copy()
+        ns.G_syn = g_syn.copy()
+        sim.muscles.G = nmj.copy()
+        for name in self.ablated:
+            i = sim.conn.index[name]
             ns.G_gap[i, :] = 0.0
-            ns.G_syn[i, :] = 0.0
-            ns.G_syn[:, i] = 0.0
-            self.sim.muscles.G[:, i] = 0.0
-        ns.G_gap[:, [self.sim.conn.index[n] for n in names
-                     if n in self.sim.conn.index]] = 0.0
+            ns.G_gap[:, i] = 0.0
+            ns.G_syn[i, :] = 0.0          # inputs the cell receives
+            ns.G_syn[:, i] = 0.0          # drive the cell delivers
+            sim.muscles.G[:, i] = 0.0
         ns.gap_total = ns.G_gap.sum(axis=1)
+        # The step reads GE_syn, not G_syn, so this line is what actually silences the
+        # cell's chemical output; zeroing G_syn alone would remove its conductance while
+        # leaving its driving potential in place.
+        ns.GE_syn = ns.G_syn * e_syn
 
     # -------------------------------------------------------------------------- framing
     def hello(self) -> str:
