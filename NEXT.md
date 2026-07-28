@@ -35,6 +35,41 @@
 > cycle. The rate is 4.67 per minute against 3.2-3.5. And locomotion came out *better* than
 > the graded model it replaces on every measure, because the cords stopped sharing drive.
 >
+> ### The assays, rerun on an animal that can reverse
+>
+> First full run since day four, and the first ever on an animal with a working reversal.
+>
+> **Thermotaxis works.** This is the first sensory behaviour in the project to do so.
+> Animals started at 18.1 C moved +12.6 mm towards warmer; animals started at 21.9 C moved
+> -16.1 mm towards cooler. Both groups converge on the 20 C cultivation isotherm at
+> x = -6.2 mm, which is what the assay asks for.
+>
+> **Chemotaxis is positive for the first time, and still bad**: CI +0.053 against -0.014 on
+> day four, with 4 of 16 animals approaching. Reversals are real now -- 29 +- 27 per animal
+> over 200 s, 8.3% of the time spent reversing, against 1 per six animal-minutes before.
+>
+> And the mechanism measurement says exactly what is wrong, which is worth more than the
+> index:
+>
+> ```
+>   reversals/min while improving (dC/dt > 0):  13.36
+>   reversals/min while worsening (dC/dt < 0):   9.03
+>   ratio 0.68        real animal ~2; anything above 1 is chemotaxis
+> ```
+>
+> **The biased random walk is now running, and it is biased the wrong way.** The animal
+> turns *more* when things are getting better. Pierce-Shimomura's mechanism is present and
+> inverted, which is a sign error somewhere between ASE and the command pools rather than a
+> missing behaviour -- and it is a far more tractable problem than the one this replaces.
+> ASEL depolarises when the attractant rises and should be suppressing reversals; either
+> its route to AVA has the wrong net sign, or the ASE -> AIY/AIB stage does.
+>
+> That is the single next thing to chase, and `tools/assays.py chemotaxis` scores it
+> directly.
+>
+> **Aerotaxis still does not work**: 20.4% oxygen occupied against an ambient 21% and a
+> preference of 5-12%. **Nociception did not run** -- see the timeout note below.
+>
 > ### What still does not work, and it is now a narrower thing
 >
 > **A tap still does not reverse the animal.** Forward progress over three seconds is
@@ -136,7 +171,10 @@
 >   against CSS pixels, so at devicePixelRatio 2 it was out by a factor of two and no cell
 >   could be selected at all.
 > * The assay runner uses one flat job queue instead of one `pooled()` call per assay, and
->   eight workers rather than ten. Both measured; see `tools/assays.py`.
+>   eight workers rather than ten. Both measured; see `tools/assays.py`. Flattening also
+>   put every job under a single timeout where each assay used to have its own, and the
+>   first full run afterwards died with eight trials unfinished and nociception missing
+>   entirely; the budget now scales with the queue.
 >
 > ### Do not repeat these
 >

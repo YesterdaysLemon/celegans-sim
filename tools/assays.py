@@ -515,7 +515,13 @@ def main():
           % (len(jobs), len(names), sim_s, WORKERS))
     print("estimated %.0f s\n" % (sim_s / Params().neural.dt / THROUGHPUT))
 
-    rows = pooled(_dispatch, jobs, procs=WORKERS)
+    # The timeout has to scale with the queue. Flattening the assays into one pooled()
+    # call put every job under a single budget where each assay used to get its own, and
+    # the first full run after that change timed out with eight trials unfinished and
+    # nociception -- last in the queue -- missing entirely. Three times the estimate is
+    # generous enough to absorb a slow machine without waiting all night on a wedged one.
+    rows = pooled(_dispatch, jobs, procs=WORKERS,
+                  timeout=max(2400.0, 3.0 * sim_s / Params().neural.dt / THROUGHPUT))
 
     by = {}
     for r in rows:
