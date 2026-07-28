@@ -304,94 +304,37 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   the ablation. That share grew when the head delay went in. It is a fair measure of how
   much of the gait the command layer actually commands, and it is guarded by a test.
 
-- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
-  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
-  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
-  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
-  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
-  kinetics are where to look.
-
 - **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
   hyperpolarised correctly hands the cord to the A-class backward generator and the wave
   does reverse, but curvature r.m.s. goes to 7.5 and net speed to 0.018 mm/s. The intrinsic
   gate offsets are placed relative to a resting potential solved with AVB intact and do not
   follow it down when the drive is removed.
 
-  This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
-  proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
-  goes 0.10 → 0.20 L), and driving the head externally while measuring the body's response
-  gives a per-segment reflex gain near 1.4. Together those say the body wave here is
-  largely the **passive mechanical response** to the head's bending rather than a wave
-  regenerated segment by segment by proprioception. The reflex loop is present, measurable
-  and correctly signed — it just is not carrying as much of the wave as the animal's does,
-  so the head's own timing dominates and the body strings out behind it.
-- **Gait modulation runs backwards.** The medium does change the gait — 1.25 Hz on agar
-  against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz on agar and
-  1.76 Hz swimming. Same root cause: with the wave set by the head's own loop rather than
+  The reading that used to accompany this — that the wavelength is insensitive to the
+  proprioceptive reach, and therefore that the body wave is a passive mechanical response
+  to the head's bending — was measured when the wave was mostly standing and does not
+  survive. With a travelling wave, reach is the one thing that *does* set the wavelength:
+  0.49 to 0.64 L as reach goes 0.08 to 0.30, with the frequency flat to within 1% across
+  the same range.
+- **Gait modulation runs backwards** — though the numbers here predate the frequency work
+  and have not been rechecked since. As last measured, the medium did change the gait —
+  1.25 Hz on agar against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz
+  on agar and 1.76 Hz swimming. Agar is now 0.45 Hz, so the agar figure at least is stale;
+  whether the *direction* is still inverted is an open question and `tools/scorecard.py`
+  would answer it in a couple of minutes. Same root cause: with the wave set by the head's own loop rather than
   regenerated along the body, what the medium mostly changes is the mechanical load on the
   *head*, and a heavier load there shifts that loop's crossover rather than slowing the
   body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
   and deliberately does not assert which way, because asserting the real direction would
   be asserting something this model does not do.
-- **The worm crawls at 0.172 mm/s against the animal's 0.219**, with a net-to-path ratio of
-  0.86 and a travelling-wave index of +0.75. That is essentially the ceiling for this body:
-  driving the identical mechanics with a *prescribed* perfect travelling wave reaches
-  0.174 mm/s. Any further speed has to come from the mechanics, not the circuit.
+- **The travelling-wave index is +0.61, against +0.996 for the same body driven by a
+  prescribed perfect wave.** That control is the useful one: it says the mechanics can
+  carry a wave the nervous system is not yet producing, and the gap between +0.61 and
+  +0.996 is what the circuit still owes. Decomposing curvature over (time, arclength)
+  separates the travelling component from the standing one, and a standing wave produces
+  *exactly zero* net thrust however large its amplitude, which is why this is the measure
+  worth watching rather than the amplitude.
 
-  That index is the measure worth watching, and it is what unlocked this. Decomposing the
-  body's curvature over (time, arclength) separates the travelling component from the
-  standing one; a standing wave produces *exactly zero* net thrust however large its
-  amplitude, because its drag forces cancel over a cycle. The model shipped at **+0.33 and
-  5 µm/s** -- two thirds standing, undulating almost on the spot -- while the identical body
-  driven by a clean prescribed travelling wave reaches **+0.996 and 0.174 mm/s**. So the
-  mechanics were never at fault; the nervous system was producing a wave that stood still.
-
-  Tracing the travelling index stage by stage put the fault at the motor neurons, whose
-  output was a *pure* standing wave (index -0.006) — and then the phase profile showed the
-  phase gradient was actually fine at every stage. The problem was amplitude: the B-type
-  motor neurons were barely modulating at all, because the stretch receptor did not adapt.
-  A static body bend sat on its input at six to eleven times the size of the oscillation
-  riding on it, burying the signal and eating half the receptor's remaining gain — and that
-  is also why the gain could never be raised before, since turning it up amplified the
-  static bend into a permanent curl. High-passing the receptor, which is what every other
-  sensory channel here already did, raised net displacement twenty-fold.
-
-  Three plausible explanations were tested and refuted along the way, all recorded in
-  `NEXT.md`: backing off the head reflex (makes it worse), bending stiffness (a shallow
-  25% effect over a 1600-fold range, in the wrong direction), and a common oscillating
-  drive broadcast by AVB through its gap junctions (that neuron swings 4 mV, and clamping
-  it changes nothing).
-
-  That left one thing the reflex model could not do at all. Xu et al. (2018) solve this
-  model class analytically: in a chain where motor neurons *passively* relay proprioceptive
-  input, bending amplitude must decay exponentially towards the tail, with a length constant
-  that head reflex gain, muscle moment and bending stiffness can only trade against one
-  another. Measured here, amplitude fell 2.5-fold head to tail and the tail's coherence —
-  the fraction of its motion that belongs to the undulation at all — was 0.03. The tail was
-  not undulating; it was being dragged.
-
-  The fix was to stop the segments being passive. Each B-type motor neuron gained a
-  Morris-Lecar pair (regenerative calcium, delayed potassium) sized as a fraction of its own
-  resting conductance, which the descending AVB gap junctions — already in the connectome,
-  55 contacts, resting at −21 mV — hold at a Hopf bifurcation. Amplitude is then regenerated
-  segment by segment and proprioception carries only phase. Coherence rose in every region
-  (head 0.4→0.90, mid 0.4→0.84, tail 0.03→0.35), the amplitude profile flattened from
-  2.5/1.3/1.0 to 2.6/1.9/1.9, and net speed went 0.105 → 0.172 mm/s.
-
-  **The interesting part is where the optimum sits.** Sweeping the calcium conductance and
-  scoring on net displacement peaks where the Hopf margin is 0.94 — the units are poised
-  *at* the bifurcation, not past it. Push them past and each segment free-runs, locks to
-  itself, the tail reaches four times the head's amplitude, and the wave travels
-  **backwards**. The useful regime is a critically-poised regenerative amplifier, which has
-  the gain to cancel the relay's decay while still following its input, rather than an
-  autonomous oscillator, which does not follow anything. A second change landed alongside
-  it and is separated by its own control sweep (`tools/osc_control.py`): sensory input is
-  now scaled by each target's resting conductance, because a fixed current across an
-  eightfold spread of input conductance was hitting the small posterior units five times
-  harder than the large anterior ones. That was worth +14%, the oscillator a further +31%.
-
-- **The curvature amplitude is too low** — 2.3 /mm r.m.s. against a measured 4.3, so the
-  worm undulates more shallowly than a real one.
 - **The speed figure in this file was once twenty times too high**, and the reason is
   worth keeping. `sim.speed` used to smooth the *magnitude* of instantaneous centroid
   velocity, which counts the side-to-side slosh of the centroid within each undulation
@@ -411,9 +354,12 @@ Stated plainly, because a simulation that oversells itself is worse than useless
 - **Motor neurons saturate** at the extremes of each cycle under proprioceptive drive.
   This is arguably correct — Boyle et al. make their B-type neurons frankly binary — but
   it means their voltages are not quantitatively meaningful at the extremes.
-- **The stretch-receptor gain is fitted**, not measured, and is the main free parameter in
-  the model. So is Boyle et al.'s, and theirs differs by a factor of 1.86 between their own
-  paper and their own code.
+- **Two parameters are fitted rather than measured**, and they are the model's largest
+  free quantities. The stretch-receptor gain, which Boyle et al. also fit — theirs differs
+  by a factor of 1.86 between their own paper and their own code — and `head_delay`, a
+  0.60 s transport delay in the head reflex which is what brings the undulation frequency
+  into the animal's band. Nothing that slow exists in a real stretch receptor; see the note
+  on it in `params.py` for what it is standing in for and why it has not been earned yet.
 - **No pharyngeal pumping, no egg laying, no defecation cycle.** The 20 pharyngeal neurons
   are simulated but drive nothing.
 - **Two dimensions.** Left and right muscle quadrants merge, so no roll and no true
