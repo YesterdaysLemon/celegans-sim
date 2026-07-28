@@ -240,11 +240,25 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **The animal crawls at half the speed it should, and slowing the gait is what cost it.**
-  0.105 ± 0.025 mm/s against a measured 0.219, with a net-to-path ratio of 0.53 that only
-  just clears the bar. Getting the undulation frequency from 1.18 Hz down to the animal's
-  band bought the kinematics — curvature r.m.s. is now 4.35 against a measured 4.3 — and
-  cost the transport: the same body sweeping more slowly covers less ground per cycle.
+- **The animal crawls at 0.105 mm/s, and the 0.219 it is scored against is not reachable
+  at the frequency it is also scored against.** A travelling wave of frequency *f* and
+  wavelength *L* runs along the body at *V = f·L*, and an inextensible body in a viscous
+  medium cannot advance faster than its own wave — *U/V* < 1 strictly. The 0.219 mm/s is
+  Ramot et al.'s; the 0.30 Hz and 0.65 L are Fang-Yen et al.'s; together they need
+  *U/V* = 1.12, which is above the bound. They are different experiments under different
+  conditions and no animal satisfies all three.
+
+  Measured at the agar anisotropy of 40 that Berri et al. report, and at the animal's own
+  curvature, the mechanics here cap *U/V* at about 0.51. So 0.30 Hz with a 0.65 L
+  wavelength implies at most **0.099 mm/s**, and 0.219 mm/s implies **0.66 Hz**. Against a
+  self-consistent reading the model's 0.105 mm/s at 0.45 Hz is far closer than the table
+  suggests, and the table's speed row should be read with that in mind.
+
+  What *is* a real deficit: the model collects 62% of the thrust its own kinematics allow.
+  A clean prescribed wave at 0.45 Hz and 0.73 L reaching the same curvature gets
+  0.169 mm/s. The missing 38% is the travelling-wave index almost exactly — 0.169 × 0.61 =
+  0.103 against a measured 0.105 — because a standing wave produces no net thrust at all.
+  **Thrust and the travelling index are one problem, not two** (`tools/thrust.py`).
 
   This is visible all the way up. Every taxis assay depends on the animal covering enough
   ground to sample a gradient, and they all weakened when the gait slowed: aerotaxis no

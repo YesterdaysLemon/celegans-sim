@@ -1,5 +1,64 @@
 # Where this is, and what to do next
 
+> ## Day eleven. The speed target contradicts the frequency target, and thrust is the travelling index.
+>
+> Two results from `tools/thrust.py`, which drives the body with a clean prescribed wave
+> and no biology at all, so whatever it says is what the mechanics can do if something
+> drives them properly.
+>
+> ### The targets do not admit a solution
+>
+> A travelling wave of frequency f and wavelength L runs along the body at V = f*L, and an
+> inextensible body in a viscous medium cannot advance faster than its own wave: U/V < 1
+> strictly, approaching 1 only as the drag anisotropy goes to infinity. The table this
+> project scores itself against quotes 0.219 mm/s from Ramot et al. beside 0.30 Hz and
+> 0.65 L from Fang-Yen et al., and
+>
+>     U/V  =  0.219 / (0.30 * 0.65)  =  1.12
+>
+> which is above the bound. Different experiments, different conditions, and no animal
+> satisfies all three at once.
+>
+> Measured, at the agar anisotropy of 40 that Berri et al. report and at the animal's own
+> curvature of 4.3, the mechanics cap U/V at about **0.51**. So:
+>
+> * 0.30 Hz with a 0.65 L wavelength implies **at most 0.099 mm/s**;
+> * 0.219 mm/s implies **0.66 Hz**;
+> * the model, at 0.45 Hz and 0.105 mm/s, is doing U/V = 0.32 -- comfortably inside the
+>   bound, and much closer to a self-consistent animal than the table suggests.
+>
+> Eight days of gait work have been scored against a target set that contradicts itself,
+> which is worth knowing before any more of it happens. It also explains some of the
+> razor's-edge behaviour: configurations were being pushed towards a corner that does not
+> exist.
+>
+> ### Thrust is the travelling index, quantitatively
+>
+> At the model's own kinematics -- 0.45 Hz, 0.73 L -- a clean prescribed wave reproducing
+> the animal's curvature reaches **0.169 mm/s**. The model reaches 0.105, which is 62%.
+> Its travelling index is +0.61. And
+>
+>     0.169  x  0.61  =  0.103        against a measured 0.105
+>
+> to 2%. A standing wave produces exactly zero net thrust however large its amplitude, so
+> the fraction of the oscillation that travels is the fraction of the ceiling collected:
+>
+>     net speed  ~  (mechanical ceiling at these kinematics)  x  (travelling index)
+>
+> **So thrust and the travelling index are one problem.** There is no separate thrust
+> deficit to find, and the way to more speed is a wave that travels better rather than a
+> body that pushes harder. The index has been this project's central diagnostic since day
+> two and it is now also its speed equation.
+>
+> ### What that makes the next move
+>
+> Raise the travelling index from +0.61. It was +0.75 before `head_delay` went in, so the
+> delay bought the frequency partly by degrading the wave -- which is a third count against
+> it, after being unearned and being the wrong kind of object for gait modulation. The
+> head-circuit work that replaces it should be scored on the index, not only on the
+> frequency.
+
+
 > ## Day ten. The convergence failure was a coupling bug. Three days of conclusions withdrawn.
 >
 > **`BodyParams.dt` was documented as "shared with the neural step" and was shared with
