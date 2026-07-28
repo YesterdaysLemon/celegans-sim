@@ -152,6 +152,73 @@
 > from "how much" (a constant) is the change that would let the decision move freely, and
 > it is a small change to `Senses.sense`.
 >
+> ### The gait is not converged at the timestep it ships at
+>
+> This started as a performance question -- everything costs 2000 steps per simulated
+> second, so raising `dt` is the obvious lever -- and turned into something worth more than
+> the speed. `tools/timestep_convergence.py`, five step sizes, three seeds, 60 s each,
+> net displacement over the whole window rather than a trailing average:
+>
+> ```
+>    dt ms   steps/s |   freq Hz (sd)    wavelen L      TWI     k_rms   speed mm/s
+>    0.125     8000  |  1.622 (0.021)      0.61      +0.729     2.68    0.3245
+>    0.250     4000  |  1.411 (0.034)      0.58      +0.771     2.64    0.2770
+>    0.500     2000  |  1.233 (0.036)      0.54      +0.764     2.30    0.1918   <- shipped
+>    1.000     1000  |  1.028 (0.042)      0.50      +0.708     1.80    0.0899
+>    2.000      500  |  0.717 (0.083)      0.49      +0.524     1.42    0.0203
+> ```
+>
+> Halving the step from 0.25 to 0.125 ms still moves the frequency by **15%** and the net
+> speed by **17%**, against a seed spread of 0.03 Hz. The trend is monotonic across a
+> sixteen-fold range and nowhere near flat at the finest step tried. Curvature amplitude is
+> close to converged (2.64 -> 2.68, +1.5%); frequency, wavelength and speed are not.
+>
+> Two headline numbers in this project change meaning as a result.
+>
+> **The frequency discrepancy is worse than reported, not better.** The model is recorded as
+> undulating at 1.2 Hz against the animal's 0.30-0.50 Hz. Refine the integrator and it goes
+> *up*: 1.62 Hz at 0.125 ms and still climbing. Whatever the converged value is, it is
+> further from the animal than the number we have been quoting, so every "the frequency is
+> too high" note in this file understates the problem.
+>
+> **The speed agreement is partly an artefact of this timestep.** At 0.5 ms the animal
+> crawls at roughly the measured 0.219 mm/s, which has been read as the model getting
+> something right. At 0.125 ms it does 0.3245 mm/s, half again too fast. The model is not
+> matching the animal's speed; it is matching it at one step size, on the way past.
+>
+> Those two are the same fact seen twice -- an undulation that is too fast drives a body
+> that travels too fast -- and it makes the frequency the single problem to solve rather
+> than one of several.
+>
+> **The likely cause is the body, not the neurons.** Integration is exponential Euler on the
+> membrane equations, which is exact for their linear part. `Body.step` puts backward Euler
+> on the constant elastic and damping matrices but evaluates the configuration-dependent
+> drag metric explicitly and then takes `pos + qdot*dt`, so the mechanics are first-order.
+> The gait is a limit cycle closed through that integrator, and a limit cycle's period is
+> exactly what first-order phase error moves.
+>
+> So `dt` should come **down**, or the body should go to second order, and neither is a
+> performance decision. Do not raise it: that would make an unresolved number cheaper to
+> compute without making it truer. `tools/timestep_convergence.py` is the tool that settles
+> it, and it takes four minutes.
+>
+> ### On the assay runner
+>
+> One flat job queue instead of one `pooled()` call per assay, and eight workers instead of
+> ten. The old arrangement ran each assay to completion before starting the next, so a
+> 12-job assay finished with a wave of two trials holding the machine for as long as a full
+> wave -- about 30% of the wall clock across the suite. Workers past the eighth land on
+> this machine's efficiency cores and, because a wave ends when its slowest trial does,
+> drag the whole wave with them: going 8 -> 12 buys 10% aggregate throughput while making
+> each individual trial 37% slower. Both measurements are recorded in `tools/assays.py`.
+>
+> Not done, and deliberately: **decimating the world field sampling.** It is 14.6% of every
+> step and it is safe -- 99% of the power in what ASE actually reads sits below 1.23 Hz and
+> 99.9% below 4.2 Hz, so a zero-order hold at 100 Hz costs 0.24% rms error in that signal.
+> But it buys 14% in exchange for putting a second clock into a model that currently has
+> exactly one, and it is worth much more after the timestep question is settled than
+> before: at `dt` = 0.125 ms the same 100 Hz hold saves four times as much.
+>
 > ### Added
 >
 > * `tools/command_probe.py` -- what each input is worth, in units of the decision's own
@@ -750,6 +817,7 @@ PYTHONPATH=. .venv/bin/python tools/ethogram.py             # reversal statistic
 PYTHONPATH=. .venv/bin/python tools/assays.py triage        # two minutes; run before the full assay
 PYTHONPATH=. .venv/bin/python tools/reflex_gain.py          # the key measurement
 PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no biology
+PYTHONPATH=. .venv/bin/python tools/timestep_convergence.py # is the gait converged? (~4 min)
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # 33 tests, ~5 min
 .venv/bin/python run.py --headless 60
 ```

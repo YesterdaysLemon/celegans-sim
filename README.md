@@ -28,8 +28,12 @@ PYTHONPATH=. .venv/bin/python tools/diagnose_loop.py   # gait metrics
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
 ```
 
-It runs at roughly real time on one core (the nervous system alone is ~8× real time; the
-body mechanics are the expensive part).
+It runs at roughly real time on one core — 0.57 ms of wall time per 0.5 ms step. Measured
+by subsystem, that is 27% sensory, 26% body mechanics, 19% nervous system, 7% muscle; of
+the sensory share, more than half is sampling the world's chemical fields. Eight concurrent
+trials is where this machine stops scaling (8 cores at 84% efficiency, 12 at 62%), so a
+long sweep is bounded by about 11,800 steps per second in aggregate however many workers
+it is given.
 
 ---
 
@@ -230,6 +234,34 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   the decision reads the one component common drive cannot move. Four candidate fixes have
   been tried and refuted; the measurements are in `NEXT.md`.
 
+- **The gait is not converged at the timestep the model ships at**, and two of the numbers
+  in the table above change meaning because of it. Halving the step from 0.25 to 0.125 ms
+  still moves the undulation frequency by 15% and the net speed by 17%, against a
+  seed-to-seed spread of 0.03 Hz, and the trend is monotonic across a sixteen-fold range
+  (`tools/timestep_convergence.py`):
+
+  ```
+     dt ms  |   freq Hz    wavelen L      TWI     k_rms   speed mm/s
+     0.125  |   1.622        0.61       +0.729    2.68     0.3245
+     0.250  |   1.411        0.58       +0.771    2.64     0.2770
+     0.500  |   1.233        0.54       +0.764    2.30     0.1918   <- shipped
+     1.000  |   1.028        0.50       +0.708    1.80     0.0899
+     2.000  |   0.717        0.49       +0.524    1.42     0.0203
+  ```
+
+  Curvature amplitude is nearly converged; frequency, wavelength and speed are not. So the
+  frequency discrepancy below is **worse** than stated — refine the integrator and it moves
+  further from the animal, not closer — and the crawling speed agreeing with the measured
+  0.219 mm/s is partly an accident of this step size, since at 0.125 ms the animal does
+  0.3245 mm/s. Both are the same fact: an undulation that is too fast drives a body that
+  travels too fast.
+
+  The neurons are integrated with exponential Euler, exact for the linear part of the
+  membrane equation. The body is where the error is: `Body.step` puts backward Euler on the
+  constant elastic and damping matrices but evaluates the configuration-dependent drag
+  metric explicitly and then takes `pos + qdot*dt`, so the mechanics are first-order, and
+  the gait is a limit cycle closed through that integrator.
+
 - **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
   crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
   in the model, and it is mechanical rather than neural: sweeping the motor neurons'
@@ -402,6 +434,7 @@ tools/command_sweep.py  behavioural and locomotor scores side by side, for the c
 tools/ethogram.py       reversal rate, run lengths and reorientation, off food and on
 tools/assays.py         chemotaxis, aerotaxis, thermotaxis, nociception
 tools/calibrate_body.py mechanics checks, independent of the biology
+tools/timestep_convergence.py  is the gait converged at the step size it runs at?
 ```
 
 ## Data and licensing
