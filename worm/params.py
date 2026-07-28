@@ -524,11 +524,60 @@ class SensoryParams:
     # and leaves the slow one.
     head_tau: float = 0.22            # s   stretch-receptor adaptation of the head reflex
 
-    # Forward is the default state. AVB is tonically active in a freely moving animal
-    # and reversals are triggered events; a weak drive here leaves the command layer
-    # bistable, and which way it settles depends on the noise seed rather than on anything
-    # meaningful.
-    tonic_forward: float = 90.0      # pA  tonic drive to the forward command interneurons
+    # -- the command layer ----------------------------------------------------------------
+    # These three parameters used to be one, and separating them is what makes any
+    # sensory-driven behaviour possible.
+    #
+    # A single 90 pA tonic current into AVB was doing two incompatible jobs. It decided
+    # *which way the animal goes*, through a winner-take-all on absolute AVA/AVB activity;
+    # and, once the B-type motor neurons became Morris-Lecar units held at a Hopf
+    # bifurcation by AVB's gap junctions, it also decided *whether the animal can walk at
+    # all*. Those two roles have opposite requirements. The decision wants AVB unsaturated
+    # so that sensory input can move it; the gait wants AVB pinned high so the B cord stays
+    # regenerative. Pinned won, and the measured consequence was that the gate read 98%
+    # forward in every animal for an entire run, no reversal ever occurred, and chemotaxis
+    # and aerotaxis were both flat. Turning the drive down to release the decision killed
+    # the gait first: at 22 pA the gate had moved only 98% -> 90% while net-to-path
+    # collapsed from 0.76 to 0.05.
+    #
+    # So the gait drive is now delivered directly to whichever motor cord is selected
+    # (cord_drive), and the command interneurons are left to do nothing but choose. AVB
+    # keeps a forward bias, because forward is the default state in a freely moving animal
+    # and reversals are triggered events -- but it is a bias now, not a clamp.
+    #
+    # Calibrated together (tools/gate_calibrate.py, 3 seeds each). The old configuration
+    # is the last row of the middle block -- same 90 pA, no cord drive -- and every number
+    # below it is better:
+    #
+    #   tonic  cord_drive   gate (sd)      speed    net/path    TWI
+    #     22        0      0.763 (0.218)   0.1142     0.559    +0.294   gate too loose
+    #     22        8      0.961 (0.038)   0.2187     0.905    +0.778   <- adopted
+    #     45        0      0.994 (0.006)   0.2651     0.934    +0.839   faster, gate stiff
+    #     90        0      0.999 (0.001)   0.2356     0.854    +0.836
+    #     90       20      0.999 (0.001)   0.1325     0.751    +0.611
+    #
+    # Two things fall out of that table. The difference-based gate is worth about 23% of
+    # speed on its own, before any decoupling -- compare 90/0 at 0.2356 against the old
+    # absolute-activity gate's 0.191 -- so the cubed winner-take-all was costing
+    # locomotion as well as blocking behaviour. And 45/0 is faster still at 0.265, but its
+    # gate barely moves (sd 0.006); it is a worm that crawls beautifully and cannot change
+    # its mind. 22/8 is chosen for the standard deviation, not the mean: 0.038 is the
+    # dynamic range every sensory behaviour has to act through, and the speed it comes with
+    # (0.2187 mm/s) already matches the animal's 0.219.
+    tonic_forward: float = 22.0      # pA  forward bias on the command interneurons
+    tonic_backward: float = 0.0      # pA  matching bias on AVA, for experiments
+    # Descending drive to the selected cord: what actually holds those motor neurons at
+    # their bifurcation. Split between the two cords by the direction gate below, so the
+    # cord that is not selected goes passive -- which is the "conditional" in conditional
+    # oscillator, and is what stops the two cords fighting over the same muscles.
+    cord_drive: float = 8.0          # pA
+    # The direction gate reads the *difference* between the forward and backward command
+    # pools rather than their absolute activities. A difference has dynamic range where a
+    # saturated absolute value has none: AVB sat at 0.91 and AVA at 0.25 in every animal,
+    # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
+    # at which the animal is evenly poised, and gate_slope how sharply it commits.
+    gate_slope: float = 30.0         # per unit of activation difference
+    gate_bias: float = 0.09          # activation difference at the 50/50 point
 
 
 @dataclass(frozen=True)

@@ -41,6 +41,7 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ.setdefault(_v, "1")
 
 import multiprocessing as mp  # noqa: E402
+from concurrent import futures  # noqa: E402
 import sys  # noqa: E402
 
 import numpy as np  # noqa: E402
@@ -116,20 +117,36 @@ def estimate(n_trials, duration, procs=10):
     return batches * duration / RATE
 
 
-def pooled(fn, jobs, procs=10):
+def pooled(fn, jobs, procs=10, timeout=1800):
     """Run trials across processes, reporting each one as it lands.
 
-    Deliberately imap_unordered rather than map: a pool whose worker dies leaves map()
-    blocked on a lock forever with no output and no error, which is exactly what happened
-    here -- a run sat at 0% CPU for thirteen minutes looking identical to a slow one.
-    Streaming results means a stall is visible immediately, and partial results survive.
+    ProcessPoolExecutor rather than multiprocessing.Pool, and the reason is scars: a Pool
+    whose worker dies leaves map()/imap() blocked on a lock forever, with no output and no
+    error. Two runs here sat at 0% CPU looking exactly like slow ones -- one for thirteen
+    minutes, one stalled at 10 of 12 trials. The executor raises BrokenProcessPool instead,
+    and the per-future timeout turns any remaining stall into a reported failure rather
+    than a hang. Failed trials come back as None; callers filter them.
     """
     workers = max(1, min(procs, mp.cpu_count() - 2))
-    out = []
-    with mp.Pool(workers) as pool:
-        for i, r in enumerate(pool.imap_unordered(fn, jobs, chunksize=1), 1):
-            out.append(r)
-            print("    [%d/%d]" % (i, len(jobs)), file=sys.stderr, flush=True)
+    out, done = [], 0
+    with futures.ProcessPoolExecutor(max_workers=workers) as ex:
+        pending = {ex.submit(fn, j): j for j in jobs}
+        try:
+            for fut in futures.as_completed(pending, timeout=timeout):
+                done += 1
+                try:
+                    out.append(fut.result())
+                except Exception as exc:                      # noqa: BLE001
+                    print("    [%d/%d] FAILED %r: %s"
+                          % (done, len(jobs), pending[fut], exc),
+                          file=sys.stderr, flush=True)
+                else:
+                    print("    [%d/%d]" % (done, len(jobs)), file=sys.stderr, flush=True)
+        except futures.TimeoutError:
+            print("    STALLED: %d of %d trials never returned after %ds"
+                  % (len(jobs) - done, len(jobs), timeout), file=sys.stderr, flush=True)
+            for fut in pending:
+                fut.cancel()
     return out
 
 

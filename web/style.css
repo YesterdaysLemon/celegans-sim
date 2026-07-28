@@ -118,7 +118,11 @@ header {
 aside {
   grid-area: side;
   display: grid;
-  grid-template-rows: minmax(150px, 1.15fr) auto minmax(96px, 0.75fr) minmax(96px, 0.75fr);
+  /* nervous system, muscle, kymograph, membrane trace, senses. The last is sized to
+     its content rather than sharing a fraction, so adding a receptor row grows the
+     panel instead of clipping it. */
+  grid-template-rows: minmax(120px, 1fr) auto minmax(66px, 0.5fr)
+                      minmax(66px, 0.5fr) minmax(126px, auto);
   gap: var(--gap);
   min-height: 0;
 }
@@ -205,3 +209,28 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
   }
   html, body { overflow: auto; }
 }
+
+/* --- what it senses -------------------------------------------------------------- */
+/* Seven scalars the server has always sent and the viewer used to discard. Each row is
+   a labelled bar so a receptor responding is visible at a glance, which is the whole
+   point: the assays say these do not drive behaviour yet, and watching them move while
+   the animal ignores them is the clearest statement of where the model stands. */
+#senses {
+  position: absolute; inset: 22px 11px 8px;
+  display: grid;
+  grid-template-columns: auto minmax(28px, 1fr) auto;
+  grid-auto-rows: 1fr;
+  gap: 2px 8px;
+  align-items: center;
+  font-size: 10px;
+}
+#senses .s-name { color: var(--text-muted); white-space: nowrap;
+                  overflow: hidden; text-overflow: ellipsis; }
+#senses .s-val  { color: var(--text-secondary); font-variant-numeric: tabular-nums;
+                  text-align: right; white-space: nowrap; }
+/* display:block on both -- these are spans, and width is ignored on inline boxes, so
+   the fills rendered at zero pixels wide while reporting the right percentages. */
+#senses .s-bar  { display: block; height: 4px; background: var(--gridline);
+                  border-radius: 2px; overflow: hidden; }
+#senses .s-fill { display: block; height: 100%; border-radius: 2px;
+                  transition: width 80ms linear; }

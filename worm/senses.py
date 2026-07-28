@@ -185,30 +185,40 @@ class Senses:
         I[self.dopaminergic] += p.food_gain * f
 
         # --------------------------------------------------------- locomotory command bias
+        # A bias, not a clamp. See SensoryParams for why these are now separate.
         I[self.avb] += p.tonic_forward
+        I[self.ava] += p.tonic_backward
+
+        # ------------------------------------------------------- the direction decision
+        # Read the *difference* between the two command pools. Absolute activity has no
+        # dynamic range here -- AVB saturates and stays saturated -- but the difference
+        # between the pools moves whenever either one is driven, which is what lets a
+        # sensory neuron have any say in where the animal goes.
+        fwd_act = float(np.mean(activation[self.avb]))
+        bwd_act = float(np.mean(activation[self.ava]))
+        fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (fwd_act - bwd_act - p.gate_bias)))
+        bwd_frac = 1.0 - fwd_frac
+
+        # Descending drive to the selected cord. This is the gait, and it is deliberately
+        # no longer carried by AVB's own membrane potential: the B and A motor neurons only
+        # oscillate when their command interneuron is engaged (Kawano et al. 2011; Fouad et
+        # al. 2018), so the drive that holds them at their bifurcation follows the gate.
+        # The unselected cord goes passive and stops competing for the same muscles.
+        I[self.db] += p.cord_drive * fwd_frac
+        I[self.vb] += p.cord_drive * fwd_frac
+        I[self.da] += p.cord_drive * bwd_frac
+        I[self.va] += p.cord_drive * bwd_frac
 
         # ------------------------------------------------------------------ proprioception
         # Normalised curvature: 5 rad/mm is roughly the peak a crawling worm reaches.
         k = np.clip(curvature / 5.0, -2.0, 2.0)
-        gate_fwd = float(np.mean(activation[self.avb]))
-        gate_bwd = float(np.mean(activation[self.ava]))
-        # The B and A motor classes only oscillate when their command interneuron is
-        # engaged (Kawano et al. 2011; Fouad et al. 2018), so the proprioceptive drive is
-        # gated by AVB and AVA respectively. Without that gate the forward and backward
-        # wave generators fight each other continuously.
-        # Forward and backward are alternatives, not a blend: a real animal committed to a
-        # reversal is not also running the forward wave generator at half strength. Cubing
-        # the command-interneuron activities before normalising turns a modest difference
-        # in AVB-vs-AVA drive into a near-exclusive choice, which is what the mutually
-        # inhibitory command circuit does in the animal.
-        gate_fwd, gate_bwd = gate_fwd ** 3, gate_bwd ** 3
-        gate_sum = gate_fwd + gate_bwd + 1e-9
+        gate_fwd, gate_bwd = fwd_frac, bwd_frac
         # Stretch receptors saturate, and saying so here matters: without it a sharp body
         # bend delivers enough current to drive a motor neuron straight through the bottom
         # of its physiological range and pin it there.
         # Adapt out the static component before the receptor saturates on it, so the whole
         # dynamic range is spent on the part of the bend that is actually changing.
-        raw = (self.W_b @ k) * (gate_fwd / gate_sum) + (self.W_a @ k) * (gate_bwd / gate_sum)
+        raw = (self.W_b @ k) * gate_fwd + (self.W_a @ k) * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         I += np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
         # The head reflex runs whichever way the animal is going -- it is what keeps the

@@ -10,7 +10,7 @@
 
 const MAGIC = 0x574f524d;
 const FIELD_MAGIC = 0x574f524e;
-const HEADER_BYTES = 72;
+const HEADER_BYTES = 76;   // 6 uint32 + 13 float32
 
 const css = getComputedStyle(document.documentElement);
 const C = (name) => css.getPropertyValue(name).trim();
@@ -615,6 +615,41 @@ function onHello(m) {
   el('dish-hint').textContent = `${m.neurons.length} neurons · ${m.counts.chem} synapses · ${m.counts.gap} gap junctions`;
 }
 
+// Seven receptor readings, drawn as labelled bars. Ranges are the physiological span of
+// each field in this dish, not the observed min/max, so a flat bar means the animal is
+// genuinely sitting at one end rather than that the scale collapsed.
+const SENSE_ROWS = [
+  ['Attractant', 'attractant', 0, 1.1, 'var(--series-1)'],
+  ['Food',       'food',       0, 1.0, 'var(--series-3)'],
+  ['Repellent',  'repellent',  0, 0.9, 'var(--series-2)'],
+  ['Oxygen',     'oxygen',     0.05, 0.21, 'var(--series-4)'],
+  ['Temperature','temperature', 17, 25, 'var(--series-5)'],
+  ['Touch',      'touch',      0, 3.0, 'var(--series-6)'],
+  ['Forward gate', 'gateF',    0, 1.0, 'var(--text-secondary)'],
+];
+const SENSE_FMT = { oxygen: v => (100 * v).toFixed(1) + '%',
+                    temperature: v => v.toFixed(1) + '\u00b0C' };
+
+function drawSenses(sensed) {
+  let host = el('senses');
+  if (!host) return;
+  if (!host.dataset.built) {
+    host.innerHTML = SENSE_ROWS.map(([label, key, , , colour]) => `
+      <span class="s-name">${label}</span>
+      <span class="s-bar"><span class="s-fill" data-fill="${key}"
+            style="background:${colour}"></span></span>
+      <span class="s-val" data-val="${key}">&mdash;</span>`).join('');
+    host.dataset.built = '1';
+  }
+  for (const [, key, lo, hi] of SENSE_ROWS) {
+    const v = sensed[key] ?? 0;
+    const frac = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+    host.querySelector(`[data-fill="${key}"]`).style.width = (100 * frac) + '%';
+    host.querySelector(`[data-val="${key}"]`).textContent =
+      (SENSE_FMT[key] || (x => x.toFixed(2)))(v);
+  }
+}
+
 function onFrame(buf, dv) {
   const nNodes = dv.getUint32(4, true), nNeu = dv.getUint32(8, true);
   const nMus = dv.getUint32(12, true), nJoint = dv.getUint32(16, true);
@@ -623,6 +658,18 @@ function onFrame(buf, dv) {
   const t = dv.getFloat32(o, true), speed = dv.getFloat32(o + 4, true);
   const food = dv.getFloat32(o + 8, true), dir = dv.getFloat32(o + 12, true);
   const achieved = dv.getFloat32(o + 16, true);
+  // What the animal is actually sensing. The server has always sent these seven; nothing
+  // read them until the sensory work made it matter what the receptors see.
+  const sensed = {
+    attractant: dv.getFloat32(o + 20, true),
+    temperature: dv.getFloat32(o + 24, true),
+    oxygen: dv.getFloat32(o + 28, true),
+    food: dv.getFloat32(o + 32, true),
+    touch: dv.getFloat32(o + 36, true),
+    gateF: dv.getFloat32(o + 40, true),
+    gateB: dv.getFloat32(o + 44, true),
+    repellent: dv.getFloat32(o + 48, true),
+  };
 
   let p = HEADER_BYTES;
   const nodes = new Float32Array(buf, p, nNodes * 2); p += nNodes * 8;
@@ -631,7 +678,8 @@ function onFrame(buf, dv) {
   const tension = new Float32Array(buf, p, nMus); p += nMus * 4;
   const kappa = new Float32Array(buf, p, nJoint);
 
-  S.frame = { t, speed, food, dir, achieved, nodes, act, V, tension, kappa, running };
+  S.frame = { t, speed, food, dir, achieved, sensed, nodes, act, V, tension, kappa, running };
+  drawSenses(sensed);
 
   const cx = nodes.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / nNodes;
   const cy = nodes.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0) / nNodes;
