@@ -28,8 +28,12 @@ PYTHONPATH=. .venv/bin/python tools/diagnose_loop.py   # gait metrics
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
 ```
 
-It runs at roughly real time on one core (the nervous system alone is ~8× real time; the
-body mechanics are the expensive part).
+It runs at roughly real time on one core — 0.57 ms of wall time per 0.5 ms step. Measured
+by subsystem, that is 27% sensory, 26% body mechanics, 19% nervous system, 7% muscle; of
+the sensory share, more than half is sampling the world's chemical fields. Eight concurrent
+trials is where this machine stops scaling (8 cores at 84% efficiency, 12 at 62%), so a
+long sweep is bounded by about 11,800 steps per second in aggregate however many workers
+it is given.
 
 ---
 
@@ -97,6 +101,28 @@ Left uncorrected, the heavier ventral innervation holds the worm in a permanent 
 drive is equalised across the 95 cells, and each cell's excitatory conductance is scaled so
 it rests at the midpoint of its own tension curve. The *relative* weighting among any one
 cell's presynaptic partners stays exactly as reconstructed.
+
+### Memory
+
+One thing here remembers. Every other state variable forgets on purpose: the sensory
+adaptation filters exist to discard the past, and the modulators integrate over tens of
+seconds and then decay. The mechanoreceptor carries a depleting resource — repeated taps
+consume it, rest refills it with its own time constant — which reproduces the three things
+Rankin, Beck & Chiba (1990) measured in tap habituation from one equation rather than
+three fits: the response decrements, it recovers with rest, and a shorter interval
+habituates deeper than a longer one. That last is what distinguishes habituation from
+fatigue, and it holds here — 0.25 resource remaining at a 10 s interval against 0.45 at
+30 s, for the same rate and the same number of taps.
+
+It sits in the receptor rather than at the synapse, and that is a measured result rather
+than a preference: Rose and Rankin place the change presynaptically, but this connectome
+routes the tap response through gap junctions — cutting ALM and AVM's entire chemical
+output leaves the response unchanged, while cutting their gap junctions halves it — and no
+presynaptic depression can habituate an ohmic junction. The presynaptic machinery is
+present and switched off.
+
+The memory is currently invisible in behaviour, for the reason given under *what it does
+not get right*: there is no tap-withdrawal reversal to decrement.
 
 ### Body
 
@@ -175,24 +201,27 @@ now pays for its own amplitude.
 
 ## Does it behave like a worm?
 
-`pytest tests/` — 30 tests, of which these are the load-bearing ones. Reference values are
-measurements on live animals.
+`pytest tests/` — 38 tests, of which these are the load-bearing ones. Reference values are
+measurements on live animals; the model column is the mean and spread over five seeds from
+a single run of `tools/scorecard.py`, so every row describes the same animal. It has not
+always: this table once quoted a crawling speed from day two beside a frequency from day
+nine.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **2.4 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **12–14 /mm** | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **4.35 ± 0.10 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **14.4 ± 1.5 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.095–0.106 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.66–0.72** | well above 0.5 | — |
-| Travelling-wave index | **+0.48–0.57** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **1.2 Hz** *(fast)* | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
-| Wavelength, agar | **1.4 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Crawling speed (net) | **0.105 ± 0.025 mm/s** *(slow)* | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.53 ± 0.13** | well above 0.5 | — |
+| Travelling-wave index | **+0.61 ± 0.04** | +1 for a pure travelling wave | — |
+| Undulation frequency, agar | **0.45 ± 0.01 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.73 ± 0.01 L** | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
 Curvature, wave direction and the membrane potentials land on the measured values. The
 gait's *timing* does not: see below.
@@ -211,12 +240,69 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
-  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
-  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
-  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
-  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
-  kinetics are where to look.
+- **The animal crawls at half the speed it should, and slowing the gait is what cost it.**
+  0.105 ± 0.025 mm/s against a measured 0.219, with a net-to-path ratio of 0.53 that only
+  just clears the bar. Getting the undulation frequency from 1.18 Hz down to the animal's
+  band bought the kinematics — curvature r.m.s. is now 4.35 against a measured 4.3 — and
+  cost the transport: the same body sweeping more slowly covers less ground per cycle.
+
+  This is visible all the way up. Every taxis assay depends on the animal covering enough
+  ground to sample a gradient, and they all weakened when the gait slowed: aerotaxis no
+  longer reaches the lawn at all (21.0% oxygen occupied, i.e. ambient), and thermotaxis
+  regressed from moving both groups towards the cultivation isotherm to moving neither.
+  The chemosensory drive fell with it, 0.58 to 0.35 pA, because a slower animal crosses
+  the gradient more slowly.
+
+  So frequency and speed are currently traded against each other, which they should not
+  be — a real worm does 0.30 Hz *and* 0.219 mm/s. Something is wrong with how much thrust
+  the model gets per undulation, and that is now the sharpest open question in the
+  locomotion.
+
+- **The tap-withdrawal reflex does not work, so the memory below has nothing to act on.**
+  Forward progress over the three seconds after a tap is +0.739 mm against +0.786 with no
+  tap. The animal now reverses spontaneously — 4.67 times a minute in episodes of 0.69 s,
+  against 3.2–3.5 a minute lasting 1–4 s in a real worm — but a tap is not enough to
+  trigger one: it moves the command difference about 0.53 of a standard deviation against
+  the 1.33 it would need.
+
+  The remaining gap is the touch pathway rather than the decision. In this reconstruction
+  anterior touch makes 12 chemical and 2 gap contacts onto the entire backward command
+  pool, against 27 chemical contacts onto the *forward* one — ALM and AVM drive AVB harder
+  than they drive AVA. That is a wiring fact and it deserves checking against a newer
+  reconstruction before anything is tuned around it.
+
+- **Chemotaxis is biased the right way now, and still goes nowhere.** The pirouette ratio
+  — reversals while conditions worsen over reversals while they improve, the quantity
+  Pierce-Shimomura's mechanism is made of — has crossed 1 for the first time, at 1.22
+  against a real animal's ~2. So the animal does now suppress turning when things improve.
+  The chemotaxis index is nonetheless −0.016, because the animal barely travels: it ends
+  1.7 mm from where it started. The mechanism is right and the locomotion is not carrying
+  it, which is the speed problem above rather than a sensory one.
+
+- **The gait's step dependence was a coupling bug, not a numerical one, and the previous
+  entry here was wrong.** `BodyParams.dt` was documented as "shared with the neural step"
+  and was shared with nothing: `Body` kept its own timestep, `Simulation` used
+  `NeuralParams.dt`, and changing the latter left the body advancing 0.5 ms per call while
+  the rest of the animal believed otherwise. At dt = 0.125 ms the body ran four times fast
+  relative to its own nervous system, and every convergence measurement made here was
+  measuring that.
+
+  With the two synchronised, the frequency sits at 0.44–0.45 Hz across a sixteen-fold range
+  of step size, curvature r.m.s. at 4.3–4.8 and the travelling index at 0.59–0.68 — where
+  before, every fine-step run collapsed to 0.13–0.20 Hz with a 2–6 L wavelength. The claim
+  that "integrated accurately this reflex chain does not produce C. elegans locomotion" is
+  withdrawn.
+
+  What remains is real and smaller: the frequency's seed-to-seed spread is 0.008 Hz at most
+  step sizes and 0.14 Hz at two of them. That is the gait bistability this project has
+  documented since day two, it is a property of the model rather than of the integrator,
+  and characterising it wants more than the three seeds used here.
+
+- **Ablating AVB halves forward locomotion rather than abolishing it.** In a real worm
+  losing the forward command interneurons ends forward movement; here it removes about
+  half of it, because the head reflex propels the animal on its own and is untouched by
+  the ablation. That share grew when the head delay went in. It is a fair measure of how
+  much of the gait the command layer actually commands, and it is guarded by a test.
 
 - **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
   hyperpolarised correctly hands the cord to the A-class backward generator and the wave
@@ -224,141 +310,48 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   gate offsets are placed relative to a resting potential solved with AVB intact and do not
   follow it down when the drive is removed.
 
-  This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
-  proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
-  goes 0.10 → 0.20 L), and driving the head externally while measuring the body's response
-  gives a per-segment reflex gain near 1.4. Together those say the body wave here is
-  largely the **passive mechanical response** to the head's bending rather than a wave
-  regenerated segment by segment by proprioception. The reflex loop is present, measurable
-  and correctly signed — it just is not carrying as much of the wave as the animal's does,
-  so the head's own timing dominates and the body strings out behind it.
-- **Gait modulation runs backwards.** The medium does change the gait — 1.25 Hz on agar
-  against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz on agar and
-  1.76 Hz swimming. Same root cause: with the wave set by the head's own loop rather than
-  regenerated along the body, what the medium mostly changes is the mechanical load on the
-  *head*, and a heavier load there shifts that loop's crossover rather than slowing the
-  body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
-  and deliberately does not assert which way, because asserting the real direction would
-  be asserting something this model does not do.
-- **The worm crawls at 0.172 mm/s against the animal's 0.219**, with a net-to-path ratio of
-  0.86 and a travelling-wave index of +0.75. That is essentially the ceiling for this body:
-  driving the identical mechanics with a *prescribed* perfect travelling wave reaches
-  0.174 mm/s. Any further speed has to come from the mechanics, not the circuit.
+  The reading that used to accompany this — that the wavelength is insensitive to the
+  proprioceptive reach, and therefore that the body wave is a passive mechanical response
+  to the head's bending — was measured when the wave was mostly standing and does not
+  survive. With a travelling wave, reach is the one thing that *does* set the wavelength:
+  0.49 to 0.64 L as reach goes 0.08 to 0.30, with the frequency flat to within 1% across
+  the same range.
+- **Gait modulation runs backwards, and worse than before.** Measured across five seeds
+  in each medium (`tools/scorecard.py`):
 
-  That index is the measure worth watching, and it is what unlocked this. Decomposing the
-  body's curvature over (time, arclength) separates the travelling component from the
-  standing one; a standing wave produces *exactly zero* net thrust however large its
-  amplitude, because its drag forces cancel over a cycle. The model shipped at **+0.33 and
-  5 µm/s** -- two thirds standing, undulating almost on the spot -- while the identical body
-  driven by a clean prescribed travelling wave reaches **+0.996 and 0.174 mm/s**. So the
-  mechanics were never at fault; the nervous system was producing a wave that stood still.
+  ```
+    medium      freq Hz        wavelength L     net mm/s      animal
+    agar      0.45 ± 0.01      0.73 ± 0.01    0.105 ± 0.025   0.30 Hz crawling
+    viscous   0.18 ± 0.00      3.32 ± 2.13    0.011 ± 0.004   intermediate
+    buffer    0.19 ± 0.02      2.07 ± 0.06    0.006 ± 0.001   1.76 Hz swimming
+  ```
 
-  Tracing the travelling index stage by stage put the fault at the motor neurons, whose
-  output was a *pure* standing wave (index -0.006) — and then the phase profile showed the
-  phase gradient was actually fine at every stage. The problem was amplitude: the B-type
-  motor neurons were barely modulating at all, because the stretch receptor did not adapt.
-  A static body bend sat on its input at six to eleven times the size of the oscillation
-  riding on it, burying the signal and eating half the receptor's remaining gain — and that
-  is also why the gain could never be raised before, since turning it up amplified the
-  static bend into a permanent curl. High-passing the receptor, which is what every other
-  sensory channel here already did, raised net displacement twenty-fold.
+  A real animal speeds up in water, 0.30 Hz crawling to 1.76 Hz swimming. This one slows
+  down, and in buffer it stops undulating coherently at all — a 2 L wavelength means less
+  than half a wave on the body, and it travels 6 µm/s.
 
-  Three plausible explanations were tested and refuted along the way, all recorded in
-  `NEXT.md`: backing off the head reflex (makes it worse), bending stiffness (a shallow
-  25% effect over a 1600-fold range, in the wrong direction), and a common oscillating
-  drive broadcast by AVB through its gap junctions (that neuron swings 4 mV, and clamping
-  it changes nothing).
+  The cause is almost certainly `head_delay`. A fixed 0.60 s transport delay sets a fixed
+  phase at every frequency, so it pins the loop's crossover regardless of what the medium
+  does to the mechanical load — the animal *cannot* speed up in water while that delay
+  dominates the loop. This is the strongest evidence yet that the delay is a placeholder
+  standing in for something with its own dynamics rather than a mechanism, and it is a
+  concrete prediction: whatever replaces it must have a frequency that follows the load.
+- **The travelling-wave index is +0.61, against +0.996 for the same body driven by a
+  prescribed perfect wave.** That control is the useful one: it says the mechanics can
+  carry a wave the nervous system is not yet producing, and the gap between +0.61 and
+  +0.996 is what the circuit still owes. Decomposing curvature over (time, arclength)
+  separates the travelling component from the standing one, and a standing wave produces
+  *exactly zero* net thrust however large its amplitude, which is why this is the measure
+  worth watching rather than the amplitude.
 
-  That left one thing the reflex model could not do at all. Xu et al. (2018) solve this
-  model class analytically: in a chain where motor neurons *passively* relay proprioceptive
-  input, bending amplitude must decay exponentially towards the tail, with a length constant
-  that head reflex gain, muscle moment and bending stiffness can only trade against one
-  another. Measured here, amplitude fell 2.5-fold head to tail and the tail's coherence —
-  the fraction of its motion that belongs to the undulation at all — was 0.03. The tail was
-  not undulating; it was being dragged.
-
-  The fix was to stop the segments being passive. Each B-type motor neuron gained a
-  Morris-Lecar pair (regenerative calcium, delayed potassium) sized as a fraction of its own
-  resting conductance, which the descending AVB gap junctions — already in the connectome,
-  55 contacts, resting at −21 mV — hold at a Hopf bifurcation. Amplitude is then regenerated
-  segment by segment and proprioception carries only phase. Coherence rose in every region
-  (head 0.4→0.90, mid 0.4→0.84, tail 0.03→0.35), the amplitude profile flattened from
-  2.5/1.3/1.0 to 2.6/1.9/1.9, and net speed went 0.105 → 0.172 mm/s.
-
-  **The interesting part is where the optimum sits.** Sweeping the calcium conductance and
-  scoring on net displacement peaks where the Hopf margin is 0.94 — the units are poised
-  *at* the bifurcation, not past it. Push them past and each segment free-runs, locks to
-  itself, the tail reaches four times the head's amplitude, and the wave travels
-  **backwards**. The useful regime is a critically-poised regenerative amplifier, which has
-  the gain to cancel the relay's decay while still following its input, rather than an
-  autonomous oscillator, which does not follow anything. A second change landed alongside
-  it and is separated by its own control sweep (`tools/osc_control.py`): sensory input is
-  now scaled by each target's resting conductance, because a fixed current across an
-  eightfold spread of input conductance was hitting the small posterior units five times
-  harder than the large anterior ones. That was worth +14%, the oscillator a further +31%.
-
-- **The curvature amplitude is too low** — 2.3 /mm r.m.s. against a measured 4.3, so the
-  worm undulates more shallowly than a real one.
-
-- **On agar it undulates at about 1.2 Hz with a 0.52-body-length wavelength.** A real worm
-  crawling on agar does 0.30-0.50 Hz and 0.65 L. This is now the largest single discrepancy
-  in the model, and it is mechanical rather than neural: sweeping the motor neurons'
-  potassium time constant over an eighteen-fold range moves the frequency by under 5%, so
-  it is set by the body and the reflex loop. Drag, internal damping and muscle activation
-  kinetics are where to look.
-
-- **Backward locomotion is known-poor and should not be cited as working.** Clamping AVB
-  hyperpolarised correctly hands the cord to the A-class backward generator and the wave
-  does reverse, but curvature r.m.s. goes to 7.5 and net speed to 0.018 mm/s. The intrinsic
-  gate offsets are placed relative to a resting potential solved with AVB intact and do not
-  follow it down when the drive is removed.
-
-  This is one fault, not two, and it is diagnostic. The wavelength barely moves when the
-  proprioceptive reach is varied over its entire plausible range (1.11 → 1.20 L as reach
-  goes 0.10 → 0.20 L), and driving the head externally while measuring the body's response
-  gives a per-segment reflex gain near 1.4. Together those say the body wave here is
-  largely the **passive mechanical response** to the head's bending rather than a wave
-  regenerated segment by segment by proprioception. The reflex loop is present, measurable
-  and correctly signed — it just is not carrying as much of the wave as the animal's does,
-  so the head's own timing dominates and the body strings out behind it.
-- **Gait modulation runs backwards.** The medium does change the gait — 1.25 Hz on agar
-  against 0.55 Hz in buffer — but the animal goes the other way, 0.30 Hz on agar and
-  1.76 Hz swimming. Same root cause: with the wave set by the head's own loop rather than
-  regenerated along the body, what the medium mostly changes is the mechanical load on the
-  *head*, and a heavier load there shifts that loop's crossover rather than slowing the
-  body's wave. `test_medium_changes_the_gait` therefore asserts that the medium matters,
-  and deliberately does not assert which way, because asserting the real direction would
-  be asserting something this model does not do.
-- **The worm undulates almost on the spot, because its wave is mostly a standing wave.**
-  Over 120 simulated seconds it travels 8.4 mm of path and ends up 0.54 mm from where it
-  started — a net-to-path ratio of 0.07, where a real animal keeps well over half. Net
-  speed is about 5 µm/s against a measured 219.
-
-  The cause is specific and measurable. Decomposing the body's curvature over (time,
-  arclength) into travelling and standing components gives a travelling-wave index of
-  **+0.33** — two thirds of the oscillation is a standing wave, and a standing wave
-  produces *exactly zero* net thrust however large its amplitude, because its drag forces
-  cancel over a cycle. The control settles it: the identical body and drag, driven by a
-  clean prescribed travelling wave instead of by the nervous system, gives **+0.996 and
-  0.174 mm/s** — very nearly the real animal. So the mechanics are not the problem and
-  never were. The nervous system is producing a wave that mostly stands still.
-
-  This also explains the long wavelength, and the two are the same fact: at 1.4 body
-  lengths, less than one full wave fits on the animal, so there is almost no phase
-  progression along it, which *is* a standing wave. Fixing the wavelength and fixing the
-  thrust are one job, not two. `travelling_index` in `tools/diagnose_loop.py` measures it,
-  and it is the sharpest single diagnostic in the project — the phase-slope measure it
-  replaced will happily report a confident wavelength and direction for an animal that is
-  going nowhere.
-
-  I originally reported this as "0.03–0.11 mm/s, about half the measured value", **and that
-  was wrong.** The metric was smoothing the *magnitude* of instantaneous centroid velocity,
-  which counts the side-to-side slosh of the centroid within each undulation cycle as if it
-  were forward progress, and read roughly twenty times high. Both numbers are now kept
-  separately — `sim.speed` is net displacement over a two-second window, the way a worm
-  tracker measures it, and `sim.path_speed` is the old path-length quantity — and the tests
-  assert on the honest one. Credit where due: this was caught by someone simply watching
-  the animation and saying it looked like it was wiggling in place.
+- **The speed figure in this file was once twenty times too high**, and the reason is
+  worth keeping. `sim.speed` used to smooth the *magnitude* of instantaneous centroid
+  velocity, which counts the side-to-side slosh of the centroid within each undulation
+  cycle as though it were forward progress. The two quantities are now kept separately --
+  `sim.speed` is net displacement over a two-second window, the way a worm tracker
+  measures it, and `sim.path_speed` is the old path-length one -- and the tests assert on
+  the honest one. Credit where due: this was caught by someone simply watching the
+  animation and saying it looked like it was wiggling in place.
 - **The head reflex loop has two stable limit cycles**, near 0.3 Hz and near 2.2 Hz, and
   before the stretch receptor was given its own kinetics, which one the animal fell into
   depended on the random seed — two thirds of seeds took the fast one. The receptor filter
@@ -370,9 +363,12 @@ Stated plainly, because a simulation that oversells itself is worse than useless
 - **Motor neurons saturate** at the extremes of each cycle under proprioceptive drive.
   This is arguably correct — Boyle et al. make their B-type neurons frankly binary — but
   it means their voltages are not quantitatively meaningful at the extremes.
-- **The stretch-receptor gain is fitted**, not measured, and is the main free parameter in
-  the model. So is Boyle et al.'s, and theirs differs by a factor of 1.86 between their own
-  paper and their own code.
+- **Two parameters are fitted rather than measured**, and they are the model's largest
+  free quantities. The stretch-receptor gain, which Boyle et al. also fit — theirs differs
+  by a factor of 1.86 between their own paper and their own code — and `head_delay`, a
+  0.60 s transport delay in the head reflex which is what brings the undulation frequency
+  into the animal's band. Nothing that slow exists in a real stretch receptor; see the note
+  on it in `params.py` for what it is standing in for and why it has not been earned yet.
 - **No pharyngeal pumping, no egg laying, no defecation cycle.** The 20 pharyngeal neurons
   are simulated but drive nothing.
 - **Two dimensions.** Left and right muscle quadrants merge, so no roll and no true
@@ -430,7 +426,17 @@ worm/server.py      WebSocket telemetry and static file serving
 tools/build_dataset.py  raw anatomy -> validated dataset, assertion-heavy
 tools/kymo.py           ASCII kymograph — the fastest way to see what the body is doing
 tools/diagnose_loop.py  frequency, wavelength, phase and antagonism metrics
+tools/command_probe.py  what each input is worth to the forward/backward decision
+tools/command_sweep.py  behavioural and locomotor scores side by side, for the command layer
+tools/ethogram.py       reversal rate, run lengths and reorientation, off food and on
+tools/assays.py         chemotaxis, aerotaxis, thermotaxis, nociception
 tools/calibrate_body.py mechanics checks, independent of the biology
+tools/timestep_convergence.py  is the gait converged at the step size it runs at?
+tools/head_mode.py      which of the head loop's limit cycles the animal lands in, and why
+tools/habituation.py    tap habituation — decrement, interval dependence, recovery
+tools/loop_phase.py     open the head loop and measure each stage's gain and phase
+tools/wave_speed.py     what sets the wavelength and the frequency
+tools/body_oscillator.py  can the body carry the rhythm instead of the head?
 ```
 
 ## Data and licensing

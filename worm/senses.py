@@ -112,14 +112,32 @@ class Senses:
         self.t_adapt = None
         self.touch_state = np.zeros(2)
         self.poke = np.zeros(2)          # (anterior, posterior) externally driven touch
+        # Habituation. One resource per touch field, full at 1.0. See SensoryParams.
+        self.touch_avail = np.ones(2)
+        self._hab_use = float(p.touch_habituation_use)
+        self._hab_recover = 1.0 / p.touch_habituation_tau
+        self._habituates = self._hab_use > 0.0
+
+        # Which way the animal is currently committed to going. Only read when the gate
+        # is latched; see SensoryParams.gate_latched.
+        self.going_forward = True
 
         self.head_signal = 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
+        # Ring buffer for the head reflex's transport delay. Sized in steps from a delay
+        # in seconds, so the delay the loop actually sees does not depend on dt. Length
+        # zero means no buffer and the previous behaviour exactly.
+        self._head_delay_n = max(0, int(round(p.head_delay / dt)))
+        self._head_hist = np.zeros(self._head_delay_n + 1)
+        self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
         self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
         self._chem_decay = np.exp(-dt / p.chemo_tau_adapt)
+        self._odour_decay = np.exp(-dt / (2.0 * p.chemo_tau_adapt))
+        self._odour_rate = 1.0 - self._odour_decay
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
+        self._touch_rate = 1.0 - self._touch_decay
 
         self.readout = {}
 
@@ -148,7 +166,17 @@ class Senses:
         if self.odour_adapt is None:
             self.odour_adapt = o
         do = o - self.odour_adapt
-        self.odour_adapt += (o - self.odour_adapt) * (1.0 - self._chem_decay * 0.5)
+        # "A little more slowly" means twice the time constant. It used to read
+        #     odour_adapt += (o - odour_adapt) * (1 - chem_decay * 0.5)
+        # where chem_decay is exp(-dt/tau) and so is very close to 1: the bracket is
+        # therefore about 0.5 *per step* whatever the step is, giving an adaptation time
+        # constant of roughly 2 dt -- one millisecond at the shipped step, not seven
+        # seconds. AWA and AWC were adapting out any odour within two timesteps, so the
+        # entire volatile pathway was deaf, and how deaf depended on dt. AWC is the OFF
+        # cell whose job is to fire when an attractant is *removed*, which is one of the
+        # better characterised reversal triggers in the animal, so this was not a small
+        # thing to have switched off.
+        self.odour_adapt += (o - self.odour_adapt) * self._odour_rate
         I[self.awa] += p.chemo_gain * 0.6 * do
         I[self.awc] -= p.chemo_gain * 0.6 * do      # OFF cell: excited by odour removal
 
@@ -175,11 +203,25 @@ class Senses:
         half = len(mag) // 2
         ant = float(mag[:half].sum()) + self.poke[0]
         post = float(mag[half:].sum()) + self.poke[1]
-        self.touch_state *= self._touch_decay
-        self.touch_state += np.array([ant, post])
+        # Smoothed contact, not accumulated contact. This used to be
+        #     touch_state = touch_state * decay + force
+        # which adds a whole force every step regardless of how long a step is, so its
+        # steady state was force / (1 - exp(-dt/tau)) -- proportional to 1/dt. Touch was
+        # therefore four times more sensitive at dt = 0.125 ms than at 0.5 ms, and sixteen
+        # times more than at 2 ms, which makes every mechanosensory result a statement
+        # about the step size as much as about the animal. As an exponential moving average
+        # the steady state is the force itself and the units mean what they say.
+        self.touch_state += (np.array([ant, post]) - self.touch_state) * self._touch_rate
         self.poke *= 0.0
-        I[self.touch_anterior] += p.touch_gain * self.touch_state[0]
-        I[self.touch_posterior] += p.touch_gain * self.touch_state[1]
+        if self._habituates:
+            # Exact for a frozen stimulus, like every other first-order state here, so how
+            # much the animal habituates does not depend on how finely it is stepped.
+            rate = self._hab_recover + self._hab_use * self.touch_state
+            inf = self._hab_recover / rate
+            self.touch_avail = inf + (self.touch_avail - inf) * np.exp(-rate * self.dt)
+        drive = p.touch_gain * self.touch_state * self.touch_avail
+        I[self.touch_anterior] += drive[0]
+        I[self.touch_posterior] += drive[1]
         I[self.nose_touch] += p.touch_gain * 0.5 * float(mag[0] + mag[1])
 
         # --------------------------------------------------------------------------- food
@@ -206,8 +248,22 @@ class Senses:
         # one number is the roaming/dwelling competition, and it is the slow term the
         # command layer previously had no way of receiving.
         bias = p.gate_bias + (mods.turn_bias() if mods is not None else 0.0)
-        fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (fwd_act - bwd_act - bias)))
-        bwd_frac = 1.0 - fwd_frac
+        diff = fwd_act - bwd_act
+        if p.gate_latched:
+            # Which cord, decided separately from how much. See SensoryParams.gate_latched.
+            # A Schmitt trigger: the animal commits to a direction and holds it until the
+            # difference crosses the *far* threshold, so a reversal is a state it stays in
+            # rather than a level it hovers at.
+            if self.going_forward:
+                if diff < bias - p.gate_hysteresis:
+                    self.going_forward = False
+            elif diff > bias + p.gate_hysteresis:
+                self.going_forward = True
+            fwd_frac = 1.0 if self.going_forward else 0.0
+            bwd_frac = 1.0 - fwd_frac
+        else:
+            fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (diff - bias)))
+            bwd_frac = 1.0 - fwd_frac
 
         # Descending drive to the selected cord. This is the gait, and it is deliberately
         # no longer carried by AVB's own membrane potential: the B and A motor neurons only
@@ -238,6 +294,12 @@ class Senses:
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
         raw = float(np.dot(self._head_window, k))
+        if self._head_delay_n:
+            # Write now, then step on: the slot just vacated holds the oldest sample,
+            # which is exactly _head_delay_n steps back.
+            self._head_hist[self._head_hist_i] = raw
+            self._head_hist_i = (self._head_hist_i + 1) % len(self._head_hist)
+            raw = float(self._head_hist[self._head_hist_i])
         self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
         I += (self.W_head_sign * self.g_scale_head
               * (np.tanh(self.head_signal) * p.head_proprio_gain))
@@ -246,6 +308,7 @@ class Senses:
             "attractant": c, "d_attractant": dc, "repellent": rep,
             "temperature": T, "oxygen": o2, "food": f,
             "touch": float(self.touch_state.sum()),
+            "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
             **({} if mods is None else mods.readout()),
         }

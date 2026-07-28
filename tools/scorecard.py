@@ -1,0 +1,135 @@
+"""Every headline number in one place, across seeds, next to what a real animal does.
+
+The README carries a table of what this model gets right and wrong. Its rows have
+historically been filled in at different times from different runs, which is how it came
+to quote a crawling speed from day two beside a frequency from day nine -- numbers that
+were never true of the same animal. This measures them all at once, from the same
+configuration, and reports the seed-to-seed spread rather than one run's luck.
+
+The spread matters more than usual here. The gait has been bistable across seeds since
+day two, and a single-seed number can be a full standard deviation from the mean, so any
+row quoted without one is a claim the model does not support.
+
+Run:  PYTHONPATH=. .venv/bin/python tools/scorecard.py
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from tools.assays import pooled
+from tools.diagnose_loop import analyse, bare_world
+from worm.engine import Simulation
+from worm.params import MEDIA, Params
+
+MEASURE = 40.0
+SEEDS = (0, 1, 3, 5, 7)
+
+
+def _job(job):
+    medium, seed = job
+    p = Params().with_medium(medium)
+    sim = Simulation(p, seed=seed, world=bare_world(p))
+
+    sim.run(6.0)
+    start = sim.body.centroid().copy()
+    t0 = sim.t
+    prev, path = start.copy(), 0.0
+    n = int(MEASURE / sim.dt)
+    every = max(1, int(round(0.05 / sim.dt)))
+    for i in range(n):
+        sim.step()
+        if i % every == 0:
+            c = sim.body.centroid()
+            path += float(np.linalg.norm(c - prev))
+            prev = c.copy()
+    net = float(np.linalg.norm(sim.body.centroid() - start))
+    span = sim.t - t0
+
+    # Gait metrics from a second stretch, so the two do not share a window.
+    r = analyse(sim, seconds=MEASURE)
+    return dict(medium=medium, seed=seed, freq=r["freq"],
+                wavelength=r["wavelength"], twi=r["twi"],
+                k_rms=r["kappa_rms"], k_max=r["kappa_max"], dv_corr=r["dv_corr"],
+                direction=r["direction"], speed=net / span,
+                net_path=net / max(path, 1e-9),
+                v_lo=float(np.min(sim.nervous.V)), v_hi=float(np.max(sim.nervous.V)),
+                m_lo=float(np.min(sim.muscles.V)), m_hi=float(np.max(sim.muscles.V)))
+
+
+ROWS = [
+    ("Undulation frequency, agar", "freq", "Hz", "0.30 +- 0.02", "%.2f"),
+    ("Wavelength, agar", "wavelength", "L", "0.65 +- 0.03", "%.2f"),
+    ("Curvature, r.m.s.", "k_rms", "/mm", "4.3 +- 0.3", "%.2f"),
+    ("Curvature, peak", "k_max", "/mm", "9.8 +- 1.1", "%.1f"),
+    ("Crawling speed (net)", "speed", "mm/s", "0.219 +- 0.029", "%.3f"),
+    ("Net displacement / path", "net_path", "", "well above 0.5", "%.2f"),
+    ("Travelling-wave index", "twi", "", "+1 pure travelling", "%.2f"),
+    ("Dorsoventral antagonism", "dv_corr", "", "strongly negative", "%.2f"),
+]
+
+
+def main():
+    jobs = [(m, s) for m in ("agar", "viscous", "buffer") for s in SEEDS]
+    print("SCORECARD -- %d seeds x %.0f s, one configuration, one run\n" % (len(SEEDS), MEASURE))
+    allrows = pooled(_job, jobs, procs=8)
+    if not allrows:
+        print("  no trials completed")
+        return 1
+    rows = [r for r in allrows if r["medium"] == "agar"]
+
+    print("  %-27s %18s   %s" % ("quantity", "model (mean +- sd)", "animal"))
+    for label, key, unit, target, fmt in ROWS:
+        v = np.array([r[key] for r in rows], dtype=float)
+        v = v[np.isfinite(v)]
+        val = ("%s +- %s" % (fmt, fmt)) % (v.mean(), v.std())
+        print("  %-27s %13s %-4s   %s" % (label, val, unit, target))
+
+    d = [r["direction"] for r in rows]
+    print("  %-27s %13s %-4s   %s"
+          % ("Wave direction", "%d/%d head->tail" % (d.count("head->tail"), len(d)), "",
+             "head -> tail"))
+    print("  %-27s %13s %-4s   %s"
+          % ("Resting potentials", "%.0f to %.0f" % (np.mean([r["v_lo"] for r in rows]),
+                                                     np.mean([r["v_hi"] for r in rows])),
+             "mV", "-75 to -25"))
+    print("  %-27s %13s %-4s   %s"
+          % ("Muscle potentials", "%.0f to %.0f" % (np.mean([r["m_lo"] for r in rows]),
+                                                    np.mean([r["m_hi"] for r in rows])),
+             "mV", "-25.0 +- 1.0"))
+
+    # Gait modulation. The medium is the whole story of it: a real animal crawls slowly
+    # on agar and swims fast in water, and the *direction* of that change is what this
+    # model has historically got backwards.
+    print()
+    print("  GAIT MODULATION -- the same animal in three media")
+    print("  %-9s %14s %12s %12s   %s" % ("medium", "freq Hz", "wavelen L", "net mm/s", "animal"))
+    ref = {"agar": "0.30 Hz crawling", "viscous": "intermediate",
+           "buffer": "1.76 Hz swimming"}
+    for med in ("agar", "viscous", "buffer"):
+        g = [r for r in allrows if r["medium"] == med]
+        if not g:
+            continue
+        f_ = np.array([r["freq"] for r in g])
+        w_ = np.array([r["wavelength"] for r in g])
+        v_ = np.array([r["speed"] for r in g])
+        print("  %-9s %7.2f +- %.2f %7.2f +- %.2f %7.3f +- %.3f   %s"
+              % (med, f_.mean(), f_.std(), w_.mean(), w_.std(), v_.mean(), v_.std(),
+                 ref[med]))
+    fa = np.mean([r["freq"] for r in allrows if r["medium"] == "agar"])
+    fb = np.mean([r["freq"] for r in allrows if r["medium"] == "buffer"])
+    print()
+    print("  agar -> buffer: %.2f -> %.2f Hz. The animal goes 0.30 -> 1.76, so the model" % (fa, fb))
+    print("  has this %s." % ("the right way round" if fb > fa else
+                              "BACKWARDS -- it slows down in water where the animal speeds up"))
+
+    print()
+    print("  per-seed frequency: %s Hz"
+          % " ".join("%.2f" % r["freq"] for r in sorted(rows, key=lambda x: x["seed"])))
+    print("  the spread is the point. This gait has been bistable across seeds since day")
+    print("  two, so any row quoted from a single run is a claim the model does not make.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -112,6 +112,29 @@ def onsets(mask):
 
 RATE = 0.58        # x real time, one trial on one core -- measured, see module notes
 
+# How many simulated seconds one trial of each assay costs. Used only for the estimate.
+DURATIONS = {"triage": 60.0, "chemotaxis": 200.0, "aerotaxis": 200.0,
+             "thermotaxis": 200.0, "nociception": 120.0}
+
+# Workers, and the aggregate throughput they actually deliver.
+#
+# Both measured on the machine this was written on (Apple M2 Pro, 8 performance cores
+# and 4 efficiency ones) and both are about the knee in that topology:
+#
+#   workers    ms/step each    aggregate steps/s    efficiency
+#      1          0.570             1754              100%
+#      4          0.579             6908             98.5%
+#      8          0.677            11819             84.2%
+#     10          0.803            12460             71.0%
+#     12          0.926            12959             61.6%
+#
+# Past 8 the extra workers land on efficiency cores, and because a wave finishes when its
+# slowest trial does, they drag everything with them: going 8 -> 12 buys 10% aggregate
+# throughput while making each individual trial 37% slower. Eight is where the curve
+# bends, and it leaves the machine usable while a run is going.
+WORKERS = 8
+THROUGHPUT = 11800     # steps/s summed over WORKERS workers
+
 
 def estimate(n_trials, duration, procs=10):
     workers = max(1, min(procs, mp.cpu_count() - 2))
@@ -235,8 +258,7 @@ def _chemo_job(seed):
                 heading_drift=float(np.abs(turn).mean()))
 
 
-def chemotaxis():
-    rows = pooled(_chemo_job, list(range(16)))
+def chemotaxis(rows):
     app = np.array([r["approach"] for r in rows])
     ci = np.array([r["ci"] for r in rows])
 
@@ -301,8 +323,7 @@ def _o2_job(seed):
                 o2_min=float(tr["oxygen"].min()))
 
 
-def aerotaxis():
-    rows = pooled(_o2_job, list(range(12)))
+def aerotaxis(rows):
     om = np.array([r["o2_mean"] for r in rows])
     oe = np.array([r["o2_end"] for r in rows])
     print("AEROTAXIS -- oxygen experienced, with the attractant switched off")
@@ -331,11 +352,7 @@ def _thermo_job(job):
                 dx=float(tr["x"][-1] - tr["x"][0]))
 
 
-def thermotaxis():
-    # Cultivated at 20 C. On a 17-25 C ramp across the plate that isotherm sits at
-    # x = -6.25 mm, so animals started warm should move cold and vice versa.
-    jobs = [(s, x) for x in (-18.0, 6.0) for s in range(8)]
-    rows = pooled(_thermo_job, jobs)
+def thermotaxis(rows):
     print("THERMOTAXIS -- cultivation temperature 20 C, plate ramps 17->25 C across x")
     print("  the 20 C isotherm is at x = -6.2 mm")
     for x in (-18.0, 6.0):
@@ -380,9 +397,8 @@ def _noci_job(seed):
                 r_end=float(r[-1]), r_start=float(r[0]))
 
 
-def nociception():
+def nociception(rows):
     """See the module docstring and the printed note. Kept brief on purpose."""
-    rows = pooled(_noci_job, list(range(12)))
     print("NOCICEPTION -- brief encounters with a repellent drop, 120 s, no barrier")
     print()
     print("  A note on how this is built. The model has no representation of affect: ASH")
@@ -422,15 +438,15 @@ def _triage_job(seed):
                 gate_b=float(tr["gate_backward"].mean()))
 
 
-def triage():
+def triage(rows):
     """Two-minute check: is anything reaching the chemosensors, and does he ever turn?
 
     Worth running before the full assay. A null chemotaxis index has three quite
     different causes -- flat sensors, no turns, or turns uncoupled from the sensors --
     and this separates them cheaply.
     """
-    rows = sorted(pooled(_triage_job, list(range(6))), key=lambda r: r["seed"])
-    print("TRIAGE -- 6 animals, 60 s each  (estimated %.0f s)" % estimate(6, 60.0))
+    rows = sorted(rows, key=lambda r: r["seed"])
+    print("TRIAGE -- %d animals, 60 s each" % len(rows))
     print(" seed   C range         |dC/dt| rms   |dC/dt| max   reversals   %rev   gate f/b")
     for r in rows:
         print("  %d   %.3f-%.3f     %.2e     %.2e       %2d      %4.1f%%   %.2f/%.2f"
@@ -455,25 +471,69 @@ def triage():
     return rows
 
 
+# Each assay is a job function, the list of jobs it wants, and the reporter that prints
+# them. Keeping those three apart is what lets every assay's jobs go into one queue.
 ASSAYS = {
-    "triage": triage,
-    "chemotaxis": chemotaxis,
-    "aerotaxis": aerotaxis,
-    "thermotaxis": thermotaxis,
-    "nociception": nociception,
+    "triage":      (_triage_job, lambda: list(range(6)), triage),
+    "chemotaxis":  (_chemo_job, lambda: list(range(16)), chemotaxis),
+    "aerotaxis":   (_o2_job, lambda: list(range(12)), aerotaxis),
+    "thermotaxis": (_thermo_job,
+                    lambda: [(s, x) for x in (-18.0, 6.0) for s in range(8)],
+                    thermotaxis),
+    "nociception": (_noci_job, lambda: list(range(12)), nociception),
 }
+ORDER = ["triage", "chemotaxis", "aerotaxis", "thermotaxis", "nociception"]
+
+
+def _dispatch(job):
+    """Run one job from any assay. The queue is flat, so each job says which it belongs to."""
+    name, payload = job
+    row = ASSAYS[name][0](payload)
+    row["_assay"] = name
+    return row
 
 
 def main():
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
-    names = list(ASSAYS) if which == "all" else [which]
+    if which != "all" and which not in ASSAYS:
+        print("unknown assay %r; choose from %s or 'all'" % (which, ", ".join(ASSAYS)))
+        return 1
+
+    names = ORDER if which == "all" else [which]
+
+    # One queue for every job in every assay, rather than one pooled() call per assay.
+    # The old arrangement ran each assay to completion before starting the next, so a
+    # 12-job assay on N workers finished with a wave of 12 % N trials -- two of them, for
+    # aerotaxis and nociception -- holding the whole machine for as long as a full wave
+    # while using a sixth of it. Measured on this workload that tail was about 30% of the
+    # wall clock. Flattening costs nothing and needs no numerical change; the only thing
+    # given up is that the assays no longer print strictly as they finish, which is why
+    # the reports are held and emitted in ORDER at the end.
+    jobs = [[name, j] for name in names for j in ASSAYS[name][1]()]
+    sim_s = sum(DURATIONS[name] * len(ASSAYS[name][1]()) for name in names)
+    print("%d trials across %d assays, %d simulated seconds on %d workers"
+          % (len(jobs), len(names), sim_s, WORKERS))
+    print("estimated %.0f s\n" % (sim_s / Params().neural.dt / THROUGHPUT))
+
+    # The timeout has to scale with the queue. Flattening the assays into one pooled()
+    # call put every job under a single budget where each assay used to get its own, and
+    # the first full run after that change timed out with eight trials unfinished and
+    # nociception -- last in the queue -- missing entirely. Three times the estimate is
+    # generous enough to absorb a slow machine without waiting all night on a wedged one.
+    rows = pooled(_dispatch, jobs, procs=WORKERS,
+                  timeout=max(2400.0, 3.0 * sim_s / Params().neural.dt / THROUGHPUT))
+
+    by = {}
+    for r in rows:
+        by.setdefault(r.pop("_assay"), []).append(r)
     for i, name in enumerate(names):
-        if name not in ASSAYS:
-            print("unknown assay %r; choose from %s or 'all'" % (name, ", ".join(ASSAYS)))
-            return 1
         if i:
             print("\n" + "=" * 78 + "\n")
-        ASSAYS[name]()
+        got = by.get(name, [])
+        if not got:
+            print("%s -- no trials completed" % name.upper())
+            continue
+        ASSAYS[name][2](got)
     return 0
 
 

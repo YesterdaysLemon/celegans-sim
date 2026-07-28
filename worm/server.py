@@ -41,6 +41,9 @@ class Runner:
         self.seed = seed
         self.sim = Simulation(self.params, seed=seed)
         self.lock = threading.Lock()
+        # Ablation state. Kept here rather than on the simulation because it is an
+        # experimental intervention on the model, not a property of the animal.
+        self.ablated: set[str] = set()
         self.running = True
         self.rate = 1.0                # requested multiple of real time
         self.achieved = 0.0
@@ -107,28 +110,30 @@ class Runner:
             elif kind == "reset":
                 self.seed = int(msg.get("seed", self.seed + 1))
                 self.sim = Simulation(self.params, seed=self.seed)
+                self.ablated.clear()
             elif kind == "drop_food":
                 self.sim.world.add_food_patch(
                     float(msg["x"]), float(msg["y"]), float(msg.get("r", 3.0)),
                     density=1.0, attractant=1.0, length_scale=7.0)
             elif kind == "ablate":
-                names = msg.get("neurons", [])
-                self._ablate(names)
+                self._ablate(msg.get("neurons", []))
+            elif kind == "restore":
+                self._ablate([], restore=True)
 
-    def _ablate(self, names) -> None:
-        """Silence neurons, the way a laser ablation experiment does."""
-        ns = self.sim.nervous
+    def _ablate(self, names, restore: bool = False) -> None:
+        """Silence neurons, the way a laser ablation experiment does.
+
+        Reversible, because the interesting thing about an ablation is the comparison
+        either side of it: kill AVB and the animal should stop going forwards, restore it
+        and it should crawl again. The model owns the mechanism; this only tracks which
+        cells the viewer has asked for.
+        """
+        if restore:
+            self.ablated.clear()
         for name in names:
-            i = self.sim.conn.index.get(name)
-            if i is None:
-                continue
-            ns.G_gap[i, :] = 0.0
-            ns.G_syn[i, :] = 0.0
-            ns.G_syn[:, i] = 0.0
-            self.sim.muscles.G[:, i] = 0.0
-        ns.G_gap[:, [self.sim.conn.index[n] for n in names
-                     if n in self.sim.conn.index]] = 0.0
-        ns.gap_total = ns.G_gap.sum(axis=1)
+            if name in self.sim.conn.index:
+                self.ablated.add(name)
+        self.sim.set_ablated(sorted(self.ablated))
 
     # -------------------------------------------------------------------------- framing
     def hello(self) -> str:
@@ -176,7 +181,7 @@ class Runner:
             r = sim.senses.readout
             direction = {"forward": 1.0, "backward": -1.0, "still": 0.0}[sim.direction()]
             header = struct.pack(
-                "<6I13f",
+                "<6I14f",
                 MAGIC, len(nodes) // 2, len(act), len(tension), len(kappa),
                 1 if self.running else 0,
                 sim.t, sim.speed, sim.food_eaten, direction, self.achieved,
@@ -184,6 +189,7 @@ class Runner:
                 r.get("oxygen", 0.21), r.get("food", 0.0), r.get("touch", 0.0),
                 r.get("gate_forward", 0.0), r.get("gate_backward", 0.0),
                 r.get("repellent", 0.0),
+                r.get("habituation", 1.0),
             )
         return b"".join([header, nodes.tobytes(), act.tobytes(), volt.tobytes(),
                          tension.tobytes(), kappa.tobytes()])

@@ -81,6 +81,45 @@ class NeuralParams:
     # instead of silent or saturated, and removes 302 free parameters.
     v_th_from_rest: bool = True
 
+    # Fixed-point passes over the gap-junction coupling, per step.
+    #
+    # The step solves the gap coupling by iterating
+    #     V_inf = (fixed + G_gap @ V_new) / g_tot ;  V_new = V_inf + (V - V_inf) * decay
+    # whose contraction factor per pass is (1 - decay) * ||G_gap / g_tot||, with
+    # decay = exp(-g_tot dt / C). That factor *grows with dt*, so a coarser step converges
+    # this iteration more slowly and ends up with a different effective gap conductance.
+    #
+    # Measured, largest voltage error against the fully converged fixed point of the same
+    # step, mid-gait:
+    #
+    #   passes |  dt = 0.5 ms   dt = 0.125 ms
+    #      3   |   1.37e-01       6.79e-03
+    #      6   |   8.32e-03       3.46e-05
+    #     10   |   2.37e-04       4.15e-08
+    #
+    # Three passes leave the shipped step twenty times less converged than the fine one, so
+    # the two are not literally solving the same equations -- and AVB's gap junctions onto
+    # the B class set the bifurcation point of the entire motor cord, which is the most
+    # step-sensitive thing in the model. That made this a good candidate for the gait's
+    # step dependence, and a cheap one to rule out.
+    #
+    # **It is not the cause.** Raising the count from 3 to 24 changes the gait by nothing
+    # at either step size. (The drift figures in the table below were measured before the
+    # body was synchronised to the neural step, so the 54% is an artefact -- but the point
+    # this table makes, that the iteration count changes nothing, is unaffected by that.)
+    #
+    #   passes |  freq @0.5   freq @0.125   drift |  TWI @0.5   k_rms @0.5   net mm/s
+    #      3   |    0.433       0.200        54%  |   +0.655      4.44        0.1860
+    #      6   |    0.433       0.200        54%  |   +0.659      4.48        0.1822
+    #     12   |    0.433       0.200        54%  |   +0.659      4.48        0.1821
+    #     24   |    0.433       0.200        54%  |   +0.659      4.48        0.1821
+    #
+    # So the residual is real, measurable, twenty times worse at the shipped step, and
+    # behaviourally irrelevant: 0.137 mV in the worst neuron does not move a gait. Left at
+    # 3, which is now a measured choice rather than an assumed one, and the step dependence
+    # has one fewer suspect.
+    gap_iters: int = 3
+
     # -- intrinsic oscillation ------------------------------------------------------------
     # A purely passive graded network cannot oscillate: it is a contraction mapping onto a
     # fixed point, and proprioception alone only copies a bend backwards, it does not start
@@ -244,6 +283,222 @@ class NeuralParams:
     # cord: AVA makes 102 gap-junction contacts onto 20 of the 21 A-class units and rests
     # at -26.7 mV, against AVB's 55 contacts onto 18 B-class units at -24.4 mV. Same
     # architecture, same descending-drive-holds-it-at-the-bifurcation story.
+    # -- synaptic depression, which is the only memory in this model -----------------------
+    # Everything else here forgets. The adaptation filters in Senses exist precisely to
+    # discard the past, the modulators integrate over tens of seconds and then decay, and
+    # nothing at all outlives a minute. So the animal cannot learn, and the first learning
+    # it should be able to do is the simplest kind there is: habituation.
+    #
+    # Rankin, Beck & Chiba (1990) Behav. Brain Res. 37:89 tap a plate every ten seconds and
+    # watch the reversal response fall away over about thirty taps, recover over minutes of
+    # rest, and habituate more deeply at shorter intervals. Rose & Rankin's later work
+    # places the change presynaptically, as reduced glutamate release from the touch
+    # receptors onto the interneurons, rather than in the interneurons themselves.
+    #
+    # That is a released-resource model, and it is the standard one (Tsodyks & Markram
+    # 1997). Each depressing terminal carries a resource D in [0, 1] which is consumed in
+    # proportion to how hard the cell is releasing and refills with its own time constant:
+    #
+    #     dD/dt = (1 - D) / depression_tau  -  depression_use * phi(V_pre) * D
+    #
+    # and the postsynaptic conductance sees s * D instead of s. Integrated exactly, the
+    # same way as everything else here, so it does not depend on the step size.
+    #
+    # Three properties fall out of that one equation rather than being fitted separately,
+    # which is the reason to prefer it to a decay term bolted onto the touch pathway:
+    # repeated stimulation depresses, rest recovers with depression_tau, and a shorter
+    # interval habituates more deeply because less refilling happens in between.
+    #
+    # Zero-safe: at depression_use = 0 the resource sits at 1 and the model is untouched.
+    depression_classes: tuple = ("ALM", "AVM", "PLM", "PVM")
+    depression_use: float = 0.0      # 1/s  consumption per unit release
+    depression_tau: float = 20.0     # s    refilling time constant
+
+    # -- the command layer's own dynamics --------------------------------------------------
+    # Two knobs, both zero by default, aimed at one measured failure: the animal does not
+    # spontaneously reverse. Measured with tools/assays.py triage, six animals for sixty
+    # seconds each: zero reversals, with the direction gate sitting at 0.95 forward in
+    # every animal for the whole run. That is not a small discrepancy against 3.2-3.5
+    # reversals per minute off food (Zhao et al. 2003), and it is not a cosmetic one
+    # either, because C. elegans chemotaxis *is* reversals: Pierce-Shimomura, Morse &
+    # Lockery (1999) showed the animal does not steer up a gradient, it suppresses sharp
+    # turns while conditions improve. A worm that never turns cannot chemotax however good
+    # its nose is, which is the most likely reading of the chemotaxis null in NEXT.md.
+    #
+    # There are two separate reasons the reversal never happens, and they need separate
+    # fixes.
+    #
+    # 1. The pools have no antagonism. Every command interneuron here is cholinergic or
+    #    glutamatergic and the model collapses both to a 0 mV reversal, so the forward
+    #    pool and the backward pool *excite each other*: 70 reconstructed contacts from
+    #    forward onto backward, 33 the other way, plus 10 gap junctions. Two pools that
+    #    excite each other rise and fall together, and the direction decision reads the one
+    #    quantity common drive cannot move -- their difference. This is a wiring statement,
+    #    not a gain one; it is why sweeping chemo_gain 46x moved the chemotaxis outcome by
+    #    less than the seed-to-seed spread. command_cross_inhibition retargets those
+    #    cross-pool synapses onto an inhibitory receptor, blending E_exc to E_inh, which
+    #    makes the pair a winner-take-all instead of a mutual amplifier.
+    #
+    #    The licence for that is the same one this model already uses in the other
+    #    direction. AVL and DVB stain for GABA and are inhibitory in every standard model,
+    #    and here they are excitatory, because their GABA lands on the cation channel
+    #    EXP-1. The mirror case is that C. elegans glutamate opens glutamate-gated chloride
+    #    channels (AVR-14, AVR-15, GLC-1/2/3) as well as the AMPA-type GLR-1, so a
+    #    glutamatergic synapse in this animal is inhibitory or excitatory according to the
+    #    receptor the postsynaptic cell expresses. Reversal potential is therefore a
+    #    property of the synapse, which is why NervousSystem now carries a (post, pre)
+    #    matrix rather than a per-neuron vector.
+    #
+    # 2. Nothing ends a forward run. Even a perfect winner-take-all is a latch: it picks a
+    #    side and holds it. Spontaneous alternation needs the winning side to tire, which
+    #    is the half-centre construction (Brown 1911) that CPG models have used ever since,
+    #    and which whole-brain imaging supports here -- Kato et al. (2015) find the motor
+    #    command state traversing a cyclic trajectory rather than resting in a stable
+    #    fixed point. command_adapt_ratio gives the command interneurons a potassium
+    #    conductance of their own, sized as a fraction of each cell's resting conductance
+    #    like every other intrinsic current in this model, and command_adapt_tau sets how
+    #    long a run lasts before it gives out.
+    #
+    # Neither is calibrated yet. Both are zero, which reproduces the current model exactly,
+    # and the measurement that will set them is tools/ethogram.py.
+    # -- glutamate-gated chloride, and the sign of chemotaxis -------------------------------
+    # The chemotaxis assay reproduces Pierce-Shimomura's biased random walk with the bias
+    # pointing the wrong way: the animal reverses 13.4 times a minute while conditions
+    # improve and 9.0 while they worsen, a ratio of 0.68 where the animal is about 2 and
+    # anything above 1 is chemotaxis. It turns *more* when things are getting better.
+    #
+    # The route is short and the sign error is in it. ASEL and ASER both project onto AIY
+    # (19 and 16 contacts), AIY projects onto AIZ (21), and AIZ makes 10 contacts onto the
+    # backward command pool -- AIY itself makes none. So rising attractant depolarises
+    # ASEL, which excites AIY, which excites AIZ, which drives a reversal. Measured
+    # directly: 3 pA into AIY takes the reversal rate from 4.7 to 6.0 per minute, and the
+    # same current into AIZ does the same thing.
+    #
+    # In the animal AIY does the opposite -- it sustains forward runs and suppresses
+    # turning -- and the reason this model has it backwards is the same simplification
+    # that made the command pools mutually excitatory: glutamate collapsed to a single
+    # excitatory reversal. Chalasani et al. (2007) Nature 450:63 showed that the same
+    # glutamate release inhibits AIY through the glutamate-gated chloride channel GLC-3
+    # while exciting AIB through the AMPA-type GLR-1. One transmitter, two receptors,
+    # opposite signs -- which is the whole mechanism, and none of it survives a model that
+    # decides a synapse's sign from the transmitter alone.
+    #
+    # So the correction is the same one already made for AVL and DVB, run the other way,
+    # and it uses the same per-synapse reversal machinery: name the glutamatergic senders
+    # and the cells that answer them with a chloride channel. AIB is deliberately not in
+    # the list -- it holds GLR-1 and should stay excited.
+    glucl_pre: tuple = ("ASE", "AWC")     # glutamatergic sensory neurons
+    glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
+    # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
+    # ASEL -- which is what "the attractant is rising" looks like to the circuit:
+    #
+    #   glucl   baseline   ASEL driven   effect of things improving
+    #    0.0      4.67        5.00        +0.33   promotes reversal  (wrong way)
+    #    1.0      5.00        4.67        -0.33   suppresses reversal (right way)
+    #
+    # The sign is now the animal's. The magnitude is small because the route is thin --
+    # see the note above on how few contacts carry it -- so this changes which way the
+    # bias points without yet making it strong. Locomotion is untouched: on a bare plate
+    # ASE is not driven at all, and speed, travelling index and reversal rate are the same
+    # to three decimal places at 0.0 and 1.0.
+    #
+    # On the plate it moves the bias without yet winning the argument. The chemotaxis
+    # assay's pirouette ratio -- reversals while worsening over reversals while improving,
+    # which is above 1 for any animal that chemotaxes and about 2 for a real one -- goes
+    # from 0.68 to 0.88. Better, and still the wrong side of 1.
+    #
+    # Raising chemo_gain does not close it and makes it worse: at 150 pA/unit, six times
+    # the calibrated value, the ratio falls back to 0.66. So there is a second route from
+    # ASE to the backward pool that promotes reversals as the attractant rises, and it
+    # outruns the AIY arm when both are driven hard. The likely one is ASE onto AIB onto
+    # RIM, which reaches the backward pool through 16 gap junctions, and it is not
+    # correctable the same way -- AIB holds GLR-1 and is *supposed* to be excited.
+    #
+    # What is missing is the opponency itself. ASEL should be the cell that says "better"
+    # and ASER the cell that says "worse", and in this reconstruction they are wired almost
+    # identically: ASEL makes 19 contacts onto AIY and 9 onto AIB, ASER makes 16 and 12.
+    # Their separation in the animal is functional -- different receptors and neuropeptides
+    # downstream -- rather than anatomical, so contact counts alone cannot produce it and
+    # no amount of gain on a symmetric pair will either.
+    glucl_strength: float = 1.0           # 0 = as reconstructed, 1 = fully inhibitory
+
+    command_forward: tuple = ("AVB", "PVC")
+    command_backward: tuple = ("AVA", "AVD", "AVE")
+    # Measured, in the order the sweeps ran, and the order matters because the second
+    # result overturns the reasoning behind the first:
+    #
+    #   cross  adapt |  corr   difference   margin   rev/min   dur s |  speed   net/path
+    #    0.00   0.00 | +0.744   +0.2128      3.83     1.67     0.06  |  0.1853   0.783
+    #    1.00   0.00 | +0.737   +0.2316      4.30     1.00     0.02  |  0.2077   0.853
+    #    0.00   0.05 | +0.694   +0.1957      2.95    12.00     0.06  |  0.1839   0.798
+    #    0.00   0.10 | +0.611   +0.1808      2.18    30.00     0.07  |  0.1752   0.783
+    #    1.00   0.10 | +0.608   +0.1959      2.52    18.33     0.08  |  0.1954   0.843
+    #    0.00   0.30 | +0.473   +0.1220      0.42    82.33     0.22  |  0.0974   0.518
+    #
+    # Cross-inhibition alone does nothing: the correlation will not move and the margin
+    # gets worse, because the forward pool's 70 contacts outweigh the 33 coming back and
+    # because the pools are correlated by shared input rather than by the synapses between
+    # them. Adaptation alone moves the margin exactly as intended, 3.83 -> 2.18, and buys
+    # nothing behavioural, which the duration column gives away: **every episode lasts
+    # 0.06-0.08 s at every setting**, one fifteenth of an undulation cycle. That is the
+    # difference dipping below a threshold it still sits above, not an animal reversing.
+    # Pushed until the rate looks biological the margin collapses to 0.42 sigma and
+    # locomotion halves, which is the same failure with the threshold now inside the noise.
+    #
+    # So fatigue is not sufficient, and the missing property is *persistence*: a reversal
+    # is a state the animal stays in for seconds. command_ca_ratio adds the regenerative
+    # limb that makes the far side of the threshold somewhere it can stay -- see
+    # NervousSystem for why that is the right reading and where the biology comes from.
+    command_cross_inhibition: float = 0.0   # 0 = as reconstructed, 1 = fully inhibitory
+    # Adopted once the gate was latched, which is the whole story of this parameter.
+    # Under the graded gate it was worthless: it moved the margin exactly as intended and
+    # produced only 0.07 s flickers, because the drive to the cords was proportional to
+    # the very difference it was moving, so any dynamics in the command layer came
+    # straight out of the gait. With the drive constant and the choice latched, the same
+    # conductance does what it was always meant to -- it makes the winning side tire, so a
+    # reversal is something the animal falls into and climbs out of rather than a threshold
+    # crossing. Measured (tools/command_sweep.py, three seeds, gate_hysteresis 0.04):
+    #
+    #   adapt  gate_bias | rev/min   dur s   %rev |  speed   net/path    TWI
+    #    0.00     0.16       2.67     0.44    1.8 |  0.2079   0.823    +0.781
+    #    0.05     0.14       2.67     0.48    2.1 |  0.2182   0.849    +0.785
+    #    0.10     0.12       2.67     0.44    1.8 |  0.2190   0.842    +0.789
+    #    0.10     0.13       4.67     0.69    5.3 |  0.2077   0.813    +0.769   <- adopted
+    #    0.10     0.14      12.00     0.77   15.9 |  0.1556   0.640    +0.580
+    #
+    # 4.67 reversals per minute against the animal's 3.2-3.5 off food, and episodes of
+    # 0.69 s against the 0.06 s the graded gate produced -- eleven times longer, and within
+    # sight of the one to four seconds a real reversal lasts. Adaptation raises the mean
+    # difference as well as lengthening the episodes, so gate_bias comes down with it;
+    # rows at fixed bias are not comparable across this parameter.
+    command_adapt_ratio: float = 0.10       # g_K as a fraction of resting conductance
+    command_adapt_tau: float = 15.0         # s   the timescale of a forward run
+    command_ca_ratio: float = 0.0           # g_Ca as a fraction of resting conductance
+    # Which command cells carry it, and this is the parameter the measurements care about.
+    # Regenerative calcium on the *forward* pool costs half the locomotion whatever else is
+    # done with it -- with the gate held so that the animal never reversed once, net/path
+    # still fell 0.783 -> 0.400, and closing the calcium gate at rest (command_ca_offset
+    # 8 and 16 mV) made it slightly worse rather than better, which rules out the resting
+    # depolarisation as the cause. The remaining explanation is structural and is the same
+    # conflation day five only half removed: AVB's membrane potential is the bifurcation
+    # parameter for the entire B cord, delivered through 58 gap-junction contacts that the
+    # connectome already contains. Giving AVB dynamics of its own is therefore not a change
+    # to the decision, it is a change to the gait.
+    #
+    # AVA has no such conflict. Its 102 gap contacts land on the A class, which carries no
+    # regenerative conductance at all (a_class_scale is 0), so it is poising nothing. It is
+    # also where the biology puts the bistability in the first place: AVA is the cell with
+    # the documented all-or-none depolarised plateaus.
+    command_ca_classes: tuple = ("AVA", "AVD", "AVE", "AVB", "PVC")
+    # Calcium half-activation for the command layer, relative to each cell's own rest.
+    # The motor classes use 0, which leaves the gate half open at rest; that is a standing
+    # depolarising load, and on these cells it costs the gait directly -- with reversals
+    # switched off entirely, ca 0.35 still took net/path from 0.783 to 0.400, because
+    # AVB's resting potential is what poises the whole B cord. Placing this above rest
+    # keeps the conductance shut until the cell is driven. 0.0 reproduces the motor-class
+    # placement, and is the default only because it is the one already measured.
+    command_ca_offset: float = 0.0          # mV above each command cell's rest
+
     oscillator_classes: tuple = ("DB", "VB", "DA", "VA")
     # ...but scaled down, because the command circuit does not currently separate the two
     # cords enough to do it for us. Measured during forward locomotion: the B class sits
@@ -390,7 +645,23 @@ class BodyParams:
     # local body radius. The muscle sheets lie just under the cuticle.
     muscle_moment_arm: float = 0.85
 
-    dt: float = 0.0005              # s   shared with the neural step
+    # Substeps of the mechanics per neural step.
+    #
+    # The body is stiff and the step does not resolve it. Measured on the linearised
+    # bending problem, 33 of 48 modes relax faster than one 0.5 ms step, the fastest in
+    # 0.0055 ms -- ninety times faster than the step. The semi-implicit scheme is stable
+    # there, but its treatment of a mode with dt/tau of order one is neither resolved nor
+    # fully damped, and it therefore depends on dt.
+    #
+    # It is nonetheless *not* where the gait's step dependence lived. Substepping the
+    # mechanics sixteen-fold at dt = 0.5 ms reproduces dt = 0.5 exactly, which is what
+    # first showed the body's own integration was already converged and sent the search
+    # towards the coupling instead -- see BodyParams.dt. Kept at 1, and kept at all because
+    # it is the control that rules the mechanics out.
+    substeps: int = 1
+
+    dt: float = 0.0005              # s   standalone default; Simulation
+                                    #     overrides this with NeuralParams.dt
 
 
 @dataclass(frozen=True)
@@ -481,15 +752,108 @@ class SensoryParams:
     cultivation_temp: float = 20.0   # degC
     oxygen_gain: float = 60.0        # pA per unit fractional O2 (so ~8 pA over the range)
     oxygen_preferred: float = 0.07   # fractional O2 that URX/AQR/PQR prefer
-    touch_gain: float = 34.0         # pA per uN of indentation force
+    # Per uN of smoothed indentation force.
+    #
+    # This was 34 pA/uN against a receptor state that accumulated one whole force per step
+    # and leaked with touch_tau, so the steady state was 700.5 x force at the shipped
+    # timestep and the effective sensitivity was 34 x 700.5 = 23817. That accumulation also
+    # made it proportional to 1/dt; Senses now keeps a plain exponential moving average and
+    # the factor is written here instead of hidden in an integrator.
+    #
+    # Which made it obvious that it was two hundred times too big. A standard tap at that
+    # sensitivity implies a **8745 mV** depolarisation of ALM, clamped by v_clamp to +45.
+    # The mechanosensory channel was therefore not a sensor at all but a binary switch, and
+    # anything graded downstream of it was invisible: the first attempt at habituation
+    # depleted the receptor resource to 52% and changed the response by 2%, because 48% of
+    # a stimulus two hundred times past the rail is still past the rail.
+    #
+    # Calibrated instead so that the receptor stays off the clamp and responds gradedly.
+    # Measured, tap response of the backward command pool against a no-tap control:
+    #
+    #   touch_gain   ALM peak V   response      note
+    #      23817        +45.0      +0.105       clamped: any two stimuli look identical
+    #        300        +45.0      +0.054       clamped
+    #        150        +29.3      +0.037       off the clamp
+    #         75         -7.6      +0.020       <- adopted
+    #         40        -23.1      +0.010
+    #
+    # 75 gives a receptor potential of about 39 mV for a strong tap, which is still larger
+    # than the 10-20 mV whole-cell recordings show, and leaves headroom for a harder
+    # stimulus -- a dish wall pushes far harder than an eyebrow hair -- before anything
+    # clamps. The mechanoreceptor current is the better constrained quantity and it lands
+    # in the tens of pA that O'Hagan, Chalfie & Goodman (2005) measured.
+    touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
+
+    # Habituation, and the only thing in this model that remembers anything.
+    #
+    # Rankin, Beck & Chiba (1990) tap a plate every ten seconds; the reversal response
+    # falls away over about thirty taps, recovers over minutes of rest, and habituates
+    # more deeply at shorter intervals. All three come out of one depleting-resource
+    # equation rather than being fitted separately, which is the reason to prefer it to a
+    # decay bolted onto the response:
+    #
+    #     dA/dt = (1 - A) / tau  -  use * stimulus * A
+    #
+    # with the touch drive scaled by A. Repeated stimulation depletes it, rest refills it
+    # with tau, and a short interval habituates more deeply because less refilling happens
+    # in between. Integrated exactly, so the amount of learning does not depend on dt.
+    #
+    # This sits in the receptor rather than at the synapse, and that placement is a
+    # measured result rather than a preference. Rose and Rankin place the change
+    # presynaptically, as reduced glutamate release onto the interneurons, so that is what
+    # was built first (NeuralParams.depression_use, still present and still zero). It does
+    # nothing here, and the reason is this connectome: cutting ALM and AVM's entire
+    # chemical output leaves the AVA response to a tap unchanged at +0.18, while cutting
+    # their gap junctions halves it. The tap response in this model is carried
+    # electrically, and no amount of presynaptic depression can habituate an ohmic
+    # junction. Receptor fatigue is the locus that works here, and it is defensible on its
+    # own -- mechanoreceptors adapt -- but it is the second choice and it is recorded as
+    # such.
+    touch_habituation_use: float = 0.0    # 1/s per unit stimulus
+    touch_habituation_tau: float = 60.0   # s   recovery from habituation
     food_gain: float = 11.0          # pA  dopaminergic mechanosensation of the bacterial lawn
     proprio_gain: float = 30.0       # pA per unit normalised curvature
     # Wen et al. (2012) Neuron 76:750 showed by localised body restraint that B-type motor
     # neurons transduce the curvature of the region *anterior* to them, over roughly
     # 200 um -- a fifth of the body. Boyle et al.'s 2012 model, which predates that result,
     # integrates posteriorly over half the body instead; we follow the experiment.
-    proprio_reach: float = 0.20      # fraction of body length sampled anteriorly
+    # 0.30, raised from 0.20, and this is the one knob that turned out to do what the
+    # notes always assumed it did. Measured (tools/wave_speed.py, three seeds):
+    #
+    #   reach |  freq Hz   wavelength L   TWI     k_rms   net mm/s
+    #    0.08 |   1.167       0.49      +0.489    2.27     0.108
+    #    0.12 |   1.167       0.48      +0.588    2.26     0.125
+    #    0.16 |   1.167       0.50      +0.735    2.38     0.159
+    #    0.20 |   1.178       0.55      +0.796    2.45     0.210
+    #    0.30 |   1.178       0.64      +0.746    2.40     0.218
+    #
+    # Two things in that table, and the second is the more important one.
+    #
+    # Reach sets the wavelength -- 0.64 L against the animal's 0.65, where 0.20 gave 0.55
+    # -- and costs nothing to do it: net speed goes 0.210 to 0.218 against a measured
+    # 0.219, and the travelling index only slips from +0.80 to +0.75.
+    #
+    # And **reach does nothing whatever to the frequency**, which is flat at 1.167-1.178 Hz
+    # across a 3.75-fold range. Wavelength and frequency are not two views of one quantity
+    # in this model; they are independent, the wavelength is now right, and the frequency
+    # is set entirely by the head loop. Everything in the day-two notes that treats them as
+    # a single problem is wrong on this evidence.
+    # Re-fitted to 0.16 once head_delay went in, because the delay raises the wavelength
+    # and reach is what trades against it. At delay 0.60 the pair runs:
+    #
+    #   reach |  wavelength L    TWI    k_rms   net mm/s
+    #    0.13 |     0.66       +0.575   4.40     0.131
+    #    0.16 |     0.75       +0.655   4.44     0.186   <- adopted
+    #    0.22 |     0.81       +0.684   4.44     0.213
+    #    0.30 |     0.87       +0.736   4.34     0.185
+    #
+    # A clean trade: shorter reach buys wavelength and costs speed. 0.13 lands the
+    # wavelength exactly on the animal's 0.65 and gives up 40% of the speed; 0.22 nearly
+    # lands the speed and misses the wavelength by a quarter. 0.16 is the middle, and puts
+    # all four gait numbers within 15% of the animal at once, which no configuration in
+    # this project has managed before.
+    proprio_reach: float = 0.16      # fraction of body length sampled anteriorly
 
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel
@@ -530,6 +894,79 @@ class SensoryParams:
     # several fold while leaving 0.3 Hz almost untouched, which removes the fast attractor
     # and leaves the slow one.
     head_tau: float = 0.22            # s   stretch-receptor adaptation of the head reflex
+
+    # A transport delay in the head reflex, and the reason it exists is numerical as much
+    # as biological.
+    #
+    # The head loop oscillates because negative feedback with enough lag must, and its
+    # frequency is therefore wherever the loop's phase happens to cross 180 degrees. Almost
+    # all of that lag currently comes from continuous dynamics -- head_tau, the synapses,
+    # the muscle cascade, the body -- and the fastest of those live at the edge of what the
+    # timestep resolves: RMD, SMD and SMB have membrane time constants of 0.93 to 2.34 ms
+    # against a 0.5 ms step. So the crossover frequency is partly a property of the
+    # integrator, and it moves by 44 to 86% when the step is refined, in every one of the
+    # nineteen configurations swept in tools/wave_speed.py.
+    #
+    # A pure delay is the one kind of lag that cannot be an artefact. It contributes phase
+    # 2*pi*f*delay, exactly, at every frequency, and it is defined in seconds rather than
+    # in steps -- so whatever crossover it sets is the same at any dt, and it dominates the
+    # loop's phase at high frequency, which is where the fast mode lives.
+    #
+    # It is also real. The reflex here reads curvature and acts on it within one step;
+    # mechanotransduction, graded transmission and the neuromuscular junction each take
+    # milliseconds to tens of milliseconds, none of which this model represents anywhere.
+    #
+    # Zero by default until measured.
+    # 0.60 s, and this is the largest fitted number in the model. It is what finally moved
+    # the two headline discrepancies, and the honesty about where it comes from matters
+    # more than the result. Measured at reach 0.16, three seeds:
+    #
+    #   delay s |  freq Hz   wavelength L    TWI    k_rms   net mm/s
+    #     0.00  |   1.178       0.64       +0.746   2.40     0.218
+    #     0.15  |   0.811       0.73       +0.707   3.29     0.180
+    #     0.40  |   0.544       0.68       +0.700   4.12     0.166
+    #     0.60  |   0.433       0.75       +0.655   4.44     0.186   <- adopted
+    #     0.80  |   0.367       0.76       +0.653   4.63     0.149
+    #
+    # Against the animal: 0.30-0.50 Hz, 0.65 L, curvature rms 4.3 /mm, 0.219 mm/s. The
+    # frequency was the largest single error in this project -- 1.18 Hz, near four times
+    # the crawling gait -- and it is now 0.43. Curvature was 43% low at 2.40 and is now 3%
+    # high at 4.44. Nothing else tried in eight days moved either without destroying the
+    # wave, and every other route was tried: head_tau, head gain, body gain, reach, the
+    # segmental oscillators, and head_tau paired with a compensating gain.
+    #
+    # **It is not a measured delay.** Mechanotransduction takes milliseconds, not six
+    # hundred of them, and no single element of the real head circuit is this slow. What
+    # the number actually says is arithmetic about the loop: an oscillation at 0.43 Hz
+    # needs about 1.15 s of lag around the loop to reach its half-period, the modelled
+    # components -- head_tau, the synapses, the muscle cascade, the body -- supply about
+    # 0.42 s of it, and the remaining 0.7 s has to exist somewhere or the animal would
+    # undulate at 1.18 Hz, which it does not. So this parameter is the size of what the
+    # model is missing, stated plainly, rather than a claim about a receptor.
+    #
+    # The obvious candidate for what it stands in for is the head circuit itself. RMD,
+    # SMD and SMB are lumped here into one reflex with one gain and one filter; the real
+    # thing is several cell classes with their own dynamics, and RMD is frankly bistable
+    # (Mellem et al. 2008). A distributed multi-stage circuit accumulates phase that a
+    # single first-order lag cannot. Replacing this number with that circuit is the way to
+    # earn it back.
+    #
+    # One argument that was made for this parameter has since been withdrawn, and it is
+    # worth striking out rather than quietly deleting. It was claimed that the coarse
+    # timestep supplied phase and damping for free and that the delay was replacing them.
+    # That rested on convergence measurements taken while the body ran at its own timestep
+    # (see BodyParams.dt), and they meant nothing. The value stands -- it was fitted at
+    # dt = 0.5 ms, where the coupling was correct -- but it is now unsupported by anything
+    # except that it lands the frequency, which makes it a fit and not an explanation.
+    #
+    # And there is now direct evidence that it is the wrong *kind* of thing. A fixed delay
+    # contributes fixed phase at every frequency, so it pins the loop's crossover no matter
+    # what the medium does to the mechanical load -- and gait modulation, measured across
+    # three media, is correspondingly dead: 0.45 Hz on agar, 0.18 in viscous, 0.19 in
+    # buffer, where the animal goes 0.30 crawling to 1.76 swimming. The animal *cannot*
+    # speed up in water while this delay dominates the loop's phase. Whatever replaces it
+    # has to have a frequency that follows the load, which a transport delay never will.
+    head_delay: float = 0.60          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------
     # These three parameters used to be one, and separating them is what makes any
@@ -584,7 +1021,56 @@ class SensoryParams:
     # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
     # at which the animal is evenly poised, and gate_slope how sharply it commits.
     gate_slope: float = 30.0         # per unit of activation difference
-    gate_bias: float = 0.09          # activation difference at the 50/50 point
+    gate_bias: float = 0.13          # activation difference at the switch point
+
+    # Which cord, decided separately from how much drive it gets.
+    #
+    # The graded gate above does two jobs with one number, and that is the same conflation
+    # day five only half removed. `tonic_forward` was split into a decision bias and a cord
+    # drive, but the *fraction* still both chooses the direction and scales the descending
+    # current: at fwd_frac 0.5 both cords are driven at half strength, both proprioceptive
+    # fields are half engaged, and the two fight over the same muscles. So the decision
+    # cannot move without moving the gait, which is why every attempt to give the command
+    # layer dynamic range cost locomotion (see NeuralParams.command_ca_ratio), and why the
+    # reversals that did occur lasted 0.07 s -- a level hovering at a threshold rather than
+    # a state.
+    #
+    # Latched, the two jobs come apart. A Schmitt trigger picks a cord and commits: the
+    # selected cord gets the *whole* drive, the other goes passive, and the difference has
+    # to cross the far threshold to change anything. The difference is then free to wander
+    # as widely as the circuit wants without touching the gait, and a reversal is something
+    # the animal stays in until the command actually recovers -- which is what hysteresis
+    # buys, and what the 0.07 s flicker was missing.
+    #
+    # gate_hysteresis is the half-width of the dead zone, in the same activation-difference
+    # units as gate_bias.
+    #
+    # Measured (tools/command_sweep.py, three seeds, 60 s each). The first row is the
+    # graded gate this replaces; note that latching *improves* locomotion before it does
+    # anything else, because the two cords stop sharing the descending drive:
+    #
+    #   configuration        rev/min   dur s   %rev |  speed   net/path    TWI
+    #   graded (shipped)       1.67    0.06     0.2 |  0.1853   0.783    +0.767
+    #   latch b=0.12 h=0.02    0.33    0.34     0.2 |  0.2102   0.825    +0.785
+    #   latch b=0.14 h=0.02    2.67    0.27     1.2 |  0.2058   0.814    +0.782
+    #   latch b=0.15 h=0.02    7.33    0.37     4.2 |  0.1916   0.769    +0.768
+    #   latch b=0.16 h=0.02   11.67    0.41     7.9 |  0.1911   0.793    +0.751
+    #   latch b=0.16 h=0.04    2.67    0.44     1.8 |  0.2079   0.823    +0.781   <- adopted
+    #   latch b=0.16 h=0.01   23.00    0.35    13.4 |  0.1712   0.743    +0.718
+    #
+    # The column that matters is **dur**. The graded gate's "reversals" lasted 0.06 s, one
+    # fifteenth of an undulation cycle, which is a difference dipping below a threshold and
+    # bouncing straight back rather than an animal reversing. Every latched row is five to
+    # seven times longer, because that is what hysteresis is for: once committed, the
+    # animal stays committed until the command actually recovers.
+    #
+    # 2.67 reversals per minute against the animal's 3.2-3.5 off food (Zhao et al. 2003).
+    # Slightly low, and chosen over the rows nearer the target because those cost
+    # locomotion, while this one leaves it better than the graded gate on every measure:
+    # speed 0.208 against 0.185, net-to-path 0.823 against 0.783, travelling index +0.781
+    # against +0.767.
+    gate_latched: bool = True
+    gate_hysteresis: float = 0.04
 
 
 @dataclass(frozen=True)

@@ -24,24 +24,29 @@ def crawl():
 def test_undulation_frequency_on_agar(crawl):
     """Measured crawl: 0.30 +- 0.02 Hz (Fang-Yen 2010); swim 1.76 +- 0.07 Hz.
 
-    This model settles near 1.2 Hz on agar -- reproducibly, across seeds, but between the
-    two real gaits and much closer to swimming. The bound below is what it does, not what
-    the animal does. See the README's limitations section.
+    This lands, at about 0.44 Hz, and the bound is tight because it is now a result rather
+    than a disclaimer. It sat near 1.2 Hz for the first eight days of this project -- four
+    times the crawling gait and much closer to swimming -- and what moved it was giving the
+    head reflex an explicit transport delay (SensoryParams.head_delay), which is the only
+    lag in that loop whose size cannot be an artefact of the timestep. Read the note on
+    that parameter before trusting the number: the delay is fitted, it is the largest free
+    parameter in the model, and it is standing in for a head circuit this model lumps into
+    one reflex.
     """
-    assert 0.25 <= crawl["freq"] <= 1.8, crawl["freq"]
+    assert 0.28 <= crawl["freq"] <= 0.60, crawl["freq"]
 
 
 def test_wavelength_on_agar(crawl):
     """Measured: 0.65 +- 0.03 body lengths (Fang-Yen 2010); 0.58 +- 0.02 (Berri 2009).
 
-    This model runs long, around 1.1 L, and the bound below says so rather than pretending
-    otherwise. The wavelength is almost completely insensitive to the proprioceptive reach
-    (1.11 to 1.20 as the reach varies from 0.10 to 0.20 L), which says the body wave here
-    is mostly the passive mechanical response to the head's bending rather than a
-    regenerated reflex wave -- the proprioceptive coupling is real but weaker than the
-    animal's. See the README's limitations section.
+    This lands, at 0.64 L, and the bound is tight because it is now a real result rather
+    than a shrug. The earlier version of this docstring said the wavelength was "almost
+    completely insensitive to the proprioceptive reach", on a measurement made when the
+    wave was mostly standing; with a travelling wave it is the one thing reach does
+    control, running 0.49 to 0.64 L as reach goes 0.08 to 0.30 while leaving the frequency
+    flat to within 1%. See SensoryParams.proprio_reach for the table.
     """
-    assert 0.45 <= crawl["wavelength"] <= 1.8, crawl["wavelength"]
+    assert 0.55 <= crawl["wavelength"] <= 0.80, crawl["wavelength"]
 
 
 def test_wave_travels_head_to_tail(crawl):
@@ -242,3 +247,190 @@ def test_the_wave_travels_rather_than_standing():
             kappa.append(sim.body.curvature().copy())
     twi = travelling_index(np.array(kappa))
     assert twi > 0.15, "the body is oscillating as a standing wave (TWI %+.3f)" % twi
+
+
+def test_ablation_silences_a_neuron_and_is_reversible():
+    """Killing a cell must remove its drive, and restoring must put it back.
+
+    This guards a failure mode that is silent rather than loud. The step reads the
+    precomputed product of conductance and reversal potential, `GE_syn`, not `G_syn`, so
+    an ablation that zeroes only `G_syn` removes a cell's conductance while leaving its
+    driving potential in place -- the neuron looks dead in every matrix anyone inspects
+    and still drives its targets. Checked on a GABAergic cell because for an excitatory
+    one `GE_syn` is zero anyway (E_exc is 0 mV) and the test would pass without testing.
+    """
+    from worm.server import Runner
+    r = Runner()
+    i = r.sim.conn.index["DD01"]
+    out = lambda: (float(r.sim.nervous.G_syn[:, i].sum()),          # noqa: E731
+                   float(np.abs(r.sim.nervous.GE_syn[:, i]).sum()),
+                   float(r.sim.nervous.G_gap[i].sum()))
+    before = out()
+    assert before[0] > 0 and before[1] > 0 and before[2] > 0, "DD01 has no output to remove"
+
+    r.command({"cmd": "ablate", "neurons": ["DD01"]})
+    assert out() == (0.0, 0.0, 0.0), "ablation left drive behind: %r" % (out(),)
+
+    r.command({"cmd": "restore"})
+    assert out() == pytest.approx(before), "restore did not put the cell back"
+
+
+def test_ablating_the_forward_command_ends_forward_locomotion():
+    """The classic experiment: without AVB the animal stops going forwards.
+
+    Measured as *signed* progress along the body axis, which matters here -- the first
+    version of this test used unsigned speed and passed the ablated animal at 0.24 mm/s,
+    faster than the intact one, because silencing the forward command hands the cord to
+    the backward generator and the animal crawls away tail-first. Speed alone cannot see
+    that; the sign is the whole phenotype.
+    """
+    from worm.server import Runner
+    r = Runner()
+    r.sim = Simulation(r.params, seed=3, world=bare_world(r.params))
+    r.sim.run(8.0)
+
+    def along(seconds):
+        start = r.sim.body.centroid().copy()
+        axis = r.sim.body.body_direction().copy()
+        r.sim.run(seconds)
+        return float(np.dot(r.sim.body.centroid() - start, axis)) / seconds
+
+    intact = along(12.0)
+    r.command({"cmd": "ablate", "neurons": ["AVBL", "AVBR", "PVCL", "PVCR"]})
+    r.sim.run(4.0)                       # let the cord fall off its bifurcation
+    ablated = along(12.0)
+
+    assert intact > 0.05, (
+        "the intact animal was not crawling forwards to begin with (%.4f mm/s)" % intact)
+    # Roughly halved, not abolished, and the bound says so rather than flattering the
+    # model. In a real worm losing AVB ends forward locomotion; here it removes about half
+    # of it, because the head reflex propels the animal on its own and is untouched by the
+    # ablation. That share grew when head_delay went in -- the threshold used to be 0.25 --
+    # so this number is a fair measure of how much of the gait the command layer actually
+    # commands, and it should get stricter, not looser, as that improves.
+    assert ablated < 0.65 * intact, (
+        "ablating the forward command barely changed anything: "
+        "%.4f -> %.4f mm/s along the body axis" % (intact, ablated))
+
+
+def test_habituation_depletes_recovers_and_prefers_short_intervals():
+    """The one thing in this model that remembers anything.
+
+    Three properties, all out of the one resource equation in SensoryParams rather than
+    fitted separately: repeated stimulation depletes the receptor, rest refills it, and a
+    shorter interval habituates deeper than a longer one for the same number of taps.
+    That last one is what distinguishes habituation from fatigue, so it is the one worth
+    guarding. Run with a short recovery constant so the test costs seconds rather than the
+    three real minutes a 60 s constant would need to demonstrate the same thing.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def taps(isi, n=6, tau=8.0):
+        base = P()
+        p = dataclasses.replace(base, sensory=dataclasses.replace(
+            base.sensory, touch_habituation_use=6.0, touch_habituation_tau=tau))
+        sim = Simulation(p, seed=1, world=bare_world(p))
+        sim.run(2.0)
+        for _ in range(n):
+            for _ in range(int(0.05 / sim.dt)):
+                sim.poke("anterior", strength=1.4)
+                sim.step()
+            sim.run(isi)
+        depleted = float(sim.senses.touch_avail[0])
+        sim.run(3 * tau)
+        return depleted, float(sim.senses.touch_avail[0])
+
+    short_depleted, short_recovered = taps(1.0)
+    long_depleted, _ = taps(6.0)
+
+    assert short_depleted < 0.75, (
+        "repeated taps did not deplete the receptor (%.3f)" % short_depleted)
+    assert short_recovered > 0.9, (
+        "the receptor did not recover with rest (%.3f)" % short_recovered)
+    assert short_depleted < long_depleted - 0.05, (
+        "the short interval did not habituate deeper than the long one: %.3f vs %.3f"
+        % (short_depleted, long_depleted))
+
+
+def test_habituation_is_independent_of_the_timestep():
+    """How much an animal learns must not depend on how finely it is simulated.
+
+    The resource is integrated exactly rather than by an Euler step, so this holds across
+    a range of dt that would otherwise change the answer -- which is the same failure two
+    other sensory time constants had before they were fixed, and the reason this is a test
+    rather than a comment.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def depleted(dt_ms):
+        base = P()
+        p = dataclasses.replace(
+            base,
+            neural=dataclasses.replace(base.neural, dt=dt_ms * 1e-3),
+            sensory=dataclasses.replace(base.sensory, touch_habituation_use=6.0))
+        sim = Simulation(p, seed=1, world=bare_world(p))
+        sim.run(2.0)
+        for _ in range(4):
+            for _ in range(int(0.05 / sim.dt)):
+                sim.poke("anterior", strength=1.4)
+                sim.step()
+            sim.run(2.0)
+        return float(sim.senses.touch_avail[0])
+
+    coarse, fine = depleted(2.0), depleted(0.5)
+    assert abs(coarse - fine) < 0.02, (
+        "habituation depends on the timestep: %.4f at 2.0 ms vs %.4f at 0.5 ms"
+        % (coarse, fine))
+
+
+def test_rising_attractant_inhibits_aiy():
+    """The sign of chemotaxis, tested where it is unambiguous.
+
+    C. elegans chemotaxis is a biased random walk: the animal does not steer up a
+    gradient, it suppresses turns while things improve (Pierce-Shimomura, Morse & Lockery
+    1999). In this connectome the route from the nose to that decision is ASE onto AIY
+    (19 contacts), AIY onto AIZ (21), and AIZ onto the backward command pool (10) -- AIY
+    reaches the command layer only through AIZ. So a rising attractant, which depolarises
+    the ON cell ASEL, must *hyperpolarise* AIY. It used to depolarise it, because the
+    model gave every glutamatergic synapse an excitatory reversal, and the measured
+    consequence was an animal that reversed more often the better things got.
+
+    Tested on the membrane potential rather than on the reversal rate: the behavioural
+    effect is real but small against this animal's spontaneous rate, and a test that has
+    to average several seeds to see it is a slow test that still fails sometimes.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def aiy_response(glucl):
+        p = P()
+        p = dataclasses.replace(p, neural=dataclasses.replace(
+            p.neural, glucl_strength=glucl, noise_sigma=0.0))
+        sim = Simulation(p, seed=3, world=bare_world(p))
+        sim.run(6.0)
+        aiy = sim.conn.group("AIY")
+        before = float(sim.nervous.V[aiy].mean())
+        idx = sim.conn.select("ASEL", "ASER")
+        base = sim.senses.sense
+
+        def wrapped(*a, **k):
+            I = base(*a, **k)
+            I[idx] += 20.0            # a large, unambiguous "attractant is rising"
+            return I
+
+        sim.senses.sense = wrapped
+        sim.run(3.0)
+        return float(sim.nervous.V[aiy].mean()) - before
+
+    excitatory = aiy_response(0.0)
+    chloride = aiy_response(1.0)
+
+    assert excitatory > 0, (
+        "the uncorrected model should depolarise AIY, so this test is not measuring what "
+        "it thinks it is (%.3f mV)" % excitatory)
+    assert chloride < 0, (
+        "driving ASE still depolarises AIY with the chloride receptor in place "
+        "(%.3f mV): a rising attractant would make the animal turn more, which is "
+        "chemotaxis with the sign inverted" % chloride)
