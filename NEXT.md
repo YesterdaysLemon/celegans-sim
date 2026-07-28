@@ -1,5 +1,89 @@
 # Where this is, and what to do next
 
+> ## Day eight. The wavelength is right, and the gait only exists at one step size.
+>
+> **State: 38 tests pass. Wavelength 0.64 L against the animal's 0.65, net speed 0.218
+> against 0.219. And a structural result that matters more than either.**
+>
+> ### The wavelength, which turned out to be one knob
+>
+> Sweeping `proprio_reach` over a 3.75-fold range moves the wavelength from 0.49 to 0.64 L
+> and leaves the frequency flat at 1.167-1.178 Hz:
+>
+> ```
+>   reach |  freq Hz   wavelength L   TWI     k_rms   net mm/s
+>    0.08 |   1.167       0.49      +0.489    2.27     0.108
+>    0.20 |   1.178       0.55      +0.796    2.45     0.210   <- was shipped
+>    0.30 |   1.178       0.64      +0.746    2.40     0.218   <- adopted
+> ```
+>
+> So wavelength and frequency are **not** two views of one phase velocity here. Reach sets
+> the wavelength and does nothing at all to the frequency, which belongs entirely to the
+> head loop. Every note in this file that treats them as a single problem -- and there are
+> several, going back to day two -- is wrong on this evidence.
+>
+> 0.30 costs nothing: net speed goes 0.210 to 0.218 against a measured 0.219, and the
+> travelling index slips from +0.80 to +0.75. `test_wavelength_on_agar` now asserts
+> 0.55-0.80 instead of the old 0.45-1.8 shrug.
+>
+> ### The frequency has no working setting, and day two's last thread is closed
+>
+> Four sweeps, all at reach 0.30, all failures, and one of them has been open since day two:
+>
+> * **`head_tau` 0.22 -> 2.00** halves the frequency to 0.544 Hz and takes curvature from
+>   2.40 to 1.12 and speed from 0.218 to 0.038 with it. The filter buys phase by throwing
+>   away gain.
+> * **Filter plus compensating gain**, which nobody had tried because every earlier sweep
+>   moved one at a time, does recover the amplitude -- head_tau 1.0 with gain 400 gives
+>   0.656 Hz, curvature 3.11, speed 0.228 -- and blows the wavelength out to 3.09 L, a
+>   third of a wave on the whole body.
+> * **Doubling the body reflex gain** is day two's queued and never-run experiment
+>   ("backing the head off is the untested half"). It is now run and it fails: the wave is
+>   destroyed at every head gain, TWI at or below zero, curvature 6.4-8.1 against a
+>   measured 4.3, and a reported 0.100 Hz which is the bottom FFT bin and means no coherent
+>   oscillation. A stronger body reflex does not carry the wave; it makes a large
+>   incoherent bend.
+> * **Backing the head off alone** reaches 0.544 Hz at a net speed of 0.006 mm/s.
+>
+> ### The result that matters
+>
+> **The coherent 1.2 Hz gait exists at dt = 0.5 ms and nowhere else in the parameter space
+> swept.** Frequency drift between dt = 0.5 and 0.125 ms is 44% at the shipped setting and
+> 67-86% everywhere else, across nineteen configurations spanning reach, head_tau, head
+> gain, body gain and ca_ratio. At the fine step *every* one of them falls to 0.13-0.20 Hz
+> with a wavelength of 2 to 6 L and a travelling index of 0.17 to 0.41.
+>
+> Integrated accurately, this head-driven reflex chain does not produce C. elegans
+> locomotion. That is a larger statement than "the frequency is wrong" and it should be
+> read as the main finding of the day.
+>
+> The mechanism is visible in the head pool's own numbers. RMD, SMD and SMB have membrane
+> time constants of 0.93 to 2.34 ms, so the shipped step is 0.21 to 0.54 of a time constant
+> and the loop's fast dynamics are only marginally resolved. At 0.125 ms they resolve, the
+> fast mode stops being damped for free, and what takes over is not a gait.
+>
+> ### So what would actually work
+>
+> Not another parameter; nineteen configurations is enough to stop. Two candidates, and
+> both are design changes:
+>
+> 1. **Put an explicit delay in the loop** to replace the numerical one it has been leaning
+>    on. The head reflex currently reads curvature and acts on it within a step; a real
+>    stretch receptor has transduction and transmission delays of tens of milliseconds. A
+>    physical delay sets the crossover frequency honestly, is dt-independent by
+>    construction, and is the smallest change that could make the frequency a property of
+>    the animal rather than of the integrator.
+> 2. **Generate the rhythm somewhere that is not a phase crossover.** The head loop
+>    oscillates because a negative feedback loop with enough lag must; its frequency is
+>    therefore whatever the loop's phase happens to cross 180 degrees at, which is not a
+>    quantity anyone measured in a worm. A dedicated oscillator with its own time constant
+>    -- the RMD bistability Mellem et al. describe is the obvious candidate -- would have a
+>    frequency that means something.
+>
+> Do (1) first. It is cheap, it is testable against the existing convergence tool, and if
+> it works it fixes the frequency and the convergence together.
+
+
 > ## Day seven. The command layer moves, the animal reverses, and it remembers.
 >
 > **State: 37 tests pass. Spontaneous reversals at 4.67/min in episodes of 0.69 s, where

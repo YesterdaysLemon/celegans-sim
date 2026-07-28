@@ -763,7 +763,28 @@ class SensoryParams:
     # neurons transduce the curvature of the region *anterior* to them, over roughly
     # 200 um -- a fifth of the body. Boyle et al.'s 2012 model, which predates that result,
     # integrates posteriorly over half the body instead; we follow the experiment.
-    proprio_reach: float = 0.20      # fraction of body length sampled anteriorly
+    # 0.30, raised from 0.20, and this is the one knob that turned out to do what the
+    # notes always assumed it did. Measured (tools/wave_speed.py, three seeds):
+    #
+    #   reach |  freq Hz   wavelength L   TWI     k_rms   net mm/s
+    #    0.08 |   1.167       0.49      +0.489    2.27     0.108
+    #    0.12 |   1.167       0.48      +0.588    2.26     0.125
+    #    0.16 |   1.167       0.50      +0.735    2.38     0.159
+    #    0.20 |   1.178       0.55      +0.796    2.45     0.210
+    #    0.30 |   1.178       0.64      +0.746    2.40     0.218   <- adopted
+    #
+    # Two things in that table, and the second is the more important one.
+    #
+    # Reach sets the wavelength -- 0.64 L against the animal's 0.65, where 0.20 gave 0.55
+    # -- and costs nothing to do it: net speed goes 0.210 to 0.218 against a measured
+    # 0.219, and the travelling index only slips from +0.80 to +0.75.
+    #
+    # And **reach does nothing whatever to the frequency**, which is flat at 1.167-1.178 Hz
+    # across a 3.75-fold range. Wavelength and frequency are not two views of one quantity
+    # in this model; they are independent, the wavelength is now right, and the frequency
+    # is set entirely by the head loop. Everything in the day-two notes that treats them as
+    # a single problem is wrong on this evidence.
+    proprio_reach: float = 0.30      # fraction of body length sampled anteriorly
 
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel

@@ -34,14 +34,14 @@ def test_undulation_frequency_on_agar(crawl):
 def test_wavelength_on_agar(crawl):
     """Measured: 0.65 +- 0.03 body lengths (Fang-Yen 2010); 0.58 +- 0.02 (Berri 2009).
 
-    This model runs long, around 1.1 L, and the bound below says so rather than pretending
-    otherwise. The wavelength is almost completely insensitive to the proprioceptive reach
-    (1.11 to 1.20 as the reach varies from 0.10 to 0.20 L), which says the body wave here
-    is mostly the passive mechanical response to the head's bending rather than a
-    regenerated reflex wave -- the proprioceptive coupling is real but weaker than the
-    animal's. See the README's limitations section.
+    This lands, at 0.64 L, and the bound is tight because it is now a real result rather
+    than a shrug. The earlier version of this docstring said the wavelength was "almost
+    completely insensitive to the proprioceptive reach", on a measurement made when the
+    wave was mostly standing; with a travelling wave it is the one thing reach does
+    control, running 0.49 to 0.64 L as reach goes 0.08 to 0.30 while leaving the frequency
+    flat to within 1%. See SensoryParams.proprio_reach for the table.
     """
-    assert 0.45 <= crawl["wavelength"] <= 1.8, crawl["wavelength"]
+    assert 0.55 <= crawl["wavelength"] <= 0.80, crawl["wavelength"]
 
 
 def test_wave_travels_head_to_tail(crawl):
