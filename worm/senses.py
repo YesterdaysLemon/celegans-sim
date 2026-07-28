@@ -118,8 +118,11 @@ class Senses:
         self.prop_adapt = np.zeros(conn.n)
         self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
         self._chem_decay = np.exp(-dt / p.chemo_tau_adapt)
+        self._odour_decay = np.exp(-dt / (2.0 * p.chemo_tau_adapt))
+        self._odour_rate = 1.0 - self._odour_decay
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
+        self._touch_rate = 1.0 - self._touch_decay
 
         self.readout = {}
 
@@ -148,7 +151,17 @@ class Senses:
         if self.odour_adapt is None:
             self.odour_adapt = o
         do = o - self.odour_adapt
-        self.odour_adapt += (o - self.odour_adapt) * (1.0 - self._chem_decay * 0.5)
+        # "A little more slowly" means twice the time constant. It used to read
+        #     odour_adapt += (o - odour_adapt) * (1 - chem_decay * 0.5)
+        # where chem_decay is exp(-dt/tau) and so is very close to 1: the bracket is
+        # therefore about 0.5 *per step* whatever the step is, giving an adaptation time
+        # constant of roughly 2 dt -- one millisecond at the shipped step, not seven
+        # seconds. AWA and AWC were adapting out any odour within two timesteps, so the
+        # entire volatile pathway was deaf, and how deaf depended on dt. AWC is the OFF
+        # cell whose job is to fire when an attractant is *removed*, which is one of the
+        # better characterised reversal triggers in the animal, so this was not a small
+        # thing to have switched off.
+        self.odour_adapt += (o - self.odour_adapt) * self._odour_rate
         I[self.awa] += p.chemo_gain * 0.6 * do
         I[self.awc] -= p.chemo_gain * 0.6 * do      # OFF cell: excited by odour removal
 
@@ -175,8 +188,15 @@ class Senses:
         half = len(mag) // 2
         ant = float(mag[:half].sum()) + self.poke[0]
         post = float(mag[half:].sum()) + self.poke[1]
-        self.touch_state *= self._touch_decay
-        self.touch_state += np.array([ant, post])
+        # Smoothed contact, not accumulated contact. This used to be
+        #     touch_state = touch_state * decay + force
+        # which adds a whole force every step regardless of how long a step is, so its
+        # steady state was force / (1 - exp(-dt/tau)) -- proportional to 1/dt. Touch was
+        # therefore four times more sensitive at dt = 0.125 ms than at 0.5 ms, and sixteen
+        # times more than at 2 ms, which makes every mechanosensory result a statement
+        # about the step size as much as about the animal. As an exponential moving average
+        # the steady state is the force itself and the units mean what they say.
+        self.touch_state += (np.array([ant, post]) - self.touch_state) * self._touch_rate
         self.poke *= 0.0
         I[self.touch_anterior] += p.touch_gain * self.touch_state[0]
         I[self.touch_posterior] += p.touch_gain * self.touch_state[1]

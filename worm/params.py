@@ -584,7 +584,16 @@ class SensoryParams:
     cultivation_temp: float = 20.0   # degC
     oxygen_gain: float = 60.0        # pA per unit fractional O2 (so ~8 pA over the range)
     oxygen_preferred: float = 0.07   # fractional O2 that URX/AQR/PQR prefer
-    touch_gain: float = 34.0         # pA per uN of indentation force
+    # Per uN of *smoothed* indentation force. The number is large because it always was:
+    # the receptor state used to accumulate one whole force per step and leak with
+    # touch_tau, so its steady state was force/(1 - exp(-dt/touch_tau)) = 700.5 x force at
+    # the shipped step, and the effective sensitivity was 34 x 700.5. That accumulation
+    # also made it proportional to 1/dt, so touch was four times more sensitive at
+    # dt = 0.125 ms than at 0.5 ms. Senses now keeps a plain exponential moving average,
+    # whose steady state is the force itself, and this constant carries the factor that
+    # used to be hidden in the integrator -- chosen so that behaviour at dt = 0.5 ms is
+    # unchanged, which is why it is 34 x 700.5 rather than a round number.
+    touch_gain: float = 23817.0      # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
     food_gain: float = 11.0          # pA  dopaminergic mechanosensation of the bacterial lawn
     proprio_gain: float = 30.0       # pA per unit normalised curvature
