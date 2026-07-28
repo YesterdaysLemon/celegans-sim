@@ -255,24 +255,24 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   not reverse at all and so could not perform the biased random walk the behaviour is made
   of. That objection no longer applies, and the assays have not been rerun.
 
-- **The gait is not converged at the timestep the model ships at**, and this is the
-  largest unresolved problem in the project. Halving the step from 0.5 to 0.125 ms moves
-  the undulation frequency by 44–86%, in every one of twenty-five configurations swept
-  across proprioceptive reach, head time constant, head gain, body gain, the segmental
-  oscillators and the head delay (`tools/timestep_convergence.py`, `tools/wave_speed.py`).
-  At the fine step every one of them falls to 0.13–0.20 Hz with a wavelength of 2–6 body
-  lengths — which is not a gait.
+- **The gait's step dependence was a coupling bug, not a numerical one, and the previous
+  entry here was wrong.** `BodyParams.dt` was documented as "shared with the neural step"
+  and was shared with nothing: `Body` kept its own timestep, `Simulation` used
+  `NeuralParams.dt`, and changing the latter left the body advancing 0.5 ms per call while
+  the rest of the animal believed otherwise. At dt = 0.125 ms the body ran four times fast
+  relative to its own nervous system, and every convergence measurement made here was
+  measuring that.
 
-  So the coherent undulation exists at dt = 0.5 ms and nowhere else in the space searched.
-  The mechanism is visible in the head pool: RMD, SMD and SMB have membrane time constants
-  of 0.93–2.34 ms, so the shipped step is 0.21–0.54 of a time constant and the loop's fast
-  dynamics are only marginally resolved. At 0.125 ms they resolve, the numerical damping
-  that was suppressing the loop's fast mode goes away, and what takes over is not
-  locomotion.
+  With the two synchronised, the frequency sits at 0.44–0.45 Hz across a sixteen-fold range
+  of step size, curvature r.m.s. at 4.3–4.8 and the travelling index at 0.59–0.68 — where
+  before, every fine-step run collapsed to 0.13–0.20 Hz with a 2–6 L wavelength. The claim
+  that "integrated accurately this reflex chain does not produce C. elegans locomotion" is
+  withdrawn.
 
-  The explicit head delay was expected to fix this and did not — it is the one lag whose
-  size cannot be an artefact, and it improved the drift only from 44% to 54%. Every gait
-  number below should therefore be read as "at dt = 0.5 ms".
+  What remains is real and smaller: the frequency's seed-to-seed spread is 0.008 Hz at most
+  step sizes and 0.14 Hz at two of them. That is the gait bistability this project has
+  documented since day two, it is a property of the model rather than of the integrator,
+  and characterising it wants more than the three seeds used here.
 
 - **Ablating AVB halves forward locomotion rather than abolishing it.** In a real worm
   losing the forward command interneurons ends forward movement; here it removes about

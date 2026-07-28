@@ -1,5 +1,86 @@
 # Where this is, and what to do next
 
+> ## Day ten. The convergence failure was a coupling bug. Three days of conclusions withdrawn.
+>
+> **`BodyParams.dt` was documented as "shared with the neural step" and was shared with
+> nothing.** `Body` kept its own timestep, `Simulation` used `NeuralParams.dt`, and nothing
+> synchronised them -- so changing the neural step left the body advancing 0.5 ms per call
+> while the rest of the animal believed it had advanced by the neural step. At dt = 0.125 ms
+> the body ran **four times fast relative to its own nervous system**.
+>
+> Every timestep-convergence measurement in this project was measuring that. The day-eight
+> conclusion -- that the coherent gait exists at dt = 0.5 ms and nowhere else, and that
+> integrated accurately this reflex chain does not produce C. elegans locomotion -- **is
+> withdrawn**. So are the twenty-five "drift" numbers and everything inferred from them.
+>
+> With the body synchronised:
+>
+> ```
+>    dt ms |  freq Hz (sd)   wavelen L    TWI     k_rms   before the fix
+>    0.125 |  0.250 (0.141)     1.00    +0.566    4.78    0.13-0.20 Hz, 2-6 L
+>    0.250 |  0.444 (0.008)     0.73    +0.679    4.27
+>    0.500 |  0.344 (0.138)     2.05    +0.640    4.48
+>    1.000 |  0.444 (0.008)     0.71    +0.635    4.35
+>    2.000 |  0.450 (0.000)     0.74    +0.585    4.50
+> ```
+>
+> Frequency 0.44-0.45 Hz across a sixteen-fold range, curvature 4.3-4.8, travelling index
+> 0.59-0.68. Two rows carry a seed spread of 0.14 Hz where the others carry 0.008; that is
+> the gait bistability documented since day two, it is a property of the model rather than
+> of the integrator, and three seeds is not enough to characterise it.
+>
+> ### How it was found, because the method is the transferable part
+>
+> Not by sweeping. Eight days of parameter sweeps -- reach, head_tau, head gain, body gain,
+> ca_ratio, head_delay, gap_iters, twenty-five configurations -- produced eliminations and
+> never the cause, because every one of them inferred the loop's behaviour from the gait.
+>
+> `tools/loop_phase.py` opens the head loop, injects a sinusoid in place of the reflex, and
+> reads the gain and phase of each stage with a lock-in. One pass localised it: neurons
+> agree to 0.3 degrees between step sizes, synapses to 0.1, muscle transfer to 1 -- and
+> tension-to-curvature differs by 10 to 31, with the plant gain differing by up to 86%.
+>
+> Then four eliminations, each killing the obvious reading of that:
+>
+> * substepping the mechanics 16x at dt = 0.5 reproduced dt = 0.5 exactly rather than
+>   dt = 0.125, so the body's own integration was already converged;
+> * `ca_ratio` 0, removing the Hopf bifurcation, left the gap unchanged;
+> * `proprio_gain` 0, opening every feedback path, left it unchanged -- so it was
+>   feedforward;
+> * with the noise off, the joint-moment profile along the *whole* body was identical to
+>   0.1%, mean and oscillating alike, while head curvature differed by 18% in amplitude and
+>   24 degrees in phase.
+>
+> Same moment field, same body, different answer. And driving `Body` alone with an analytic
+> moment showed it converged to 0.05% in amplitude and 0.01 degrees in phase over a 32-fold
+> range of dt. Those two cannot both be true of a correctly coupled model, and that is what
+> pointed at the coupling rather than at either end of it.
+>
+> ### What this does and does not change
+>
+> **Does not change the shipped model.** The fix is a no-op at dt = 0.5 ms, where the body's
+> own dt already was 0.5. 38 tests pass, unchanged.
+>
+> **Does change what head_delay means.** 0.60 s was adopted on the argument that the loop
+> needs phase the modelled components do not supply -- which stands, since it was fitted at
+> the step where the coupling was correct. But the *surrounding* argument, that the coarse
+> step was supplying free damping and the delay was replacing it, was based on the broken
+> measurements and should be re-derived. The number is still fitted and still the largest in
+> the model; it is now worth asking again what it is standing in for, with a convergence
+> study that means something.
+>
+> **Next, in order.** Re-run the gait numbers across seeds now that a step size can be
+> trusted -- the two high-variance rows above are the interesting ones. Then re-examine
+> head_delay against a working convergence study. Then the assays, which have not run since
+> the command layer changed.
+>
+> ### Do not repeat this
+>
+> A parameter whose comment claims it is shared with something else, and is not. The
+> comment is what stopped anyone checking: it read as documentation of an invariant when it
+> was a description of an intention. Eight days of sweeps went past it.
+
+
 > ## Day nine. The frequency lands, and it costs one honest parameter.
 >
 > **State: 38 tests pass. 0.44 Hz against the animal's 0.30-0.50, curvature rms 4.48
