@@ -112,6 +112,11 @@ class Senses:
         self.t_adapt = None
         self.touch_state = np.zeros(2)
         self.poke = np.zeros(2)          # (anterior, posterior) externally driven touch
+        # Habituation. One resource per touch field, full at 1.0. See SensoryParams.
+        self.touch_avail = np.ones(2)
+        self._hab_use = float(p.touch_habituation_use)
+        self._hab_recover = 1.0 / p.touch_habituation_tau
+        self._habituates = self._hab_use > 0.0
 
         self.head_signal = 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
@@ -198,8 +203,15 @@ class Senses:
         # the steady state is the force itself and the units mean what they say.
         self.touch_state += (np.array([ant, post]) - self.touch_state) * self._touch_rate
         self.poke *= 0.0
-        I[self.touch_anterior] += p.touch_gain * self.touch_state[0]
-        I[self.touch_posterior] += p.touch_gain * self.touch_state[1]
+        if self._habituates:
+            # Exact for a frozen stimulus, like every other first-order state here, so how
+            # much the animal habituates does not depend on how finely it is stepped.
+            rate = self._hab_recover + self._hab_use * self.touch_state
+            inf = self._hab_recover / rate
+            self.touch_avail = inf + (self.touch_avail - inf) * np.exp(-rate * self.dt)
+        drive = p.touch_gain * self.touch_state * self.touch_avail
+        I[self.touch_anterior] += drive[0]
+        I[self.touch_posterior] += drive[1]
         I[self.nose_touch] += p.touch_gain * 0.5 * float(mag[0] + mag[1])
 
         # --------------------------------------------------------------------------- food
@@ -266,6 +278,7 @@ class Senses:
             "attractant": c, "d_attractant": dc, "repellent": rep,
             "temperature": T, "oxygen": o2, "food": f,
             "touch": float(self.touch_state.sum()),
+            "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
             **({} if mods is None else mods.readout()),
         }

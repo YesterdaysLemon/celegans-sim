@@ -181,7 +181,7 @@ class Runner:
             r = sim.senses.readout
             direction = {"forward": 1.0, "backward": -1.0, "still": 0.0}[sim.direction()]
             header = struct.pack(
-                "<6I13f",
+                "<6I14f",
                 MAGIC, len(nodes) // 2, len(act), len(tension), len(kappa),
                 1 if self.running else 0,
                 sim.t, sim.speed, sim.food_eaten, direction, self.achieved,
@@ -189,6 +189,7 @@ class Runner:
                 r.get("oxygen", 0.21), r.get("food", 0.0), r.get("touch", 0.0),
                 r.get("gate_forward", 0.0), r.get("gate_backward", 0.0),
                 r.get("repellent", 0.0),
+                r.get("habituation", 1.0),
             )
         return b"".join([header, nodes.tobytes(), act.tobytes(), volt.tobytes(),
                          tension.tobytes(), kappa.tobytes()])

@@ -244,6 +244,37 @@ class NeuralParams:
     # cord: AVA makes 102 gap-junction contacts onto 20 of the 21 A-class units and rests
     # at -26.7 mV, against AVB's 55 contacts onto 18 B-class units at -24.4 mV. Same
     # architecture, same descending-drive-holds-it-at-the-bifurcation story.
+    # -- synaptic depression, which is the only memory in this model -----------------------
+    # Everything else here forgets. The adaptation filters in Senses exist precisely to
+    # discard the past, the modulators integrate over tens of seconds and then decay, and
+    # nothing at all outlives a minute. So the animal cannot learn, and the first learning
+    # it should be able to do is the simplest kind there is: habituation.
+    #
+    # Rankin, Beck & Chiba (1990) Behav. Brain Res. 37:89 tap a plate every ten seconds and
+    # watch the reversal response fall away over about thirty taps, recover over minutes of
+    # rest, and habituate more deeply at shorter intervals. Rose & Rankin's later work
+    # places the change presynaptically, as reduced glutamate release from the touch
+    # receptors onto the interneurons, rather than in the interneurons themselves.
+    #
+    # That is a released-resource model, and it is the standard one (Tsodyks & Markram
+    # 1997). Each depressing terminal carries a resource D in [0, 1] which is consumed in
+    # proportion to how hard the cell is releasing and refills with its own time constant:
+    #
+    #     dD/dt = (1 - D) / depression_tau  -  depression_use * phi(V_pre) * D
+    #
+    # and the postsynaptic conductance sees s * D instead of s. Integrated exactly, the
+    # same way as everything else here, so it does not depend on the step size.
+    #
+    # Three properties fall out of that one equation rather than being fitted separately,
+    # which is the reason to prefer it to a decay term bolted onto the touch pathway:
+    # repeated stimulation depresses, rest recovers with depression_tau, and a shorter
+    # interval habituates more deeply because less refilling happens in between.
+    #
+    # Zero-safe: at depression_use = 0 the resource sits at 1 and the model is untouched.
+    depression_classes: tuple = ("ALM", "AVM", "PLM", "PVM")
+    depression_use: float = 0.0      # 1/s  consumption per unit release
+    depression_tau: float = 20.0     # s    refilling time constant
+
     # -- the command layer's own dynamics --------------------------------------------------
     # Two knobs, both zero by default, aimed at one measured failure: the animal does not
     # spontaneously reverse. Measured with tools/assays.py triage, six animals for sixty
@@ -584,17 +615,66 @@ class SensoryParams:
     cultivation_temp: float = 20.0   # degC
     oxygen_gain: float = 60.0        # pA per unit fractional O2 (so ~8 pA over the range)
     oxygen_preferred: float = 0.07   # fractional O2 that URX/AQR/PQR prefer
-    # Per uN of *smoothed* indentation force. The number is large because it always was:
-    # the receptor state used to accumulate one whole force per step and leak with
-    # touch_tau, so its steady state was force/(1 - exp(-dt/touch_tau)) = 700.5 x force at
-    # the shipped step, and the effective sensitivity was 34 x 700.5. That accumulation
-    # also made it proportional to 1/dt, so touch was four times more sensitive at
-    # dt = 0.125 ms than at 0.5 ms. Senses now keeps a plain exponential moving average,
-    # whose steady state is the force itself, and this constant carries the factor that
-    # used to be hidden in the integrator -- chosen so that behaviour at dt = 0.5 ms is
-    # unchanged, which is why it is 34 x 700.5 rather than a round number.
-    touch_gain: float = 23817.0      # pA per uN of smoothed indentation force
+    # Per uN of smoothed indentation force.
+    #
+    # This was 34 pA/uN against a receptor state that accumulated one whole force per step
+    # and leaked with touch_tau, so the steady state was 700.5 x force at the shipped
+    # timestep and the effective sensitivity was 34 x 700.5 = 23817. That accumulation also
+    # made it proportional to 1/dt; Senses now keeps a plain exponential moving average and
+    # the factor is written here instead of hidden in an integrator.
+    #
+    # Which made it obvious that it was two hundred times too big. A standard tap at that
+    # sensitivity implies a **8745 mV** depolarisation of ALM, clamped by v_clamp to +45.
+    # The mechanosensory channel was therefore not a sensor at all but a binary switch, and
+    # anything graded downstream of it was invisible: the first attempt at habituation
+    # depleted the receptor resource to 52% and changed the response by 2%, because 48% of
+    # a stimulus two hundred times past the rail is still past the rail.
+    #
+    # Calibrated instead so that the receptor stays off the clamp and responds gradedly.
+    # Measured, tap response of the backward command pool against a no-tap control:
+    #
+    #   touch_gain   ALM peak V   response      note
+    #      23817        +45.0      +0.105       clamped: any two stimuli look identical
+    #        300        +45.0      +0.054       clamped
+    #        150        +29.3      +0.037       off the clamp
+    #         75         -7.6      +0.020       <- adopted
+    #         40        -23.1      +0.010
+    #
+    # 75 gives a receptor potential of about 39 mV for a strong tap, which is still larger
+    # than the 10-20 mV whole-cell recordings show, and leaves headroom for a harder
+    # stimulus -- a dish wall pushes far harder than an eyebrow hair -- before anything
+    # clamps. The mechanoreceptor current is the better constrained quantity and it lands
+    # in the tens of pA that O'Hagan, Chalfie & Goodman (2005) measured.
+    touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
+
+    # Habituation, and the only thing in this model that remembers anything.
+    #
+    # Rankin, Beck & Chiba (1990) tap a plate every ten seconds; the reversal response
+    # falls away over about thirty taps, recovers over minutes of rest, and habituates
+    # more deeply at shorter intervals. All three come out of one depleting-resource
+    # equation rather than being fitted separately, which is the reason to prefer it to a
+    # decay bolted onto the response:
+    #
+    #     dA/dt = (1 - A) / tau  -  use * stimulus * A
+    #
+    # with the touch drive scaled by A. Repeated stimulation depletes it, rest refills it
+    # with tau, and a short interval habituates more deeply because less refilling happens
+    # in between. Integrated exactly, so the amount of learning does not depend on dt.
+    #
+    # This sits in the receptor rather than at the synapse, and that placement is a
+    # measured result rather than a preference. Rose and Rankin place the change
+    # presynaptically, as reduced glutamate release onto the interneurons, so that is what
+    # was built first (NeuralParams.depression_use, still present and still zero). It does
+    # nothing here, and the reason is this connectome: cutting ALM and AVM's entire
+    # chemical output leaves the AVA response to a tap unchanged at +0.18, while cutting
+    # their gap junctions halves it. The tap response in this model is carried
+    # electrically, and no amount of presynaptic depression can habituate an ohmic
+    # junction. Receptor fatigue is the locus that works here, and it is defensible on its
+    # own -- mechanoreceptors adapt -- but it is the second choice and it is recorded as
+    # such.
+    touch_habituation_use: float = 0.0    # 1/s per unit stimulus
+    touch_habituation_tau: float = 60.0   # s   recovery from habituation
     food_gain: float = 11.0          # pA  dopaminergic mechanosensation of the bacterial lawn
     proprio_gain: float = 30.0       # pA per unit normalised curvature
     # Wen et al. (2012) Neuron 76:750 showed by localised body restraint that B-type motor

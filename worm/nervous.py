@@ -61,6 +61,14 @@ class NervousSystem:
         # Steady-state synaptic activation when a presynaptic neuron sits exactly at its
         # own half-activation voltage (phi = 1/2). Used to place the thresholds.
         s_half = 0.5 * p.a_rise / (0.5 * p.a_rise + p.a_decay)
+        # Resting resource: phi is 1/2 at rest by construction, so a depressing terminal
+        # sits partly depleted even with nothing happening. The threshold solve has to know
+        # that, or it returns a fixed point the step does not sit at. Exactly 1 when
+        # depression is off.
+        rec = 1.0 / p.depression_tau
+        d_use = np.zeros(n)
+        d_use[conn.group(*p.depression_classes)] = p.depression_use
+        self.d_rest = rec / (rec + d_use * 0.5)
 
         # Morris-Lecar conditional oscillator, in the motor classes known to oscillate.
         # Everything else is purely passive: g_ca and g_adapt stay zero there, so the rest
@@ -72,7 +80,8 @@ class NervousSystem:
         # difference between silence and saturation. See NeuralParams for the measurements.
         # g_rest is also read by the sensory system, which scales its input currents the
         # same way and for the same reason.
-        self.g_rest = self.g_leak + self.gap_total + s_half * self.G_syn.sum(axis=1)
+        self.g_rest = (self.g_leak + self.gap_total
+                       + s_half * (self.G_syn * self.d_rest).sum(axis=1))
         g_rest = self.g_rest
         self.g_adapt = np.zeros(n)
         self.g_ca = np.zeros(n)
@@ -155,6 +164,14 @@ class NervousSystem:
         self.alive = np.ones(n, dtype=bool)
         self._any_dead = False
         self._pristine = None
+
+        # Presynaptic resource, one per releasing cell. 1.0 is a fully stocked terminal.
+        # See NeuralParams.depression_use for the model and what it is for.
+        self.D = self.d_rest.copy()      # start stocked to the level rest implies
+        self._use = np.zeros(n)
+        self._use[conn.group(*p.depression_classes)] = p.depression_use
+        self._any_depress = bool(p.depression_use > 0.0 and self._use.any())
+        self._recover = 1.0 / p.depression_tau
 
         # Working in nS / nF / mV / pA / s makes every equation second-based:
         # nF * mV/s == pA and nS * mV == pA.
@@ -263,11 +280,11 @@ class NervousSystem:
         A = -self.G_gap.copy()
         A[np.diag_indices(n)] += (self.g_leak
                                   + self.gap_total
-                                  + s_half * self.G_syn.sum(axis=1)
+                                  + s_half * (self.G_syn * self.d_rest).sum(axis=1)
                                   + self.n0 * self.g_adapt
                                   + self.m0 * self.g_ca)
         b = (self.g_leak * self.E_leak
-             + s_half * self.GE_syn.sum(axis=1)
+             + s_half * (self.GE_syn * self.d_rest).sum(axis=1)
              + self.n0 * self.g_adapt * self.p.E_K
              + self.m0 * self.g_ca * self.p.E_Ca)
         V = np.linalg.solve(A, b)
@@ -292,8 +309,9 @@ class NervousSystem:
             I = I * self.alive          # an absent cell receives nothing
 
         # Conductances and their driving potentials.
-        gs = self.G_syn @ s                       # (N,) total synaptic conductance
-        Es = self.GE_syn @ s                      # (N,) conductance-weighted reversal sum
+        release = s * self.D if self._any_depress else s
+        gs = self.G_syn @ release                 # (N,) total synaptic conductance
+        Es = self.GE_syn @ release                # (N,) conductance-weighted reversal sum
         g_ad = self.g_adapt * self.a              # (N,) delayed-rectifier K conductance
         # Regenerative calcium conductance, activating instantaneously with voltage: the
         # positive-feedback limb that folds the voltage nullcline and makes a limit cycle
@@ -331,6 +349,12 @@ class NervousSystem:
         rate = rise + p.a_decay
         s_inf = rise / rate
         self.s = s_inf + (s - s_inf) * np.exp(-rate * self.dt)
+        if self._any_depress:
+            # Exact for a frozen phi, like every other first-order state here, so the
+            # amount of habituation does not depend on how finely the run is stepped.
+            d_rate = self._recover + self._use * phi
+            d_inf = self._recover / d_rate
+            self.D = d_inf + (self.D - d_inf) * np.exp(-d_rate * self.dt)
         if self._any_dead:
             self.s[~self.alive] = 0.0
 

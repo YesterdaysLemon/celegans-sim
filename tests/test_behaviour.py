@@ -300,3 +300,75 @@ def test_ablating_the_forward_command_ends_forward_locomotion():
     assert ablated < 0.25 * intact, (
         "ablating the forward command left the animal still going forwards: "
         "%.4f -> %.4f mm/s along the body axis" % (intact, ablated))
+
+
+def test_habituation_depletes_recovers_and_prefers_short_intervals():
+    """The one thing in this model that remembers anything.
+
+    Three properties, all out of the one resource equation in SensoryParams rather than
+    fitted separately: repeated stimulation depletes the receptor, rest refills it, and a
+    shorter interval habituates deeper than a longer one for the same number of taps.
+    That last one is what distinguishes habituation from fatigue, so it is the one worth
+    guarding. Run with a short recovery constant so the test costs seconds rather than the
+    three real minutes a 60 s constant would need to demonstrate the same thing.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def taps(isi, n=6, tau=8.0):
+        base = P()
+        p = dataclasses.replace(base, sensory=dataclasses.replace(
+            base.sensory, touch_habituation_use=6.0, touch_habituation_tau=tau))
+        sim = Simulation(p, seed=1, world=bare_world(p))
+        sim.run(2.0)
+        for _ in range(n):
+            for _ in range(int(0.05 / sim.dt)):
+                sim.poke("anterior", strength=1.4)
+                sim.step()
+            sim.run(isi)
+        depleted = float(sim.senses.touch_avail[0])
+        sim.run(3 * tau)
+        return depleted, float(sim.senses.touch_avail[0])
+
+    short_depleted, short_recovered = taps(1.0)
+    long_depleted, _ = taps(6.0)
+
+    assert short_depleted < 0.75, (
+        "repeated taps did not deplete the receptor (%.3f)" % short_depleted)
+    assert short_recovered > 0.9, (
+        "the receptor did not recover with rest (%.3f)" % short_recovered)
+    assert short_depleted < long_depleted - 0.05, (
+        "the short interval did not habituate deeper than the long one: %.3f vs %.3f"
+        % (short_depleted, long_depleted))
+
+
+def test_habituation_is_independent_of_the_timestep():
+    """How much an animal learns must not depend on how finely it is simulated.
+
+    The resource is integrated exactly rather than by an Euler step, so this holds across
+    a range of dt that would otherwise change the answer -- which is the same failure two
+    other sensory time constants had before they were fixed, and the reason this is a test
+    rather than a comment.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def depleted(dt_ms):
+        base = P()
+        p = dataclasses.replace(
+            base,
+            neural=dataclasses.replace(base.neural, dt=dt_ms * 1e-3),
+            sensory=dataclasses.replace(base.sensory, touch_habituation_use=6.0))
+        sim = Simulation(p, seed=1, world=bare_world(p))
+        sim.run(2.0)
+        for _ in range(4):
+            for _ in range(int(0.05 / sim.dt)):
+                sim.poke("anterior", strength=1.4)
+                sim.step()
+            sim.run(2.0)
+        return float(sim.senses.touch_avail[0])
+
+    coarse, fine = depleted(2.0), depleted(0.5)
+    assert abs(coarse - fine) < 0.02, (
+        "habituation depends on the timestep: %.4f at 2.0 ms vs %.4f at 0.5 ms"
+        % (coarse, fine))

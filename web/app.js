@@ -10,7 +10,7 @@
 
 const MAGIC = 0x574f524d;
 const FIELD_MAGIC = 0x574f524e;
-const HEADER_BYTES = 76;   // 6 uint32 + 13 float32
+const HEADER_BYTES = 80;   // 6 uint32 + 14 float32
 
 const css = getComputedStyle(document.documentElement);
 const C = (name) => css.getPropertyValue(name).trim();
@@ -485,7 +485,12 @@ function drawTraces() {
 function neuronAt(cv, ev) {
   if (!layout) return null;
   const r = cv.getBoundingClientRect();
-  const x = ev.clientX - r.left, y = ev.clientY - r.top;
+  // The layout is built in the canvas's backing-store pixels, which are devicePixelRatio
+  // times the CSS pixels a mouse event reports. Comparing the two directly meant that on
+  // any HiDPI display -- which is to say on most machines this has ever run on -- the hit
+  // test was out by a factor of two and no neuron could be hovered or clicked at all.
+  const sx = cv.width / Math.max(r.width, 1), sy = cv.height / Math.max(r.height, 1);
+  const x = (ev.clientX - r.left) * sx, y = (ev.clientY - r.top) * sy;
   let best = null, bd = 81;
   layout.pts.forEach((p, i) => {
     const d = (p.x - x) ** 2 + (p.y - y) ** 2;
@@ -670,9 +675,14 @@ const SENSE_ROWS = [
   ['Temperature','temperature', 17, 25, 'var(--series-5)'],
   ['Touch',      'touch',      0, 3.0, 'var(--series-6)'],
   ['Forward gate', 'gateF',    0, 1.0, 'var(--text-secondary)'],
+  // 1.0 is a fully stocked mechanoreceptor; it falls as the animal habituates to
+  // repeated taps and refills over minutes of quiet. The only state in the model that
+  // outlives a modulator, and the only thing here that is memory rather than filtering.
+  ['Touch memory', 'habituation', 0, 1.0, 'var(--series-2)'],
 ];
 const SENSE_FMT = { oxygen: v => (100 * v).toFixed(1) + '%',
-                    temperature: v => v.toFixed(1) + '\u00b0C' };
+                    temperature: v => v.toFixed(1) + '\u00b0C',
+                    habituation: v => (100 * v).toFixed(0) + '%' };
 
 function drawSenses(sensed) {
   let host = el('senses');
@@ -702,8 +712,7 @@ function onFrame(buf, dv) {
   const t = dv.getFloat32(o, true), speed = dv.getFloat32(o + 4, true);
   const food = dv.getFloat32(o + 8, true), dir = dv.getFloat32(o + 12, true);
   const achieved = dv.getFloat32(o + 16, true);
-  // What the animal is actually sensing. The server has always sent these seven; nothing
-  // read them until the sensory work made it matter what the receptors see.
+  // What the animal is actually sensing.
   const sensed = {
     attractant: dv.getFloat32(o + 20, true),
     temperature: dv.getFloat32(o + 24, true),
@@ -713,6 +722,7 @@ function onFrame(buf, dv) {
     gateF: dv.getFloat32(o + 40, true),
     gateB: dv.getFloat32(o + 44, true),
     repellent: dv.getFloat32(o + 48, true),
+    habituation: dv.getFloat32(o + 52, true),
   };
 
   let p = HEADER_BYTES;

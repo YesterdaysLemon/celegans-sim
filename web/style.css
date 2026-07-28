@@ -121,8 +121,8 @@ aside {
   /* nervous system, muscle, kymograph, membrane trace, senses. The last is sized to
      its content rather than sharing a fraction, so adding a receptor row grows the
      panel instead of clipping it. */
-  grid-template-rows: minmax(120px, 1fr) auto minmax(66px, 0.5fr)
-                      minmax(66px, 0.5fr) minmax(126px, auto);
+  grid-template-rows: minmax(110px, 1fr) auto minmax(66px, 0.5fr)
+                      minmax(66px, 0.5fr) minmax(152px, auto);
   gap: var(--gap);
   min-height: 0;
 }
