@@ -102,6 +102,28 @@ drive is equalised across the 95 cells, and each cell's excitatory conductance i
 it rests at the midpoint of its own tension curve. The *relative* weighting among any one
 cell's presynaptic partners stays exactly as reconstructed.
 
+### Memory
+
+One thing here remembers. Every other state variable forgets on purpose: the sensory
+adaptation filters exist to discard the past, and the modulators integrate over tens of
+seconds and then decay. The mechanoreceptor carries a depleting resource — repeated taps
+consume it, rest refills it with its own time constant — which reproduces the three things
+Rankin, Beck & Chiba (1990) measured in tap habituation from one equation rather than
+three fits: the response decrements, it recovers with rest, and a shorter interval
+habituates deeper than a longer one. That last is what distinguishes habituation from
+fatigue, and it holds here — 0.25 resource remaining at a 10 s interval against 0.45 at
+30 s, for the same rate and the same number of taps.
+
+It sits in the receptor rather than at the synapse, and that is a measured result rather
+than a preference: Rose and Rankin place the change presynaptically, but this connectome
+routes the tap response through gap junctions — cutting ALM and AVM's entire chemical
+output leaves the response unchanged, while cutting their gap junctions halves it — and no
+presynaptic depression can habituate an ohmic junction. The presynaptic machinery is
+present and switched off.
+
+The memory is currently invisible in behaviour, for the reason given under *what it does
+not get right*: there is no tap-withdrawal reversal to decrement.
+
 ### Body
 
 An inextensible active elastica at zero Reynolds number. A swimming C. elegans has Re ≈
@@ -179,7 +201,7 @@ now pays for its own amplitude.
 
 ## Does it behave like a worm?
 
-`pytest tests/` — 33 tests, of which these are the load-bearing ones. Reference values are
+`pytest tests/` — 37 tests, of which these are the load-bearing ones. Reference values are
 measurements on live animals.
 
 | Quantity | Model | Measured | Source |
@@ -233,6 +255,13 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   10 gap junctions — and they correlate at +0.76. Driving one drags the other along, and
   the decision reads the one component common drive cannot move. Four candidate fixes have
   been tried and refuted; the measurements are in `NEXT.md`.
+
+  Every other behaviour fails at this same junction, which is the reason to state it
+  first. A tap does not reverse the animal either — forward progress over the three
+  seconds after a tap is +0.675 mm against +0.686 with none, and +0.654 at three times the
+  strength — so there is no tap-withdrawal response for the habituation below to
+  decrement. Chemotaxis, aerotaxis, nociception, tap withdrawal and learning are one
+  problem, not five.
 
 - **The gait is not converged at the timestep the model ships at**, and two of the numbers
   in the table above change meaning because of it. Halving the step from 0.25 to 0.125 ms
@@ -435,6 +464,8 @@ tools/ethogram.py       reversal rate, run lengths and reorientation, off food a
 tools/assays.py         chemotaxis, aerotaxis, thermotaxis, nociception
 tools/calibrate_body.py mechanics checks, independent of the biology
 tools/timestep_convergence.py  is the gait converged at the step size it runs at?
+tools/head_mode.py      which of the head loop's limit cycles the animal lands in, and why
+tools/habituation.py    tap habituation — decrement, interval dependence, recovery
 ```
 
 ## Data and licensing

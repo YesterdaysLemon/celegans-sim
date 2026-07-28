@@ -1,5 +1,133 @@
 # Where this is, and what to do next
 
+> ## Day seven. Four bugs, three refutations, one memory, and one thing left to fix.
+>
+> **State: 37 tests pass. Locomotion untouched. The model has a memory for the first time,
+> and a clearer account of what is wrong with it than it has had.**
+>
+> ### Read this first: everything now fails at one junction
+>
+> Chemotaxis, aerotaxis, nociception, tap withdrawal and now learning all fail, and after
+> today they all fail *for the same measured reason*. The direction gate sits **3.81
+> standard deviations** from its own decision boundary. A physiological chemosensory signal
+> moves it by 0.008 sigma. A tap moves the backward command pool by 0.02 in activation,
+> against the 0.107 it would need. So:
+>
+> * the animal never spontaneously reverses (zero in six animals over sixty seconds),
+> * a tap does not reverse it either (+0.675 mm of forward progress after a tap against
+>   +0.686 with none, and +0.654 at three times the strength),
+> * and habituation, which is now implemented and provably works at the receptor, has no
+>   behaviour to decrement.
+>
+> There is no longer a list of separate sensory problems. There is one problem, it is
+> measured, and it is `Senses.sense`'s direction gate. **Fix that before anything else.**
+>
+> The leading structural idea is unchanged from day six and is a small change: the gate
+> still does two jobs -- it picks the direction *and* it apportions how much drive each
+> cord receives -- which is the same conflation day five only half removed. Separating the
+> latched, hysteretic choice of *which* cord from the constant *amount* is what would let
+> the decision move without dragging the gait with it.
+>
+> ### Four bugs, in the order they were found
+>
+> **1. The gait is not converged at the timestep it ships at**, and two headline numbers
+> change meaning. Halving the step from 0.25 to 0.125 ms still moves the frequency by 15%
+> and net speed by 17%, against a seed spread of 0.03 Hz, monotonically across a sixteen-
+> fold range. The frequency discrepancy is therefore *worse* than reported -- refine and it
+> runs away from the animal, reaching 1.62 Hz at 0.125 ms -- and the crawling speed
+> agreeing with the measured 0.219 mm/s is partly an artefact of this step size, since at
+> 0.125 ms it does 0.3245. `tools/timestep_convergence.py`, four minutes.
+>
+> **2. Mechanosensation scaled with the timestep.** `touch_state` accumulated one whole
+> force per step and leaked with `touch_tau`, so its steady state was proportional to
+> 1/dt -- touch was four times more sensitive at 0.125 ms than at 0.5 ms. Now an
+> exponential moving average, with the factor that used to hide in the integrator written
+> into `touch_gain`.
+>
+> **3. The volatile odour pathway was deaf, and had been all along.** Its adaptation used
+> `(1 - chem_decay * 0.5)` as a per-step rate, and `chem_decay` is very nearly 1, so the
+> effective time constant was about 2 dt -- one millisecond, not the seven seconds
+> intended. AWA and AWC adapted out any odour within two timesteps. AWC is the OFF cell
+> that fires when an attractant is removed, one of the better characterised reversal
+> triggers in this animal.
+>
+> **4. `touch_gain` was two hundred times too large.** A standard tap implied an **8745 mV**
+> depolarisation of ALM, clamped by `v_clamp` to +45. The mechanosensory channel was not a
+> sensor but a binary switch, and nothing graded downstream of it could show -- which is
+> why the first attempt at habituation depleted the receptor to 52% and changed the
+> response by 2%. Recalibrated to 75 pA/uN: the receptor stays off the clamp, and the
+> current lands in the tens of pA that O'Hagan, Chalfie & Goodman (2005) measured.
+>
+> **And ablation was backwards.** Zeroing a cell's conductances leaves it still receiving
+> whatever current the sensory layer injects, with only its leak to shunt it -- so ablating
+> AVB, which carries a 22 pA tonic drive, took it to +34.8 mV and its activation from 0.84
+> to **0.9994**. Silencing the forward command made it maximally active. `NervousSystem`
+> now carries an explicit alive mask; it reads 0.0000, and restoring gives 0.833 back.
+>
+> ### Three refutations
+>
+> **`head_tau` does not suppress the fast mode. The coarse timestep was doing it.** At
+> dt = 0.5 ms the power above 1.5 Hz is 1-2% at *every* `head_tau` from 0.22 to 1.20. At
+> 0.125 ms with the shipped 0.22 it is **53%**. Refining further finds no `head_tau` at
+> which the answer stops depending on the step: the frequency clusters near 0.15, 0.70 and
+> 1.0-1.4 Hz and flips between clusters on changes too small to move any physical quantity.
+> The head loop has several coexisting limit cycles and the integrator is selecting among
+> them, so "the undulation frequency" is not currently a well-defined property of this
+> model. That is a stronger statement than the frequency being wrong.
+>
+> **The body cannot be made the oscillator by turning the segmental gain up.** Raising
+> `ca_ratio` does raise curvature -- 2.7 to about 6.3, against a measured 4.3, having been
+> too low -- and destroys the wave doing it: TWI falls from +0.71 to zero and net speed to
+> 0.02 mm/s. The units free-run and lock to each other instead of organising into a
+> travelling wave, and weakening the head does not rescue it (the `ca_ratio` 0.40 rows are
+> equally dead at head gains of 150, 60, 25 and 0), which was the obvious objection to the
+> earlier version of this result. Proprioceptive coupling as built can carry phase to
+> segments that have no rhythm of their own; it cannot impose a phase gradient on segments
+> that do. Making it impose a phase *lag* -- an explicit propagation delay, or asymmetric
+> coupling -- is a design change and is the next thing to try.
+>
+> **Presynaptic depression cannot habituate this connectome's tap response**, because the
+> response is not chemical. Cutting ALM and AVM's entire chemical output leaves the AVA
+> response unchanged at +0.18; cutting their gap junctions halves it. The machinery is
+> kept, at zero, because it is the standard model and the refutation is specific to this
+> pathway rather than to the idea.
+>
+> ### What was added
+>
+> * **Habituation** (`SensoryParams.touch_habituation_use`). A depleting resource on the
+>   mechanoreceptor: taps consume it, rest refills it, and a shorter interval habituates
+>   deeper. Three properties from one equation. The interval dependence is the one that
+>   could have failed and it holds -- 0.25 resource at a 10 s interval against 0.45 at
+>   30 s, same rate, same number of taps -- which is what separates habituation from
+>   fatigue. Integrated exactly, so how much the animal learns does not depend on how
+>   finely it is stepped, and there is a test for that.
+> * **Reversible ablation**, on `Simulation`, with the alive mask above, plus a viewer UI:
+>   an Ablate mode, a Restore button, and dead cells drawn hollow and crossed.
+> * `tools/timestep_convergence.py`, `tools/head_mode.py`, `tools/body_oscillator.py`,
+>   `tools/habituation.py`.
+> * A **HiDPI fix in the viewer**: neuron hover and click have never worked on a Retina
+>   display. The layout is built in backing-store pixels and the hit test compared them
+>   against CSS pixels, so at devicePixelRatio 2 it was out by a factor of two and no cell
+>   could be selected at all.
+> * The assay runner uses one flat job queue instead of one `pooled()` call per assay, and
+>   eight workers rather than ten. Both measured; see `tools/assays.py`.
+>
+> ### Do not repeat these
+>
+> * **Do not edit anything under `worm/` while a sweep is in flight.** `pooled()` launches
+>   a fresh process per trial that imports the package from disk, so an edit part-way
+>   through silently mixes two code versions in one result table.
+> * **Do not score a response with a peak over a window.** A peak is a biased estimator of
+>   a fluctuating signal -- it is positive with no stimulus at all -- and here that bias is
+>   +0.070 against a real tap response of +0.020. The first habituation assay was measuring
+>   almost entirely noise and reported the memory as absent when it was merely swamped. Use
+>   a difference of means over matched windows.
+> * **Do not measure locomotion with unsigned speed.** The first ablation test passed the
+>   AVB-ablated animal at 0.24 mm/s, *faster* than intact, because it had handed over to
+>   the backward generator and was crawling away tail-first. The sign is the phenotype.
+> * **Do not trust a gait number without knowing the step size it was measured at**, until
+>   item 1 above is resolved.
+
 > ## Day six. The decision has no input, and that is now a number.
 >
 > **State: locomotion untouched, 33 tests pass. Everything below is diagnosis and four
@@ -817,6 +945,8 @@ PYTHONPATH=. .venv/bin/python tools/ethogram.py             # reversal statistic
 PYTHONPATH=. .venv/bin/python tools/assays.py triage        # two minutes; run before the full assay
 PYTHONPATH=. .venv/bin/python tools/reflex_gain.py          # the key measurement
 PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no biology
+PYTHONPATH=. .venv/bin/python tools/head_mode.py            # which limit cycle, and why
+PYTHONPATH=. .venv/bin/python tools/habituation.py          # the only memory in the model
 PYTHONPATH=. .venv/bin/python tools/timestep_convergence.py # is the gait converged? (~4 min)
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # 33 tests, ~5 min
 .venv/bin/python run.py --headless 60
