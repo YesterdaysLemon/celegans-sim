@@ -55,17 +55,22 @@ at the shipped setting and 67-86% everywhere else, in nineteen configurations sp
 reach, head_tau, head gain, body gain and ca_ratio. At the fine step *every* configuration
 falls to 0.13-0.20 Hz with a wavelength of 2 to 6 L and a travelling index of 0.17 to 0.41.
 
-That is the conclusion, and it is larger than a tuning result: **the coherent 1.2 Hz gait
-exists at dt = 0.5 ms and nowhere else in the parameter space swept.** Integrated
-accurately, this head-driven reflex chain does not produce C. elegans locomotion. The
-mechanism is visible in the head pool's own numbers -- RMD, SMD and SMB have membrane time
-constants of 0.93 to 2.34 ms, so the shipped step is 0.21 to 0.54 of a time constant and
-the loop's fast dynamics are marginally resolved; at 0.125 ms they resolve, the fast mode
-stops being damped for free, and the slow attractor that takes over is not a gait.
+That was read at the time as: the coherent gait exists at dt = 0.5 ms and nowhere else,
+and integrated accurately this reflex chain does not produce C. elegans locomotion. **Both
+statements were wrong**, and the reason is the coupling bug in the banner above -- the fine
+step was not a finer simulation of the same animal, it was the same animal with its body
+running four times fast. The parameter columns here are still good; the drift column
+measured a bug.
 
-So the next move is not another parameter. It is either an explicit physical delay in the
-loop to replace the numerical one it has been leaning on, or a rhythm generator that does
-not depend on the head loop's phase crossover at all.
+!! The step-size numbers in this file are withdrawn. !!
+
+Every "drift between dt = 0.5 and 0.125 ms" measured here was taken while `BodyParams.dt`
+was not synchronised with `NeuralParams.dt`, so refining the neural step left the body
+advancing 0.5 ms per call and running up to four times fast relative to its own nervous
+system. The drift measured the desynchronisation, not numerical error. With the two
+synchronised the frequency holds 0.44-0.45 Hz across a sixteen-fold range of step size.
+See NEXT.md, day ten. The parameter results below stand -- they were taken at a single
+step size, where the coupling was correct -- but nothing here about convergence does.
 
 Run:  PYTHONPATH=. .venv/bin/python tools/wave_speed.py
 """

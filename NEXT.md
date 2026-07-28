@@ -29,6 +29,47 @@
 > the gait bistability documented since day two, it is a property of the model rather than
 > of the integrator, and three seeds is not enough to characterise it.
 >
+> ### Everything re-measured afterwards, and it is a mixed picture
+>
+> `tools/scorecard.py` is new and exists because this project's headline table had drifted
+> into quoting a crawling speed from day two beside a frequency from day nine -- numbers
+> never true of the same animal. It measures every row at once, over five seeds:
+>
+> ```
+>   quantity                     model (mean +- sd)     animal
+>   Undulation frequency, agar    0.45 +- 0.01 Hz       0.30 +- 0.02
+>   Wavelength, agar              0.73 +- 0.01 L        0.65 +- 0.03
+>   Curvature, r.m.s.             4.35 +- 0.10 /mm      4.3 +- 0.3
+>   Curvature, peak               14.4 +- 1.5 /mm       9.8 +- 1.1
+>   Crawling speed (net)          0.105 +- 0.025 mm/s   0.219 +- 0.029
+>   Net displacement / path       0.53 +- 0.13          well above 0.5
+>   Travelling-wave index         +0.61 +- 0.04         +1 pure travelling
+> ```
+>
+> The seed spread is tight -- frequency 0.43 to 0.45 across five seeds -- so the gait
+> bistability worried about above was itself an artefact of the desynchronised runs.
+>
+> **Frequency, wavelength and curvature rms have landed. Speed has halved.** 0.105 against
+> the animal's 0.219, with net-to-path at 0.53, barely over the bar. Slowing the undulation
+> to the animal's band bought the kinematics and cost the transport, and a real worm does
+> not have to make that trade -- it does 0.30 Hz *and* 0.219 mm/s. **How much thrust the
+> model gets per undulation is now the sharpest open question in the locomotion.**
+>
+> It shows up everywhere above the gait, because every taxis assay needs the animal to
+> cover ground:
+>
+> * **Chemotaxis is biased the right way for the first time.** The pirouette ratio crossed
+>   1, at 1.22 against a real animal's ~2, so the animal now suppresses turning while
+>   conditions improve. The index is still -0.016, because it ends 1.7 mm from where it
+>   started.
+> * **Thermotaxis regressed from working to not.** It moved both groups towards the
+>   cultivation isotherm on day seven; it now moves neither, -1.4 and -0.6 mm.
+> * **Aerotaxis never reaches the lawn**: 21.0% oxygen occupied, which is ambient.
+> * Chemosensory drive fell 0.58 -> 0.35 pA, because a slower animal crosses a gradient
+>   more slowly.
+>
+> None of that is a sensory failure. It is the speed, and it is one problem.
+>
 > ### How it was found, because the method is the transferable part
 >
 > Not by sweeping. Eight days of parameter sweeps -- reach, head_tau, head gain, body gain,
@@ -82,6 +123,8 @@
 
 
 > ## Day nine. The frequency lands, and it costs one honest parameter.
+>
+> **Superseded in part by day ten: every step-size result below was measured while the body ran at its own timestep, and the convergence conclusions are withdrawn. The parameter results stand.**
 >
 > **State: 38 tests pass. 0.44 Hz against the animal's 0.30-0.50, curvature rms 4.48
 > against 4.3, net speed 0.171 mm/s against 0.15-0.22, wave head to tail. Three of the
@@ -185,7 +228,9 @@
 > layer actually commands, and it should get stricter as that improves rather than looser.
 
 
-> ## Day eight. The wavelength is right, and the gait only exists at one step size.
+> ## Day eight. The wavelength is right. (The step-size claim here was a bug.)
+>
+> **Superseded in part by day ten: every step-size result below was measured while the body ran at its own timestep, and the convergence conclusions are withdrawn. The parameter results stand.**
 >
 > **State: 38 tests pass. Wavelength 0.64 L against the animal's 0.65, net speed 0.218
 > against 0.219. And a structural result that matters more than either.**

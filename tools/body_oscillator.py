@@ -68,6 +68,16 @@ encourages them to lock in phase. An explicit propagation delay in the proprioce
 field, or asymmetric coupling, is the next thing to try, and it is a design change rather
 than a parameter.
 
+!! The step-size numbers in this file are withdrawn. !!
+
+Every "drift between dt = 0.5 and 0.125 ms" measured here was taken while `BodyParams.dt`
+was not synchronised with `NeuralParams.dt`, so refining the neural step left the body
+advancing 0.5 ms per call and running up to four times fast relative to its own nervous
+system. The drift measured the desynchronisation, not numerical error. With the two
+synchronised the frequency holds 0.44-0.45 Hz across a sixteen-fold range of step size.
+See NEXT.md, day ten. The parameter results below stand -- they were taken at a single
+step size, where the coupling was correct -- but nothing here about convergence does.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/body_oscillator.py
 """
 

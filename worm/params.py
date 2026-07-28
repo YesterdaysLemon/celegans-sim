@@ -104,7 +104,9 @@ class NeuralParams:
     # step dependence, and a cheap one to rule out.
     #
     # **It is not the cause.** Raising the count from 3 to 24 changes the gait by nothing
-    # at either step size, and leaves the drift between them at exactly 54%:
+    # at either step size. (The drift figures in the table below were measured before the
+    # body was synchronised to the neural step, so the 54% is an artefact -- but the point
+    # this table makes, that the iteration count changes nothing, is unaffected by that.)
     #
     #   passes |  freq @0.5   freq @0.125   drift |  TWI @0.5   k_rms @0.5   net mm/s
     #      3   |    0.433       0.200        54%  |   +0.655      4.44        0.1860
@@ -651,12 +653,11 @@ class BodyParams:
     # there, but its treatment of a mode with dt/tau of order one is neither resolved nor
     # fully damped, and it therefore depends on dt.
     #
-    # That is where the gait's step dependence lives, and the loop measurement is
-    # unambiguous about it. Driving the open head loop and reading each stage's phase at
-    # dt = 0.5 and 0.125 ms: the neurons agree to 0.3 degrees, the synapses to 0.1, the
-    # muscle to 1 -- and tension-to-curvature differs by 10 to 31 degrees across the band,
-    # with the plant gain differing by up to 86%. The nervous system is not the problem and
-    # never was.
+    # It is nonetheless *not* where the gait's step dependence lived. Substepping the
+    # mechanics sixteen-fold at dt = 0.5 ms reproduces dt = 0.5 exactly, which is what
+    # first showed the body's own integration was already converged and sent the search
+    # towards the coupling instead -- see BodyParams.dt. Kept at 1, and kept at all because
+    # it is the control that rules the mechanics out.
     substeps: int = 1
 
     dt: float = 0.0005              # s   standalone default; Simulation
@@ -949,6 +950,14 @@ class SensoryParams:
     # (Mellem et al. 2008). A distributed multi-stage circuit accumulates phase that a
     # single first-order lag cannot. Replacing this number with that circuit is the way to
     # earn it back.
+    #
+    # One argument that was made for this parameter has since been withdrawn, and it is
+    # worth striking out rather than quietly deleting. It was claimed that the coarse
+    # timestep supplied phase and damping for free and that the delay was replacing them.
+    # That rested on convergence measurements taken while the body ran at its own timestep
+    # (see BodyParams.dt), and they meant nothing. The value stands -- it was fitted at
+    # dt = 0.5 ms, where the coupling was correct -- but it is now unsupported by anything
+    # except that it lands the frequency, which makes it a fit and not an explanation.
     head_delay: float = 0.60          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------

@@ -201,24 +201,27 @@ now pays for its own amplitude.
 
 ## Does it behave like a worm?
 
-`pytest tests/` — 37 tests, of which these are the load-bearing ones. Reference values are
-measurements on live animals.
+`pytest tests/` — 38 tests, of which these are the load-bearing ones. Reference values are
+measurements on live animals; the model column is the mean and spread over five seeds from
+a single run of `tools/scorecard.py`, so every row describes the same animal. It has not
+always: this table once quoted a crawling speed from day two beside a frequency from day
+nine.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **4.5 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **12–14 /mm** | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **4.35 ± 0.10 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **14.4 ± 1.5 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.095–0.106 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.66–0.72** | well above 0.5 | — |
-| Travelling-wave index | **+0.48–0.57** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **0.44 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
-| Wavelength, agar | **0.78 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Crawling speed (net) | **0.105 ± 0.025 mm/s** *(slow)* | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.53 ± 0.13** | well above 0.5 | — |
+| Travelling-wave index | **+0.61 ± 0.04** | +1 for a pure travelling wave | — |
+| Undulation frequency, agar | **0.45 ± 0.01 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.73 ± 0.01 L** | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
 Curvature, wave direction and the membrane potentials land on the measured values. The
 gait's *timing* does not: see below.
@@ -237,6 +240,24 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
+- **The animal crawls at half the speed it should, and slowing the gait is what cost it.**
+  0.105 ± 0.025 mm/s against a measured 0.219, with a net-to-path ratio of 0.53 that only
+  just clears the bar. Getting the undulation frequency from 1.18 Hz down to the animal's
+  band bought the kinematics — curvature r.m.s. is now 4.35 against a measured 4.3 — and
+  cost the transport: the same body sweeping more slowly covers less ground per cycle.
+
+  This is visible all the way up. Every taxis assay depends on the animal covering enough
+  ground to sample a gradient, and they all weakened when the gait slowed: aerotaxis no
+  longer reaches the lawn at all (21.0% oxygen occupied, i.e. ambient), and thermotaxis
+  regressed from moving both groups towards the cultivation isotherm to moving neither.
+  The chemosensory drive fell with it, 0.58 to 0.35 pA, because a slower animal crosses
+  the gradient more slowly.
+
+  So frequency and speed are currently traded against each other, which they should not
+  be — a real worm does 0.30 Hz *and* 0.219 mm/s. Something is wrong with how much thrust
+  the model gets per undulation, and that is now the sharpest open question in the
+  locomotion.
+
 - **The tap-withdrawal reflex does not work, so the memory below has nothing to act on.**
   Forward progress over the three seconds after a tap is +0.739 mm against +0.786 with no
   tap. The animal now reverses spontaneously — 4.67 times a minute in episodes of 0.69 s,
@@ -250,10 +271,13 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   than they drive AVA. That is a wiring fact and it deserves checking against a newer
   reconstruction before anything is tuned around it.
 
-- **Chemotaxis is still unmeasured since the command layer changed.** The last full run
-  gave a chemotaxis index of −0.014 against +0.5 or better, at a time when the animal could
-  not reverse at all and so could not perform the biased random walk the behaviour is made
-  of. That objection no longer applies, and the assays have not been rerun.
+- **Chemotaxis is biased the right way now, and still goes nowhere.** The pirouette ratio
+  — reversals while conditions worsen over reversals while they improve, the quantity
+  Pierce-Shimomura's mechanism is made of — has crossed 1 for the first time, at 1.22
+  against a real animal's ~2. So the animal does now suppress turning when things improve.
+  The chemotaxis index is nonetheless −0.016, because the animal barely travels: it ends
+  1.7 mm from where it started. The mechanism is right and the locomotion is not carrying
+  it, which is the speed problem above rather than a sensory one.
 
 - **The gait's step dependence was a coupling bug, not a numerical one, and the previous
   entry here was wrong.** `BodyParams.dt` was documented as "shared with the neural step"
@@ -455,6 +479,9 @@ tools/calibrate_body.py mechanics checks, independent of the biology
 tools/timestep_convergence.py  is the gait converged at the step size it runs at?
 tools/head_mode.py      which of the head loop's limit cycles the animal lands in, and why
 tools/habituation.py    tap habituation — decrement, interval dependence, recovery
+tools/loop_phase.py     open the head loop and measure each stage's gain and phase
+tools/wave_speed.py     what sets the wavelength and the frequency
+tools/body_oscillator.py  can the body carry the rhythm instead of the head?
 ```
 
 ## Data and licensing
