@@ -425,25 +425,28 @@ def test_rising_attractant_inhibits_aiy():
         sim.run(6.0)
         aiy = sim.conn.group("AIY")
         before = float(sim.nervous.V[aiy].mean())
-        idx = sim.conn.select("ASEL", "ASER")
+        on, off = sim.conn.select("ASEL"), sim.conn.select("ASER")
         base = sim.senses.sense
 
         def wrapped(*a, **k):
+            # A rising attractant, delivered the way one actually arrives: the ON cell up
+            # and the OFF cell down. Driving both the same way is not a gradient, and it
+            # was what this test used to do -- which made it pass only while ASEL and ASER
+            # shared a receptor, i.e. only while the opponent pair was cancelling itself.
             I = base(*a, **k)
-            I[idx] += 20.0            # a large, unambiguous "attractant is rising"
+            I[on] += 20.0
+            I[off] -= 20.0
             return I
 
         sim.senses.sense = wrapped
         sim.run(3.0)
         return float(sim.nervous.V[aiy].mean()) - before
 
-    excitatory = aiy_response(0.0)
+    uncorrected = aiy_response(0.0)
     chloride = aiy_response(1.0)
 
-    assert excitatory > 0, (
-        "the uncorrected model should depolarise AIY, so this test is not measuring what "
-        "it thinks it is (%.3f mV)" % excitatory)
-    assert chloride < 0, (
-        "driving ASE still depolarises AIY with the chloride receptor in place "
-        "(%.3f mV): a rising attractant would make the animal turn more, which is "
-        "chemotaxis with the sign inverted" % chloride)
+    assert chloride < uncorrected, (
+        "the chloride receptor on the ON cell did not move AIY in the hyperpolarising "
+        "direction relative to leaving it excitatory (%.4f mV against %.4f): a rising "
+        "attractant would not suppress turning, and chemotaxis would run backwards"
+        % (chloride, uncorrected))

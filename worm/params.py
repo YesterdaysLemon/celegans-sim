@@ -387,7 +387,31 @@ class NeuralParams:
     # and it uses the same per-synapse reversal machinery: name the glutamatergic senders
     # and the cells that answer them with a chloride channel. AIB is deliberately not in
     # the list -- it holds GLR-1 and should stay excited.
-    glucl_pre: tuple = ("ASE", "AWC")     # glutamatergic sensory neurons
+    # Named per *cell*, not per class, and that is the whole point. ASEL and ASER are one
+    # anatomical class and a genuine opponent pair -- Senses gives ASEL +dC/dt and ASER
+    # -dC/dt -- but they project onto the same first-layer interneurons with the same sign,
+    # 19 contacts onto AIY against 16. So AIY receives (+dC/dt) + (-dC/dt) and **the
+    # opponency cancels itself at the first synapse**. Giving them the same receptor, as
+    # ("ASE",) did, cancels it exactly:
+    #
+    #   chloride on        improving   worsening   opponency
+    #   neither             +0.15409    +0.15435    -0.00026
+    #   both                +0.15412    +0.15412    -0.00000    exactly nothing
+    #   ASEL only (ON)      +0.15457    +0.15379    +0.00078    correct sign
+    #   ASER only (OFF)     +0.15376    +0.15465    -0.00089    inverted
+    #
+    # (shift in the forward-minus-backward command difference under a held 3 pA gradient.)
+    # So the ON cell answers glutamate with chloride and the OFF cell does not, and the two
+    # then push AIY the same way instead of against each other. AWA and AWC are the
+    # equivalent pair for volatile odour and get the same treatment by analogy, which is
+    # not separately measured.
+    #
+    # The sign is now right and **the magnitude is still about a hundredfold short**:
+    # +0.00078 against a difference whose standard deviation is 0.0885, so 0.009 sigma
+    # where biasing the walk wants of order 0.1. That is not attenuation along the way --
+    # the chain is strong at every stage, ASE->AIY being 206% of AIY's own conductance,
+    # AIY->AIZ 91%, AIZ->AVE 25% -- so where it goes is a separate question and an open one.
+    glucl_pre: tuple = ("ASEL", "AWA")    # the ON cells of each opponent pair
     glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
     # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
     # ASEL -- which is what "the attractant is rising" looks like to the circuit:

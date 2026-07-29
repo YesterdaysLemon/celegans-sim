@@ -236,6 +236,21 @@ across a 25-fold range of drag anisotropy.
 The nervous system's noiseless fixed point holds to 4×10⁻¹⁴ mV over two simulated seconds,
 which is a sharp check that the self-consistent threshold solve and the integrator agree.
 
+### What works
+
+**Nociception.** Dropped near a repellent the animal reverses 3.81 times a minute while
+exposed against 1.72 while clear, and leaves: the concentration it sits in falls from 0.264
+to 0.027 over two minutes. That is avoidance — a sensory signal changing behaviour in the
+right direction, with no part of it scripted.
+
+**Habituation.** Repeated taps deplete a mechanoreceptor resource, rest refills it, and a
+shorter interval habituates deeper — three properties of Rankin's tap habituation out of
+one equation rather than three fits, and integrated exactly so how much the animal learns
+does not depend on the timestep.
+
+**Spontaneous reversals**, at 3.3 a minute against the animal's 3.2–3.5 off food, in
+episodes long enough to be reversals rather than threshold flicker.
+
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
@@ -285,13 +300,24 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   than they drive AVA. That is a wiring fact and it deserves checking against a newer
   reconstruction before anything is tuned around it.
 
-- **Chemotaxis is biased the right way now, and still goes nowhere.** The pirouette ratio
-  — reversals while conditions worsen over reversals while they improve, the quantity
-  Pierce-Shimomura's mechanism is made of — has crossed 1 for the first time, at 1.22
-  against a real animal's ~2. So the animal does now suppress turning when things improve.
-  The chemotaxis index is nonetheless −0.016, because the animal barely travels: it ends
-  1.7 mm from where it started. The mechanism is right and the locomotion is not carrying
-  it, which is the speed problem above rather than a sensory one.
+- **Chemotaxis is biased the right way and still gets nowhere.** The pirouette ratio —
+  reversals while conditions worsen over reversals while they improve, the quantity
+  Pierce-Shimomura's mechanism is made of — sits at 1.24, above the 1 that separates
+  chemotaxis from its absence. The index is +0.002 and no animal in sixteen approached the
+  source. The animal covers plenty of ground now (24 mm in 200 s); it simply has no net
+  bias about where.
+
+  The reason is measured. `Senses` gives ASEL +dC/dt and ASER −dC/dt, a genuine opponent
+  pair, but both project onto AIY with the same sign — 19 contacts against 16 — so AIY
+  receives (+dC/dt) + (−dC/dt) and the opponency dies at the first synapse. Giving the ON
+  cell a glutamate-gated chloride channel and the OFF cell not makes them push the same
+  way and the sign comes right, but the effect is 0.009 σ of the command difference where
+  biasing the walk wants of order 0.1 — a hundredfold short, and not through attenuation,
+  since the chain is strong at every stage.
+
+- **Aerotaxis does not work at all**: 20.9% oxygen occupied against an ambient 21%, where
+  N2 prefers 5–12%. URX/AQR/PQR make 44 contacts onto the backward command pool, more than
+  any other sensory pathway, so this one should be reachable and is not.
 
 - **The gait's step dependence was a coupling bug, not a numerical one, and the previous
   entry here was wrong.** `BodyParams.dt` was documented as "shared with the neural step"
@@ -330,26 +356,12 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   survive. With a travelling wave, reach is the one thing that *does* set the wavelength:
   0.49 to 0.64 L as reach goes 0.08 to 0.30, with the frequency flat to within 1% across
   the same range.
-- **Gait modulation runs backwards, and worse than before.** Measured across five seeds
-  in each medium (`tools/scorecard.py`):
-
-  ```
-    medium      freq Hz        wavelength L     net mm/s      animal
-    agar      0.45 ± 0.01      0.73 ± 0.01    0.105 ± 0.025   0.30 Hz crawling
-    viscous   0.18 ± 0.00      3.32 ± 2.13    0.011 ± 0.004   intermediate
-    buffer    0.19 ± 0.02      2.07 ± 0.06    0.006 ± 0.001   1.76 Hz swimming
-  ```
-
-  A real animal speeds up in water, 0.30 Hz crawling to 1.76 Hz swimming. This one slows
-  down, and in buffer it stops undulating coherently at all — a 2 L wavelength means less
-  than half a wave on the body, and it travels 6 µm/s.
-
-  The cause is almost certainly `head_delay`. A fixed 0.60 s transport delay sets a fixed
-  phase at every frequency, so it pins the loop's crossover regardless of what the medium
-  does to the mechanical load — the animal *cannot* speed up in water while that delay
-  dominates the loop. This is the strongest evidence yet that the delay is a placeholder
-  standing in for something with its own dynamics rather than a mechanism, and it is a
-  concrete prediction: whatever replaces it must have a frequency that follows the load.
+- **Gait modulation points the right way now, and is far too small.** 0.67 Hz on agar
+  against 0.85 Hz in buffer, where the animal goes 0.30 Hz crawling to 1.76 Hz swimming.
+  The *sign* had been wrong since day two and is now right; the magnitude is a 27% change
+  where the animal manages sixfold. What fixed the sign was removing a reversal flicker in
+  the command layer, not any change to the mechanics — which is worth knowing, because the
+  mechanics had been the suspect for eight days.
 - **The travelling-wave index is +0.61, against +0.996 for the same body driven by a
   prescribed perfect wave.** That control is the useful one: it says the mechanics can
   carry a wave the nervous system is not yet producing, and the gap between +0.61 and

@@ -1,5 +1,97 @@
 # Where this is, and what to do next
 
+> ## Day twelve. The best the gait has ever been, and gait modulation finally points the right way.
+>
+> **State: 38 tests pass. Travelling index +0.85, net-to-path 0.75, curvature 4.51 against
+> a measured 4.3, and for the first time in this project's history the animal speeds up in
+> water instead of slowing down.**
+>
+> ```
+>   quantity                  before      after      animal
+>   Travelling-wave index      +0.61      +0.85      +1 pure travelling
+>   Net displacement / path     0.53       0.75      well above 0.5
+>   Crawling speed            0.105      0.275      0.219 +- 0.029 mm/s
+>   Curvature r.m.s.           4.35       4.51      4.3 +- 0.3
+>   Dorsoventral antagonism    -0.54      -0.73      strongly negative
+>   Undulation frequency       0.45       0.67      see below on 0.30
+>   head_delay (fitted)         0.60       0.28      nothing justifies either
+> ```
+>
+> ### Two changes, and the second was not the one expected to matter
+>
+> **The head reflex is distributed over its own neurons.** It used to hand all twelve head
+> motor neurons the same number -- the mean curvature of the front 17% of the body -- so
+> cells acting on different pieces of body all saw the same thing. Weighted by their own
+> neuromuscular maps they act between s = 0.135 and 0.229, and letting each read the
+> curvature around the piece it moves halves the invented delay, 0.60 s to 0.28.
+>
+> It did **not** do what it was built to do. Distributing alone leaves the frequency at
+> 1.28 Hz against the lumped reflex's 1.18: a spread of delays low-passes the loop rather
+> than adding phase, and this crossover is phase-limited. The delay is smaller but it is
+> still there and still unearned.
+>
+> **The command layer was recalibrated, and that is where everything came from.** The new
+> head circuit more than doubled the spread of the command difference, 0.04 to 0.0885, so
+> the gate threshold fitted to the old gait sat 0.29 sigma from the mean instead of 1.33
+> and the animal flickered at **40 reversals a minute**. Nothing about the command layer
+> was wrong; it was calibrated against a gait that no longer existed. Re-fitting it to
+> bias 0.04 / hysteresis 0.09 gives 3.33 reversals a minute against the animal's 3.2-3.5,
+> and the travelling index, the net-to-path ratio and the speed all came with it -- because
+> an animal that is not constantly changing its mind travels, and thrust is the travelling
+> index.
+>
+> **Gait modulation is the right way round.** 0.67 Hz on agar to 0.85 in buffer, where the
+> animal goes 0.30 to 1.76. The magnitude is far short but the *sign* has been wrong since
+> day two. What fixed it was removing the flicker, not any change to the mechanics.
+>
+> ### The senses, re-run
+>
+> * **Nociception works.** 3.81 reversals a minute while exposed to the repellent against
+>   1.72 while clear, and the animal leaves: concentration at the end 0.027 against 0.264
+>   at the start. That is avoidance, and it is the first sensory behaviour here that works
+>   without qualification.
+> * **Chemotaxis is biased the right way** and stays there -- pirouette ratio 1.24, above
+>   the 1 that separates chemotaxis from its absence. The index is +0.002 because the
+>   animal now covers a lot of ground (24 mm in 200 s) without a net bias towards anything.
+> * **Thermotaxis is half right**: animals started cold move +28 mm towards warmer, which
+>   is correct; animals started warm move +9 mm, which is not.
+> * **Aerotaxis still does not work**: 20.9% oxygen occupied against an ambient 21%.
+>
+> ### And the ON/OFF pair was cancelling itself
+>
+> `Senses` gives ASEL +dC/dt and ASER -dC/dt, a genuine opponent pair. But both project
+> onto AIY with the same sign -- 19 contacts against 16 -- so AIY receives (+dC/dt) +
+> (-dC/dt) and the opponency dies at the first synapse. Measured as the shift in the
+> command difference under a held gradient:
+>
+> ```
+>   chloride on        improving   worsening   opponency
+>   neither             +0.15409    +0.15435    -0.00026
+>   both                +0.15412    +0.15412    -0.00000    exactly nothing
+>   ASEL only (ON)      +0.15457    +0.15379    +0.00078    correct sign
+>   ASER only (OFF)     +0.15376    +0.15465    -0.00089    inverted
+> ```
+>
+> Giving both cells the same receptor cancels it to five decimal places. Giving the ON cell
+> a chloride channel and the OFF cell not makes them push AIY the same way and the sign
+> comes right. **Adopted, and still about a hundredfold too small** -- 0.009 sigma where
+> biasing the walk wants of order 0.1 -- which is not attenuation along the way, since the
+> chain is strong at every stage (ASE->AIY is 206% of AIY's own conductance, AIY->AIZ 91%,
+> AIZ->AVE 25%). Where the signal goes instead is the open question.
+>
+> ### Also
+>
+> The dish is a 9 cm plate now rather than 5 cm, because at 0.275 mm/s a 200 s assay covers
+> 55 mm and every trial was ending up against the wall. It surfaced as a habituation test
+> failing -- sustained wall contact re-depletes the mechanoreceptor, which is correct
+> behaviour and a confound there -- and would have quietly corrupted every taxis assay.
+>
+> A bug of mine, worth the warning: `head_delay` was applied only on the lumped branch of
+> the reflex, so it was a silent no-op in distributed mode and a whole sweep was noise. It
+> now buffers the curvature itself, ahead of any spatial pooling, which is where a
+> transduction delay physically belongs and works for both forms.
+
+
 > ## Day eleven. The speed target contradicts the frequency target, and thrust is the travelling index.
 >
 > Two results from `tools/thrust.py`, which drives the body with a clean prescribed wave
