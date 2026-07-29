@@ -1528,21 +1528,15 @@ table's five rows fix themselves at once.
 
 - **Gait modulation direction.** Falls out of the above if the wave becomes reflex-driven.
   Do not tune it directly — it is a symptom.
-- **Reversals and omega turns.** The machinery exists (A-type proprioception with a
-  posterior field, AVA/AVB gating, touch → ALM/AVM → AVA) and `test_anterior_touch_drives_a_reversal`
-  passes, but spontaneous reversal *statistics* have never been measured against the
-  literature. Targets: 3.2–3.5 reversals/min off food and 0.7–1.25 on food (Zhao et al.
-  2003); 35% of reversals terminate in an omega turn; omega reorientation ~160–170°.
-  Needs a behavioural-statistics harness — count reversals over a 10-minute run and
-  histogram the turn angles. This is a good self-contained next task.
-- **Chemotaxis index.** The sensory circuitry is wired and adapting, and the animal does
-  eat, but nothing yet measures whether it actually climbs a gradient better than chance.
-  Standard assay: fraction of time within some radius of the peak, or the classic
-  chemotaxis index over a fixed run. Should be easy and would be a strong validation of
-  the whole sensory path. **Probably the highest value-per-hour item in this file.**
-- **Speed on vs off food.** Real worms slow ~7× on a lawn (219 → 31 µm/s, Ramot et al.
-  2008) via the dopaminergic basal slowing response. CEP/ADE/PDE already sense the lawn;
-  check whether the connectome alone produces the slowing.
+- **Omega turns.** The reversal *statistics* are now measured (`tools/ethogram.py`): 3.3
+  reversals/min off food against the animal's 3.2–3.5, in episodes long enough to be
+  reversals rather than threshold flicker. What is missing is the turn. Median reorientation
+  is 18°, nothing exceeds 120°, against 35% of real reversals ending at 160–170°. RIV has
+  been ruled out as the driver and the reason measured — 99.5% of its output variance is
+  undulatory (`tools/omega.py`). The next candidate has to have reversal-locked variance,
+  and should fire at the reversal-to-forward *transition* rather than during the reversal.
+  **This is still the single highest-value item in the file**, because three taxis assays
+  have correct mechanisms and null outcomes waiting on it.
 
 ## Third tier / nice to have
 
@@ -1551,9 +1545,6 @@ table's five rows fix themselves at once.
 - A recorded-playback mode in the viewer — the transport bar has no scrubber because there
   is no history buffer on the server. A ring buffer of a few thousand frames would let the
   media-player metaphor actually be one.
-- Neuron ablation is implemented in `Runner._ablate` and reachable over the WebSocket, but
-  there is no UI for it. Clicking a neuron and killing it would be a good demo, and would
-  reproduce classic ablation experiments (kill AVB → no forward locomotion).
 - Multi-worm. The engine is one `Simulation` object; nothing prevents several.
 
 ---

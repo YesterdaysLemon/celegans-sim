@@ -482,6 +482,7 @@ tools/body_oscillator.py  can the body carry the rhythm instead of the head?
 tools/head_circuit.py   lumped against distributed head reflex, scored on the wave
 tools/thrust.py         what speed the mechanics allow, and what the circuit collects
 tools/ase_opponency.py  which way round the ON and OFF chemosensors should push
+tools/omega.py          can the omega turn be bought by amplifying RIV? (no, and why)
 tools/scorecard.py      every headline number at once, across seeds, in three media
 ```
 
