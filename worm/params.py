@@ -709,8 +709,15 @@ MEDIA = {
 class WorldParams:
     """The dish."""
 
-    radius: float = 25.0            # mm  a 50 mm petri dish
-    grid: int = 192                 # cells across the dish for the chemical fields
+    # A 9 cm plate, which is what chemotaxis and thermotaxis assays are actually run on.
+    # It was 25 mm -- a 5 cm dish -- and that was harmless while the animal crawled at
+    # 0.10 mm/s and covered 20 mm in a 200 s assay. It is not harmless now: at 0.275 mm/s
+    # the same assay covers 55 mm, further than the old dish was wide, so every trial
+    # ended up pressed against the wall. That showed up first as a habituation test
+    # failing -- sustained wall contact re-depletes the mechanoreceptor -- and it would
+    # have quietly corrupted every taxis assay too.
+    radius: float = 45.0            # mm  a 50 mm petri dish
+    grid: int = 256          # 0.35 mm cells across a 9 cm plate                 # cells across the dish for the chemical fields
     diffusion_attractant: float = 0.004   # mm^2/s   small molecules through agar
     diffusion_repellent: float = 0.004
     diffusion_oxygen: float = 0.02
@@ -1058,7 +1065,7 @@ class SensoryParams:
     # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
     # at which the animal is evenly poised, and gate_slope how sharply it commits.
     gate_slope: float = 30.0         # per unit of activation difference
-    gate_bias: float = 0.13          # activation difference at the switch point
+    gate_bias: float = 0.04          # activation difference at the switch point
 
     # Which cord, decided separately from how much drive it gets.
     #
@@ -1107,7 +1114,23 @@ class SensoryParams:
     # speed 0.208 against 0.185, net-to-path 0.823 against 0.783, travelling index +0.781
     # against +0.767.
     gate_latched: bool = True
-    gate_hysteresis: float = 0.04
+    # Re-fitted after the head reflex was distributed, and the size of the change is the
+    # point: the new head circuit more than doubled the spread of the command difference,
+    # from about 0.04 to 0.0885, so the old threshold of 0.13 sat 0.29 sigma from the mean
+    # instead of 1.33 and the animal flickered at 40 reversals a minute. Nothing about the
+    # command layer was wrong; it was calibrated against a gait that no longer existed.
+    #
+    #   bias  hyst | rev/min  dur s |  speed   net/path    TWI    k_rms
+    #   0.02  0.09 |   1.00    0.23 |  0.3325   0.847    +0.896   4.59
+    #   0.04  0.09 |   3.33    0.35 |  0.3373   0.881    +0.872   4.56   <- adopted
+    #   0.06  0.09 |   9.67    0.44 |  0.1907   0.536    +0.806   4.50
+    #   0.08  0.06 |  24.67    0.38 |  0.1881   0.600    +0.781   4.18
+    #   0.13  0.04 |  40.00    ----  |  0.1370   0.530    +0.680   3.76   the stale one
+    #
+    # 3.33 reversals a minute against the animal's 3.2-3.5 off food, and the travelling
+    # index and net-to-path ratio come with it: an animal that is not constantly changing
+    # its mind travels, and thrust is the travelling index (tools/thrust.py).
+    gate_hysteresis: float = 0.09
 
 
 @dataclass(frozen=True)

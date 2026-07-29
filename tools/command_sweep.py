@@ -59,17 +59,26 @@ SEEDS = (0, 3, 7)
 # carries no regenerative conductance, so it is poising nothing).
 # Latched vs graded: does separating "which cord" from "how much" free the decision?
 JOBS = [
-    (0.00, "glucl=0.00"),
-    (0.50, "glucl=0.50"),
-    (1.00, "glucl=1.00"),
+    (0.02, 0.06, "bias 0.02 hyst 0.06"),
+    (0.02, 0.09, "bias 0.02 hyst 0.09"),
+    (0.02, 0.13, "bias 0.02 hyst 0.13"),
+    (0.04, 0.06, "bias 0.04 hyst 0.06"),
+    (0.04, 0.09, "bias 0.04 hyst 0.09"),
+    (0.04, 0.13, "bias 0.04 hyst 0.13"),
+    (0.06, 0.06, "bias 0.06 hyst 0.06"),
+    (0.06, 0.09, "bias 0.06 hyst 0.09"),
+    (0.06, 0.13, "bias 0.06 hyst 0.13"),
+    (0.08, 0.06, "bias 0.08 hyst 0.06"),
+    (0.08, 0.09, "bias 0.08 hyst 0.09"),
+    (0.08, 0.13, "bias 0.08 hyst 0.13"),
 ]
 
 
 def _job(job):
-    glucl, label, seed = job
+    bias, hyst, label, seed = job
     p = Params()
-    p = dataclasses.replace(p, neural=dataclasses.replace(
-        p.neural, glucl_strength=glucl))
+    p = dataclasses.replace(p, sensory=dataclasses.replace(
+        p.sensory, gate_bias=bias, gate_hysteresis=hyst))
     sim = Simulation(p, seed=seed, world=World(p.world, np.random.default_rng(0)),
                      placement=(0.0, 0.0, 0.0))
     fwd_i, bwd_i = sim.senses.avb, sim.senses.ava
@@ -107,13 +116,12 @@ def _job(job):
     rev_dur = float(back.sum()) * sample / rev if rev else float("nan")
 
     return dict(
-        glucl=glucl, label=label, seed=seed,
+        label=label, seed=seed,
         fwd=float(fwd.mean()), bwd=float(bwd.mean()),
         corr=float(np.corrcoef(fwd, bwd)[0, 1]) if fwd.std() > 0 and bwd.std() > 0
         else float("nan"),
         diff=float(diff.mean()), diff_sd=sd,
-        margin=(float(diff.mean()) - p.sensory.gate_bias) / sd if sd > 0
-        else float("nan"),
+        margin=(float(diff.mean()) - bias) / sd if sd > 0 else float("nan"),
         gate=float(gate.mean()), rev_rate=rev * 60.0 / MEASURE, rev_dur=rev_dur,
         frac_rev=float(back.mean()),
         speed=net / MEASURE, net_path=net / max(path, 1e-9),
@@ -122,7 +130,7 @@ def _job(job):
 
 
 def main():
-    jobs = [(g, lb, s) for g, lb in JOBS for s in SEEDS]
+    jobs = [(b, h, lb, s) for b, h, lb in JOBS for s in SEEDS]
     print("COMMAND SWEEP -- %d trials x %.0f s  (estimated %.0f s)"
           % (len(jobs), WARMUP + MEASURE, estimate(len(jobs), WARMUP + MEASURE)))
     rows = pooled(_job, jobs)

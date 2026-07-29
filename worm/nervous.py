@@ -247,8 +247,11 @@ class NervousSystem:
         # Glutamate-gated chloride on named targets. See NeuralParams.glucl_strength.
         gc = float(p.glucl_strength)
         if gc > 0.0:
-            pre = conn.group(*p.glucl_pre)
-            post = conn.group(*p.glucl_post)
+            # Resolved by class *and* by individual cell name, because the useful case is
+            # per-cell: ASEL and ASER are one anatomical class and have to be given
+            # opposite receptors on their shared target, or the ON/OFF pair cancels.
+            pre = np.union1d(conn.group(*p.glucl_pre), conn.select(*p.glucl_pre))
+            post = np.union1d(conn.group(*p.glucl_post), conn.select(*p.glucl_post))
             if len(pre) == 0 or len(post) == 0:
                 raise RuntimeError("glutamate-chloride sets matched nothing: %r -> %r"
                                    % (p.glucl_pre, p.glucl_post))
