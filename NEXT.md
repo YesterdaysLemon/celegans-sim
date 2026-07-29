@@ -1,5 +1,55 @@
 # Where this is, and what to do next
 
+> ## Day fourteen. RIV is not the omega turn, and the measurement says why.
+>
+> Day thirteen ended by naming the omega turn as the missing half of the steering and RIV
+> as the obvious way in. The anatomy was encouraging — RIV innervates ventral body muscle
+> and nothing else, 9 contacts ventral and 0 dorsal, which is exactly the anatomy of a cell
+> whose job is to bend the animal one way; it is reached through RIA and SMDV rather than
+> from the command pool; and it is already 25% more active during reversals. So it was
+> given authority, in all three places a gain can go.
+>
+> **All three fail, and the third one is the informative one.**
+>
+> | where the gain acts | what happens |
+> |---|---|
+> | on the conductance, after the muscle balance | gain 5: reorientation 18 → 72°, 11% above 120° — but net speed 0.301 → 0.027 mm/s. The balance cancels resting tone, so scaling after it amplifies RIV's *tonic* release and bends the animal permanently. |
+> | on the conductance, before the balance | gain 8: reorientation 18.1 → 14.6°. Nearly a no-op — the balance equalises each muscle cell's total drive and divides the change straight back out. |
+> | on RIV's deviation from its resting release | reorientation climbs 18 → 55° and **never once exceeds 120°**, while net speed falls 81% and the travelling index +0.84 → +0.74. |
+>
+> The third is the principled one. The balance cancels tone on the assumption that every
+> neuron sits at `s_eq`, so amplifying deviations *from* `s_eq` leaves the balanced resting
+> state untouched by construction and acts only on the phasic part. It is now a tested
+> property (`test_omega_gain_amplifies_only_the_phasic_part`), and it still fails — which
+> is what makes this a result about RIV rather than about where a constant was multiplied.
+>
+> **Why.** Decompose RIV's release variance over 180 s into the part explained by the
+> direction state and the part within each state:
+>
+> ```
+> reversal-locked variance    0.5% of total
+> undulatory variance        99.5%
+> ```
+>
+> RIV oscillates with the gait, and that oscillation is two hundred times larger than the
+> reversal-linked shift a turn would have to be made of. Any gain on RIV therefore
+> amplifies the wave two hundred times harder than the signal — which is precisely the
+> observed exchange rate. The 25% elevation during reversals is real and is simply not
+> where RIV's output lives.
+>
+> **What this rules in.** The driver has to be something whose variance *is* reversal-locked
+> — the command state itself, or a cell reading it — and in the animal the omega turn fires
+> at the *reversal-to-forward transition*, not during the reversal. That is a different
+> object from a gain on a tonically oscillating motor neuron: a transient locked to an
+> edge. It is testable the same way, and it makes two predictions the animal also makes —
+> the turn should *follow* the reversal rather than accompany it, and longer reversals
+> should end in deeper turns.
+>
+> `omega_gain` stays at 1.0, exactly the unmodified model. The deviation-gain machinery is
+> kept because it is the right way to amplify any phasic drive without disturbing the
+> resting balance, and whatever drives the turn will want it. `tools/omega.py` has the
+> table and the reasoning.
+
 > ## Day thirteen. One thing is missing, and it explains every remaining sensory failure.
 >
 > **The animal reverses and does not reorient. Median heading change across a reversal is

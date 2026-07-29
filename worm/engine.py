@@ -43,7 +43,8 @@ class Simulation:
         self.world = world if world is not None else default_world(self.p.world, self.rng)
         self.nervous = NervousSystem(self.conn, self.p.neural, self.rng)
         self.muscles = Muscles(self.conn, self.p.muscle, self.p.body, self.p.neural.dt,
-                               s_eq=float(self.nervous.s[0]))
+                               s_eq=float(self.nervous.s[0]),
+                               omega_gain=self.p.sensory.omega_gain)
         # Where the animal is put down. Behavioural assays need to control this -- a
         # chemotaxis index means nothing without a defined starting distance and bearing --
         # so it is a parameter, defaulting to the viewer's usual corner of the dish.

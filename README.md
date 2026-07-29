@@ -268,6 +268,21 @@ Omega turns are therefore not a refinement to add later; they are the missing ha
 steering. Whether they are achievable at all in a two-dimensional model is the first
 question, since the real turn is a deep ventral coil.
 
+**RIV was the obvious candidate and it is the wrong cell.** It innervates ventral body
+muscle and nothing else — 9 contacts ventral, 0 dorsal — and it is 25% more active during
+reversals, so it was given authority in all three places a gain can go. All three fail, and
+`tools/omega.py` measures why: over 180 s, **0.5% of RIV's output variance is explained by
+the direction state and 99.5% is the undulation it rides on**. A gain on RIV therefore
+amplifies the gait two hundred times harder than the turn signal, which is exactly the
+observed trade — median reorientation climbs 18° → 55° without ever reaching 120°, while
+net speed falls by four fifths and the travelling-wave index goes +0.84 → +0.74.
+
+The driver has to be something whose variance *is* reversal-locked, and in the animal the
+turn fires at the reversal-to-forward *transition* rather than during the reversal — an
+edge-locked transient, not a gain on a tonically oscillating motor neuron. That version
+makes two predictions the animal also makes: the turn follows the reversal, and longer
+reversals end in deeper turns.
+
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
