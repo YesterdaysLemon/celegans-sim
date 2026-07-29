@@ -387,7 +387,31 @@ class NeuralParams:
     # and it uses the same per-synapse reversal machinery: name the glutamatergic senders
     # and the cells that answer them with a chloride channel. AIB is deliberately not in
     # the list -- it holds GLR-1 and should stay excited.
-    glucl_pre: tuple = ("ASE", "AWC")     # glutamatergic sensory neurons
+    # Named per *cell*, not per class, and that is the whole point. ASEL and ASER are one
+    # anatomical class and a genuine opponent pair -- Senses gives ASEL +dC/dt and ASER
+    # -dC/dt -- but they project onto the same first-layer interneurons with the same sign,
+    # 19 contacts onto AIY against 16. So AIY receives (+dC/dt) + (-dC/dt) and **the
+    # opponency cancels itself at the first synapse**. Giving them the same receptor, as
+    # ("ASE",) did, cancels it exactly:
+    #
+    #   chloride on        improving   worsening   opponency
+    #   neither             +0.15409    +0.15435    -0.00026
+    #   both                +0.15412    +0.15412    -0.00000    exactly nothing
+    #   ASEL only (ON)      +0.15457    +0.15379    +0.00078    correct sign
+    #   ASER only (OFF)     +0.15376    +0.15465    -0.00089    inverted
+    #
+    # (shift in the forward-minus-backward command difference under a held 3 pA gradient.)
+    # So the ON cell answers glutamate with chloride and the OFF cell does not, and the two
+    # then push AIY the same way instead of against each other. AWA and AWC are the
+    # equivalent pair for volatile odour and get the same treatment by analogy, which is
+    # not separately measured.
+    #
+    # The sign is now right and **the magnitude is still about a hundredfold short**:
+    # +0.00078 against a difference whose standard deviation is 0.0885, so 0.009 sigma
+    # where biasing the walk wants of order 0.1. That is not attenuation along the way --
+    # the chain is strong at every stage, ASE->AIY being 206% of AIY's own conductance,
+    # AIY->AIZ 91%, AIZ->AVE 25% -- so where it goes is a separate question and an open one.
+    glucl_pre: tuple = ("ASEL", "AWA")    # the ON cells of each opponent pair
     glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
     # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
     # ASEL -- which is what "the attractant is rising" looks like to the circuit:
@@ -709,8 +733,15 @@ MEDIA = {
 class WorldParams:
     """The dish."""
 
-    radius: float = 25.0            # mm  a 50 mm petri dish
-    grid: int = 192                 # cells across the dish for the chemical fields
+    # A 9 cm plate, which is what chemotaxis and thermotaxis assays are actually run on.
+    # It was 25 mm -- a 5 cm dish -- and that was harmless while the animal crawled at
+    # 0.10 mm/s and covered 20 mm in a 200 s assay. It is not harmless now: at 0.275 mm/s
+    # the same assay covers 55 mm, further than the old dish was wide, so every trial
+    # ended up pressed against the wall. That showed up first as a habituation test
+    # failing -- sustained wall contact re-depletes the mechanoreceptor -- and it would
+    # have quietly corrupted every taxis assay too.
+    radius: float = 45.0            # mm  a 50 mm petri dish
+    grid: int = 256          # 0.35 mm cells across a 9 cm plate                 # cells across the dish for the chemical fields
     diffusion_attractant: float = 0.004   # mm^2/s   small molecules through agar
     diffusion_repellent: float = 0.004
     diffusion_oxygen: float = 0.02
@@ -882,7 +913,44 @@ class SensoryParams:
     # copies the anterior bend rearwards -- which is what makes the wave travel instead
     # of standing.
     head_proprio_gain: float = 150.0  # pA per unit normalised curvature
-    head_reach: float = 0.17          # fraction of body length the head circuit reads
+    head_reach: float = 0.17          # fraction of body length the lumped circuit reads
+
+    # The head reflex, distributed over its own neurons instead of lumped into one scalar.
+    #
+    # The lumped version gives every head motor neuron the same number -- the mean
+    # curvature of the front 17% of the body -- so twelve cells that act on different
+    # pieces of body all see the same thing and fire together. That is the reason it needed
+    # `head_delay`: with no spatial spread there is no phase spread, and the loop's
+    # crossover had to be dragged down by an invented 0.6 s transport delay instead.
+    #
+    # Weighted by their own neuromuscular maps, RMD, SMD and SMB act between s = 0.135 and
+    # s = 0.229. That tenth of a body length takes the travelling wave a real fraction of a
+    # cycle to cross, so letting each cell read the curvature around the piece it moves
+    # supplies phase from the anatomy rather than from a fitted constant -- and it should
+    # follow the mechanical load, which a fixed delay provably cannot (see head_delay).
+    #
+    # head_field is the width of each cell's window, centred on where it acts.
+    # Measured against the lumped reflex it replaces (tools/head_circuit.py, three seeds).
+    # The delay sets the frequency in both forms; what distributing buys is the wave:
+    #
+    #   reflex       field gain delay | freq Hz wavelen  TWI    k_rms  net mm/s
+    #   lumped       0.10  150  0.60  |  0.450   0.72   +0.583   4.32   0.1239
+    #   distributed  0.10  150  0.15  |  0.833   0.61   +0.391   2.98   0.2066
+    #   distributed  0.10  150  0.20  |  0.750   0.59   +0.681   3.43   0.1755
+    #   distributed  0.08  150  0.28  |  0.650   0.61   +0.684   3.78   0.1363   <- adopted
+    #
+    # The travelling index is the thing to read: it is the fraction of the mechanical
+    # thrust ceiling the animal actually collects (tools/thrust.py), so +0.68 against
+    # +0.58 is 17% more speed for the same body. And it comes with **less than half the
+    # invented delay** -- 0.28 s against 0.60 -- because a reflex whose cells read
+    # different pieces of body needs less help to find its phase.
+    #
+    # 0.65 Hz is also the frequency a self-consistent animal has. The 0.30 Hz this project
+    # used to target cannot coexist with the 0.219 mm/s it also targets: they need
+    # U/V = 1.12, above the physical bound of 1. At the animal's own curvature the
+    # mechanics cap U/V near 0.51, so 0.219 mm/s implies 0.66 Hz. See tools/thrust.py.
+    head_distributed: bool = True
+    head_field: float = 0.08
 
     # The head reflex loop has two stable limit cycles: a slow one near 0.3 Hz, which is
     # the crawling gait, and a fast one near 2.2 Hz set by the loop's own phase-crossover
@@ -917,7 +985,7 @@ class SensoryParams:
     # milliseconds to tens of milliseconds, none of which this model represents anywhere.
     #
     # Zero by default until measured.
-    # 0.60 s, and this is the largest fitted number in the model. It is what finally moved
+    # 0.28 s, and this is the largest fitted number in the model. It is what finally moved
     # the two headline discrepancies, and the honesty about where it comes from matters
     # more than the result. Measured at reach 0.16, three seeds:
     #
@@ -959,14 +1027,18 @@ class SensoryParams:
     # dt = 0.5 ms, where the coupling was correct -- but it is now unsupported by anything
     # except that it lands the frequency, which makes it a fit and not an explanation.
     #
-    # And there is now direct evidence that it is the wrong *kind* of thing. A fixed delay
-    # contributes fixed phase at every frequency, so it pins the loop's crossover no matter
-    # what the medium does to the mechanical load -- and gait modulation, measured across
-    # three media, is correspondingly dead: 0.45 Hz on agar, 0.18 in viscous, 0.19 in
-    # buffer, where the animal goes 0.30 crawling to 1.76 swimming. The animal *cannot*
-    # speed up in water while this delay dominates the loop's phase. Whatever replaces it
-    # has to have a frequency that follows the load, which a transport delay never will.
-    head_delay: float = 0.60          # s   transport delay in the head stretch reflex
+    # It was once argued here that a fixed delay must kill gait modulation outright, since
+    # it contributes fixed phase at every frequency and so pins the loop's crossover
+    # whatever the medium does to the load. The evidence for that was 0.45 Hz on agar
+    # against 0.18 in buffer -- backwards, where the animal speeds up. **That argument was
+    # wrong, or at least not the binding one.** With the reflex distributed and the command
+    # layer re-fitted, the same delay now gives 0.67 Hz on agar and 0.85 in buffer: the
+    # right direction, for the first time in this project. What had been killing modulation
+    # was a reversal flicker in the command layer, not this parameter.
+    #
+    # The delay is still unearned and still the largest fitted number here. But the case
+    # against it is now one count shorter, and honest bookkeeping says so.
+    head_delay: float = 0.28          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------
     # These three parameters used to be one, and separating them is what makes any
@@ -1021,7 +1093,7 @@ class SensoryParams:
     # and cubing those gave 98/2 no matter what the senses did. gate_bias is the difference
     # at which the animal is evenly poised, and gate_slope how sharply it commits.
     gate_slope: float = 30.0         # per unit of activation difference
-    gate_bias: float = 0.13          # activation difference at the switch point
+    gate_bias: float = 0.04          # activation difference at the switch point
 
     # Which cord, decided separately from how much drive it gets.
     #
@@ -1070,7 +1142,23 @@ class SensoryParams:
     # speed 0.208 against 0.185, net-to-path 0.823 against 0.783, travelling index +0.781
     # against +0.767.
     gate_latched: bool = True
-    gate_hysteresis: float = 0.04
+    # Re-fitted after the head reflex was distributed, and the size of the change is the
+    # point: the new head circuit more than doubled the spread of the command difference,
+    # from about 0.04 to 0.0885, so the old threshold of 0.13 sat 0.29 sigma from the mean
+    # instead of 1.33 and the animal flickered at 40 reversals a minute. Nothing about the
+    # command layer was wrong; it was calibrated against a gait that no longer existed.
+    #
+    #   bias  hyst | rev/min  dur s |  speed   net/path    TWI    k_rms
+    #   0.02  0.09 |   1.00    0.23 |  0.3325   0.847    +0.896   4.59
+    #   0.04  0.09 |   3.33    0.35 |  0.3373   0.881    +0.872   4.56   <- adopted
+    #   0.06  0.09 |   9.67    0.44 |  0.1907   0.536    +0.806   4.50
+    #   0.08  0.06 |  24.67    0.38 |  0.1881   0.600    +0.781   4.18
+    #   0.13  0.04 |  40.00    ----  |  0.1370   0.530    +0.680   3.76   the stale one
+    #
+    # 3.33 reversals a minute against the animal's 3.2-3.5 off food, and the travelling
+    # index and net-to-path ratio come with it: an animal that is not constantly changing
+    # its mind travels, and thrust is the travelling index (tools/thrust.py).
+    gate_hysteresis: float = 0.09
 
 
 @dataclass(frozen=True)

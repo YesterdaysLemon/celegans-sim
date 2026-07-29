@@ -78,12 +78,15 @@ class Senses:
         if head_win.sum() == 0:
             head_win[0] = 1.0
         self._head_window = head_win / head_win.sum()
-        # The head reflex reads one scalar -- the mean curvature of the head -- so the
-        # per-neuron part is just its sign: negative for the dorsal pool, positive for the
-        # ventral one. Keeping them separate lets the scalar be filtered in time once.
+        # Sign only, for the lumped reflex: negative for the dorsal pool, positive for the
+        # ventral one, so one filtered scalar can drive both.
         self.W_head_sign = np.zeros(conn.n)
         self.W_head_sign[head_d] = -1.0        # a dorsal bend inhibits the dorsal benders
         self.W_head_sign[head_v] = +1.0
+        # And the distributed version: each head motor neuron reads the curvature of the
+        # piece of body *it* moves, rather than all of them sharing one average. See
+        # SensoryParams.head_distributed.
+        self.W_head = _head_fields(conn, head_d, head_v, joint_s, p.head_field)
 
         # Proprioceptive drive is delivered as a current, but what a motor neuron actually
         # responds to is the voltage that current produces, and that is the current divided
@@ -122,13 +125,19 @@ class Senses:
         # is latched; see SensoryParams.gate_latched.
         self.going_forward = True
 
-        self.head_signal = 0.0
+        # Scalar for the lumped reflex, one per neuron for the distributed one.
+        self.head_signal = np.zeros(conn.n) if p.head_distributed else 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
         # Ring buffer for the head reflex's transport delay. Sized in steps from a delay
         # in seconds, so the delay the loop actually sees does not depend on dt. Length
         # zero means no buffer and the previous behaviour exactly.
         self._head_delay_n = max(0, int(round(p.head_delay / dt)))
-        self._head_hist = np.zeros(self._head_delay_n + 1)
+        # Buffers the *curvature*, not the reduced signal, so the delay applies whichever
+        # reflex form is in use and sits where a transduction delay physically would --
+        # between the strain and the receptor, ahead of any spatial pooling. The first
+        # version buffered the lumped scalar only, which silently made head_delay a no-op
+        # in distributed mode and turned a whole sweep into noise.
+        self._head_hist = np.zeros((self._head_delay_n + 1, body_n_links - 1))
         self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
         self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
@@ -293,16 +302,25 @@ class Senses:
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
-        raw = float(np.dot(self._head_window, k))
+        k_head = k
         if self._head_delay_n:
             # Write now, then step on: the slot just vacated holds the oldest sample,
             # which is exactly _head_delay_n steps back.
-            self._head_hist[self._head_hist_i] = raw
+            self._head_hist[self._head_hist_i] = k
             self._head_hist_i = (self._head_hist_i + 1) % len(self._head_hist)
-            raw = float(self._head_hist[self._head_hist_i])
+            k_head = self._head_hist[self._head_hist_i]
+        if p.head_distributed:
+            # Each head motor neuron reads its own patch of body rather than all of them
+            # sharing one average over the front of the animal.
+            raw = self.W_head @ k_head
+        else:
+            raw = float(np.dot(self._head_window, k_head))
         self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
-        I += (self.W_head_sign * self.g_scale_head
-              * (np.tanh(self.head_signal) * p.head_proprio_gain))
+        if p.head_distributed:
+            I += (np.tanh(self.head_signal) * p.head_proprio_gain * self.g_scale_head)
+        else:
+            I += (self.W_head_sign * self.g_scale_head
+                  * (np.tanh(self.head_signal) * p.head_proprio_gain))
 
         self.readout = {
             "attractant": c, "d_attractant": dc, "repellent": rep,
@@ -343,6 +361,35 @@ def _output_position(conn: Connectome, i: int) -> float:
     if total <= 0:
         return float(conn.soma_pos[i])
     return float((w * conn.muscle_pos).sum() / total)
+
+
+def _head_fields(conn: Connectome, dorsal: np.ndarray, ventral: np.ndarray,
+                 joint_s: np.ndarray, field: float) -> np.ndarray:
+    """(N, n_joints) map from curvature to head-reflex current, one row per head neuron.
+
+    The head reflex is a *resistance* reflex -- a dorsal bend excites the ventral benders
+    and inhibits the dorsal ones -- which is what makes it oscillate rather than propagate,
+    and it keeps that sign here. What changes is that each cell reads the curvature around
+    the piece of body it actually moves instead of every cell sharing one head-wide
+    average.
+
+    That matters because those pieces are not the same piece. Weighted by their own
+    neuromuscular maps, RMD, SMD and SMB act between s = 0.135 and s = 0.229 -- a spread of
+    about a tenth of the body, which the travelling wave takes a fair fraction of a cycle to
+    cross. A lumped reflex throws that away and then needs an invented transport delay to
+    get the phase back; a distributed one has it for free, and has it as a consequence of
+    the anatomy rather than of a fitted constant.
+    """
+    W = np.zeros((conn.n, len(joint_s)))
+    half = 0.5 * field
+    for group, sign in ((dorsal, -1.0), (ventral, +1.0)):
+        for i in group:
+            s0 = _output_position(conn, int(i))
+            w = ((joint_s >= s0 - half) & (joint_s <= s0 + half)).astype(float)
+            if w.sum() == 0:
+                w[np.argmin(np.abs(joint_s - np.clip(s0, 0, 1)))] = 1.0
+            W[i] = sign * w / w.sum()
+    return W
 
 
 def _receptive_fields(conn: Connectome, dorsal: np.ndarray, ventral: np.ndarray,
