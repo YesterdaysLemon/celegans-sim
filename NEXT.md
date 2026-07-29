@@ -1,5 +1,64 @@
 # Where this is, and what to do next
 
+> ## Day fifteen. The animal turns, and every assay woke up.
+>
+> The omega turn works. It is an **edge, not a level**: on the backward-to-forward
+> transition a transient is injected into the head motor pool and decays over 1.5 s, and
+> the undulation carries the resulting bias down the body as a turn. Amplitude is set by
+> the reversal's own duration, so the *distribution* of turn angles falls out rather than
+> being fitted.
+>
+> ```
+>   pA  tau | reorientation deg (median / >120%) |  net   path    TWI   k_rms
+>    0   1.5 |      25.3  /   0%                 | 0.273  0.373  +0.88   4.55
+>  200   2.0 |      93.3  /  21%                 | 0.135  0.351  +0.88   4.50
+>  300   1.5 |     106.1  /  32%   <- shipped    | 0.102  0.351  +0.86   4.60
+>  450   2.0 |     101.3  /  33%                 | 0.168  0.299  +0.74   4.98
+> ```
+>
+> Read the two speed columns together: **path** speed barely moves while **net** speed
+> halves. That is not the animal slowing, it is its track becoming tortuous, which is what
+> turning means. The travelling index and curvature are untouched at 300 pA; by 450 the
+> wave starts to suffer and that is the ceiling.
+>
+> ### Two things had to be right, and both are lessons this file already contains
+>
+> **A differential, not a push.** Ventral drive alone saturates the cells without bending
+> the animal — 400 pA pins RIV and SMDV at activation 0.9999 and reaches −0.56 /mm against
+> an undulation of 4.5. Ventral drive *plus dorsal release* reaches −6.4, an order of
+> magnitude more. The head is antagonistic pairs that read a difference, exactly as the ASE
+> pair did and as the command pools do. That is now three times.
+>
+> **A transient, not a level.** Held on continuously, 150 pA and above freezes the animal
+> bent: travelling index +0.19, path speed 0.03 mm/s, because saturating one side of the
+> head pool stops it oscillating. A decaying transient passes back through that region
+> rather than sitting in it — which is why 300 pA is usable here and would not be as a
+> sustained drive.
+>
+> ### What it unlocked
+>
+> | assay | before | after |
+> |---|---|---|
+> | chemotaxis index | +0.002 | **+0.070** |
+> | thermotaxis, warm group | did not turn round | **−2.96 mm towards cooler** |
+> | aerotaxis | ascended the gradient | **descends**, 16.5% → 14.2%, reaching 9.8% |
+> | ethogram off food | 21.1°, 0% >120° | **55.5°, 24% >120°** |
+>
+> All four point the right way for the first time. **None is at the animal's magnitude** —
+> the chemotaxis index is seven times short of +0.5 — so this opens the problem rather than
+> closing it. The next question is what limits the magnitude now that the mechanism exists.
+>
+> ### Two things found on the way, both still open
+>
+> **On food, the animal over-reverses badly** — 15.7 commanded reversals a minute against
+> the animal's 0.7–1.25, with net/path 0.22. This predates the omega work (the turn
+> actually reduced it to 10.2) and is a defect in the food/serotonin path, not the turn.
+> It is probably now the single worst number in the model.
+>
+> **300 pA is the largest injected current here**, an order of magnitude above `cord_drive`.
+> It is openly fitted. What is *not* fitted is the mechanism, which is the whole reason it
+> is worth more than the RIV gain it replaced.
+
 > ## Day fourteen. RIV is not the omega turn, and the measurement says why.
 >
 > Day thirteen ended by naming the omega turn as the missing half of the steering and RIV

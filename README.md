@@ -251,37 +251,63 @@ does not depend on the timestep.
 **Spontaneous reversals**, at 3.3 a minute against the animal's 3.2–3.5 off food, in
 episodes long enough to be reversals rather than threshold flicker.
 
-### The one thing missing that explains most of the rest
+### The omega turn, and what it unlocked
 
-**The animal reverses but does not reorient.** Median heading change across a reversal is
-23°, and not one of 53 measured exceeded 120°; a real animal ends about 35% of its
-reversals in an omega turn of 160–170°.
+For most of this model's life the animal reversed but did not **reorient**: median heading
+change across a reversal was 21°, and not one measured exceeded 120°, against a real animal
+ending about 35% of its reversals in an omega turn of 160–170°.
 
-A biased random walk steers by choosing *when* to change direction, so if changing
-direction does not change the direction there is nothing to bias. The animal reverses along
-the axis it arrived on and retraces its path. That is why three separate assays report a
-correct mechanism and a null outcome — chemotaxis with a pirouette ratio of 1.24, aerotaxis
-with the turning bias measurably the right way round, thermotaxis moving the cold group
-correctly — while nociception, the one behaviour that needs no reorientation, works.
-
-Omega turns are therefore not a refinement to add later; they are the missing half of the
-steering. Whether they are achievable at all in a two-dimensional model is the first
-question, since the real turn is a deep ventral coil.
+A biased random walk steers by choosing *when* to change direction, so if changing direction
+does not change the direction there is nothing to bias. That was why three separate assays
+reported a correct mechanism and a null outcome, while nociception — the one behaviour that
+needs no reorientation — worked.
 
 **RIV was the obvious candidate and it is the wrong cell.** It innervates ventral body
-muscle and nothing else — 9 contacts ventral, 0 dorsal — and it is 25% more active during
+muscle and nothing else (9 contacts ventral, 0 dorsal) and is 25% more active during
 reversals, so it was given authority in all three places a gain can go. All three fail, and
 `tools/omega.py` measures why: over 180 s, **0.5% of RIV's output variance is explained by
-the direction state and 99.5% is the undulation it rides on**. A gain on RIV therefore
-amplifies the gait two hundred times harder than the turn signal, which is exactly the
-observed trade — median reorientation climbs 18° → 55° without ever reaching 120°, while
-net speed falls by four fifths and the travelling-wave index goes +0.84 → +0.74.
+the direction state and 99.5% is the undulation it rides on**. A gain on RIV amplifies the
+gait two hundred times harder than the turn signal.
 
-The driver has to be something whose variance *is* reversal-locked, and in the animal the
-turn fires at the reversal-to-forward *transition* rather than during the reversal — an
-edge-locked transient, not a gain on a tonically oscillating motor neuron. That version
-makes two predictions the animal also makes: the turn follows the reversal, and longer
-reversals end in deeper turns.
+That diagnosis named the replacement. The driver must have reversal-locked variance, and in
+the animal the turn is not part of the reversal — it *follows* it, firing as forward
+locomotion resumes. So the signal is **an edge, not a level**: on the backward-to-forward
+transition a transient is injected into the head motor pool and decays over ~1.5 s, and the
+undulation carries the resulting bias down the body as a turn.
+
+Two further things had to be right, and both are lessons this codebase keeps relearning.
+
+- **It has to be a differential.** Driving the ventral pool alone saturates it without
+  bending the animal — 400 pA pins RIV and SMDV at an activation of 0.9999 and reaches a
+  mean head curvature of −0.56 /mm against an undulation of 4.5. Driving ventral *and
+  releasing the dorsal antagonist* reaches −6.4. The head is antagonistic pairs
+  (SMDD/SMDV, RMDD/RMDV, SMBD/SMBV) that read a difference — as the ASE pair and the
+  command pools each turned out to.
+- **It has to be a transient.** Held on continuously, 150 pA and above freezes the animal
+  in a bent posture: the travelling index falls to +0.19 and path speed to 0.03 mm/s,
+  because saturating one side of the head pool stops it oscillating. A decaying transient
+  passes back through that region instead of sitting in it.
+
+What it buys, off food: median reorientation **21° → 55°**, and **0% → 24%** of reversals
+past 120°. Path speed is essentially unchanged (0.373 → 0.351 mm/s) while net speed halves
+— the animal is not slowing, its track is becoming tortuous, which is what turning means.
+The travelling-wave index and curvature are untouched.
+
+The fraction of turns exceeding 120° was never fitted. Amplitude is set by the reversal's
+own duration, so short reversals earn shallow turns and typical ones earn full-scale, and
+the distribution falls out: about a third of reversals past 120° against the animal's ~35%.
+
+**Downstream, all four assays now point the right way:**
+
+| assay | before | after |
+|---|---|---|
+| chemotaxis index | +0.002 | **+0.070** (animal: +0.5 or better) |
+| thermotaxis | warm group did not turn round | **−2.96 mm towards cooler**, correctly |
+| aerotaxis | ascended the gradient | **descends it**, 16.5% → 14.2%, reaching 9.8% |
+| nociception | worked | still works |
+
+None is yet at the animal's magnitude — the chemotaxis index is seven times short — so this
+opens the problem rather than closing it.
 
 ### What it does not get right
 

@@ -126,12 +126,21 @@ def test_gait_is_reproducible_across_seeds():
     2.2 Hz -- and which one the animal fell into depended on the random seed. Two thirds
     of seeds landed in the fast one. A simulation whose gait is decided by its noise is
     not reporting anything about the worm.
+
+    Measured over 24 s rather than the 16 s this used before the animal could turn. An
+    omega turn perturbs the head oscillation for about 3 s, and in a 16 s record that is a
+    fifth of the data -- enough to drag the spectral peak onto a sub-harmonic. Seed 0 read
+    0.1875 Hz that way while seeds 3 and 7 read 0.6875, and the gait was not the problem:
+    the same seed reads 0.6667 Hz over 60 s, its travelling-wave index is +0.83 even in
+    the bad window, and turning the omega drive off restores 0.6875 at 16 s. The
+    assertion is unchanged; only the window is long enough to survive a turn landing in
+    it. At 24 s all three seeds agree exactly.
     """
     freqs, dirs = [], []
     for seed in (0, 3, 7):
         p = Params()
         sim = Simulation(p, seed=seed, world=bare_world(p))
-        r = analyse(sim, seconds=16.0)
+        r = analyse(sim, seconds=24.0)
         freqs.append(r["freq"])
         dirs.append(r["direction"])
     assert all(d == "head->tail" for d in dirs), dirs
@@ -515,3 +524,166 @@ def test_omega_gain_amplifies_only_the_phasic_part():
     got = np.clip(sim.muscles.s_eq + sim.muscles.phasic_gain * (s - sim.muscles.s_eq),
                   0.0, 1.0)
     assert np.allclose(got, ref), "the gain is not reaching RIV's deviation"
+
+
+def _omega_sim(current, seed=0, tau=1.5):
+    import dataclasses
+    p = Params()
+    p = dataclasses.replace(p, sensory=dataclasses.replace(
+        p.sensory, omega_current=current, omega_tau=tau))
+    return Simulation(p, seed=seed, world=bare_world(p))
+
+
+def test_omega_fires_after_the_reversal_and_never_during_it():
+    """The turn is locked to the reversal's trailing edge, which is the whole design.
+
+    RIV failed as a driver because its output is 99.5% undulation and only 0.5%
+    reversal-locked (tools/omega.py). The replacement is an edge: a transient triggered
+    when the command returns to forward. If it ever fired *during* a reversal it would be
+    a level again, and the animal would be bending while backing up rather than turning as
+    it resumes -- which is not what the animal does and not what this is for.
+    """
+    sim = _omega_sim(300.0)
+    sim.run(8.0)
+    fired_while_reversing = 0
+    fired_after = 0
+    was = sim.senses.going_forward
+    for _ in range(int(120.0 / sim.dt)):
+        sim.step()
+        now = sim.senses.going_forward
+        if not now and sim.senses.omega > 1e-4:
+            fired_while_reversing += 1
+        if now and not was and sim.senses.omega > 1e-4:
+            fired_after += 1
+        was = now
+
+    assert fired_while_reversing == 0, (
+        "the omega transient was active on %d steps while the animal was still reversing; "
+        "it is meant to fire on the backward-to-forward edge" % fired_while_reversing)
+    assert fired_after > 0, "no reversal in 120 s produced a turn at all"
+
+
+def test_omega_amplitude_follows_reversal_duration():
+    """A longer reversal must earn a deeper turn, as it does in the animal.
+
+    This is not a fitted relationship -- the amplitude is the reversal's own duration
+    against omega_ref_reversal -- and it is what produces the *distribution* of turn
+    angles rather than one stereotyped turn. It is worth pinning because it is the part
+    of the mechanism that predicts something beyond what it was built from.
+    """
+    sim = _omega_sim(300.0)
+    sim.run(8.0)
+    pairs, run_n, was = [], 0, sim.senses.going_forward
+    for _ in range(int(150.0 / sim.dt)):
+        sim.step()
+        now = sim.senses.going_forward
+        if not now:
+            run_n += 1
+        elif not was:
+            pairs.append((run_n * sim.dt, sim.senses.omega))
+            run_n = 0
+        was = now
+
+    assert len(pairs) >= 4, "too few reversals (%d) to test the relationship" % len(pairs)
+    ref = sim.p.sensory.omega_ref_reversal
+    decay = float(np.exp(-sim.dt / sim.p.sensory.omega_tau))
+    # The rule itself rather than a correlation over it: with ref at 0.4 s and the model's
+    # own reversals a median 0.41 s long, about half of them clip at full scale, which
+    # caps any correlation statistic around 0.5 while the relationship is exact.
+    for dur, amp in pairs:
+        want = min(1.0, dur / ref) * decay
+        assert abs(amp - want) < 1e-6, (
+            "a %.2f s reversal produced amplitude %.4f, not %.4f" % (dur, amp, want))
+    assert max(a for _, a in pairs) <= 1.0 + 1e-9, "turn amplitude exceeded full scale"
+    assert min(a for _, a in pairs) > 0.0, "some reversal earned no turn at all"
+
+
+def test_omega_drive_is_a_differential_not_a_push():
+    """Ventral up and dorsal down by the same amount.
+
+    Driving the ventral pool alone saturates it without bending the animal -- 400 pA pins
+    RIV and SMDV at an activation of 0.9999 and reaches a mean head curvature of -0.56 /mm
+    against an undulation of 4.5. Releasing the dorsal antagonist instead reaches -6.4.
+    The sign convention is what makes the turn work, so it is worth a guard.
+    """
+    p = Params().sensory
+    sim = _omega_sim(300.0)
+    v, d = sim.senses._omega_v, sim.senses._omega_d
+    assert len(v) and len(d), "the omega pools are empty"
+    assert not set(v.tolist()) & set(d.tolist()), "a cell is in both omega pools"
+
+    # Every ventral cell must be ventral-dominant in the reconstruction, and likewise
+    # dorsal: if the dataset is rebuilt and a cell flips, the turn would fight itself.
+    nmj = sim.conn.nmj
+    for i in v:
+        dd = nmj[sim.conn.muscle_side > 0, i].sum()
+        vv = nmj[sim.conn.muscle_side < 0, i].sum()
+        assert vv > dd, "%s is in omega_ventral but is not ventral-dominant (D%.0f V%.0f)" \
+            % (sim.conn.names[i], dd, vv)
+    for i in d:
+        dd = nmj[sim.conn.muscle_side > 0, i].sum()
+        vv = nmj[sim.conn.muscle_side < 0, i].sum()
+        assert dd > vv, "%s is in omega_dorsal but is not dorsal-dominant (D%.0f V%.0f)" \
+            % (sim.conn.names[i], dd, vv)
+
+    # And the current itself: equal and opposite while the transient is live.
+    sim.run(6.0)
+    sim.senses.omega = 1.0
+    nodes = sim.body.nodes()
+    contact = np.zeros((len(nodes), 2))
+    I = sim.senses.sense(sim.world, nodes, contact,
+                         sim.body.curvature(), sim.nervous.activation())
+    # sense() rebuilds the whole current vector, so isolate the omega contribution by
+    # taking the same step again with the transient switched off.
+    sim.senses.omega = 0.0
+    I0 = sim.senses.sense(sim.world, nodes, contact,
+                          sim.body.curvature(), sim.nervous.activation())
+    # Not exact: sense() also advances the adapting baselines and the head reflex's
+    # delay buffer, so the non-omega part of the current differs by a fraction of a
+    # percent between the two calls. The claim under test is the sign and the symmetry.
+    delta = I - I0
+    assert np.allclose(delta[v], p.omega_current, rtol=0.01), \
+        "ventral pool did not receive the full drive: %r" % (delta[v],)
+    assert np.allclose(delta[d], -p.omega_current, rtol=0.01), \
+        "dorsal pool was not driven equally and oppositely: %r" % (delta[d],)
+    assert abs(float(delta[v].mean() + delta[d].mean())) < 0.01 * p.omega_current, \
+        "the drive is not balanced across the two pools"
+
+
+def test_omega_turn_actually_turns_the_animal():
+    """The drive must reorient the body, not merely bend the neck.
+
+    Measured as a turning rate under a held drive rather than as a reorientation
+    statistic, because that is deterministic and needs no reversal events: a bend that
+    does not travel produces no heading change at all, which is exactly how the earlier
+    RIV attempts failed.
+    """
+    def turn_rate(current, secs=18.0):
+        sim = _omega_sim(0.0)
+        sim.run(10.0)
+        if current:
+            v = sim.conn.select(*Params().sensory.omega_ventral)
+            d = sim.conn.select(*Params().sensory.omega_dorsal)
+            base = sim.senses.sense
+
+            def wrapped(*a, **k):
+                I = base(*a, **k)
+                I[v] += current
+                I[d] -= current
+                return I
+
+            sim.senses.sense = wrapped
+        h, every = [], max(1, int(round(0.05 / sim.dt)))
+        for i in range(int(secs / sim.dt)):
+            sim.step()
+            if i % every == 0:
+                dirv = sim.body.body_direction()
+                h.append(np.arctan2(dirv[1], dirv[0]))
+        h = np.unwrap(np.array(h))
+        return abs(float(np.degrees(h[-1] - h[0]))) / secs
+
+    idle = turn_rate(0.0)
+    driven = turn_rate(100.0)
+    assert driven > 5.0 * max(idle, 1.0), (
+        "a held omega drive turned the animal at %.1f deg/s against %.1f idle; the bend "
+        "is not being carried into a heading change" % (driven, idle))
