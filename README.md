@@ -209,19 +209,19 @@ nine.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **4.35 ± 0.10 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **14.4 ± 1.5 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **3.76 ± 0.03 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **13.0 ± 0.6 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.105 ± 0.025 mm/s** *(slow)* | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.53 ± 0.13** | well above 0.5 | — |
-| Travelling-wave index | **+0.61 ± 0.04** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **0.45 ± 0.01 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
-| Wavelength, agar | **0.73 ± 0.01 L** | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Crawling speed (net) | **0.137 ± 0.012 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.53 ± 0.04** | well above 0.5 | — |
+| Travelling-wave index | **+0.68 ± 0.02** | +1 for a pure travelling wave | — |
+| Undulation frequency, agar | **0.65 ± 0.00 Hz** | 0.30 ± 0.02 Hz *(see below)* | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.61 ± 0.01 L** | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
 Curvature, wave direction and the membrane potentials land on the measured values. The
 gait's *timing* does not: see below.

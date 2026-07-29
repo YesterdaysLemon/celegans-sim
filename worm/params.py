@@ -882,7 +882,44 @@ class SensoryParams:
     # copies the anterior bend rearwards -- which is what makes the wave travel instead
     # of standing.
     head_proprio_gain: float = 150.0  # pA per unit normalised curvature
-    head_reach: float = 0.17          # fraction of body length the head circuit reads
+    head_reach: float = 0.17          # fraction of body length the lumped circuit reads
+
+    # The head reflex, distributed over its own neurons instead of lumped into one scalar.
+    #
+    # The lumped version gives every head motor neuron the same number -- the mean
+    # curvature of the front 17% of the body -- so twelve cells that act on different
+    # pieces of body all see the same thing and fire together. That is the reason it needed
+    # `head_delay`: with no spatial spread there is no phase spread, and the loop's
+    # crossover had to be dragged down by an invented 0.6 s transport delay instead.
+    #
+    # Weighted by their own neuromuscular maps, RMD, SMD and SMB act between s = 0.135 and
+    # s = 0.229. That tenth of a body length takes the travelling wave a real fraction of a
+    # cycle to cross, so letting each cell read the curvature around the piece it moves
+    # supplies phase from the anatomy rather than from a fitted constant -- and it should
+    # follow the mechanical load, which a fixed delay provably cannot (see head_delay).
+    #
+    # head_field is the width of each cell's window, centred on where it acts.
+    # Measured against the lumped reflex it replaces (tools/head_circuit.py, three seeds).
+    # The delay sets the frequency in both forms; what distributing buys is the wave:
+    #
+    #   reflex       field gain delay | freq Hz wavelen  TWI    k_rms  net mm/s
+    #   lumped       0.10  150  0.60  |  0.450   0.72   +0.583   4.32   0.1239
+    #   distributed  0.10  150  0.15  |  0.833   0.61   +0.391   2.98   0.2066
+    #   distributed  0.10  150  0.20  |  0.750   0.59   +0.681   3.43   0.1755
+    #   distributed  0.08  150  0.28  |  0.650   0.61   +0.684   3.78   0.1363   <- adopted
+    #
+    # The travelling index is the thing to read: it is the fraction of the mechanical
+    # thrust ceiling the animal actually collects (tools/thrust.py), so +0.68 against
+    # +0.58 is 17% more speed for the same body. And it comes with **less than half the
+    # invented delay** -- 0.28 s against 0.60 -- because a reflex whose cells read
+    # different pieces of body needs less help to find its phase.
+    #
+    # 0.65 Hz is also the frequency a self-consistent animal has. The 0.30 Hz this project
+    # used to target cannot coexist with the 0.219 mm/s it also targets: they need
+    # U/V = 1.12, above the physical bound of 1. At the animal's own curvature the
+    # mechanics cap U/V near 0.51, so 0.219 mm/s implies 0.66 Hz. See tools/thrust.py.
+    head_distributed: bool = True
+    head_field: float = 0.08
 
     # The head reflex loop has two stable limit cycles: a slow one near 0.3 Hz, which is
     # the crawling gait, and a fast one near 2.2 Hz set by the loop's own phase-crossover
@@ -966,7 +1003,7 @@ class SensoryParams:
     # buffer, where the animal goes 0.30 crawling to 1.76 swimming. The animal *cannot*
     # speed up in water while this delay dominates the loop's phase. Whatever replaces it
     # has to have a frequency that follows the load, which a transport delay never will.
-    head_delay: float = 0.60          # s   transport delay in the head stretch reflex
+    head_delay: float = 0.28          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------
     # These three parameters used to be one, and separating them is what makes any
