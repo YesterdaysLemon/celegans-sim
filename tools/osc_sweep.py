@@ -67,7 +67,8 @@ def main():
               % (r['ca_ratio'], r['adapt_tau'], r['k_offset'], r['seed'],
                  r['twi'], r['f'], r['net'], r['ratio'], r['k_rms']))
     print("\n  reflexive baseline: TWI +0.60, f 1.14 Hz, net 0.105, net/path 0.70, k_rms 2.1")
-    print("  real animal:        TWI ~+1.0, f 0.45 Hz, net 0.219,             k_rms 4.3")
+    print("  real animal:        TWI ~+1.0, f 0.30 Hz, net 0.219,             k_rms 4.3")
+    print("  (0.30 and 0.219 are not jointly reachable -- see tools/thrust.py)")
 
 
 if __name__ == "__main__":

@@ -119,10 +119,11 @@ def main():
                  f(g, "twi"), f(g, "k_rms"), f(g, "speed"), f(g, "net_path")))
 
     print()
-    print("  the lumped row is the model as it ships: 0.45 Hz, TWI +0.61, 0.105 mm/s,")
-    print("  bought with a 0.60 s delay that nothing in the animal justifies. A")
-    print("  distributed row that matches it on frequency while beating it on TWI has")
-    print("  earned the delay back and bought speed with it.")
+    print("  These rows were taken before the command layer was re-fitted to the new gait,")
+    print("  so their absolute numbers are all low -- the animal was flickering at 40")
+    print("  reversals a minute and going nowhere. What they compare is still sound,")
+    print("  because every row carries the same handicap. The shipped model now runs at")
+    print("  0.67 Hz, TWI +0.85 and 0.275 mm/s; see tools/scorecard.py.")
     return 0
 
 

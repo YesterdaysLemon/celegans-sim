@@ -142,6 +142,13 @@
 > body that pushes harder. The index has been this project's central diagnostic since day
 > two and it is now also its speed equation.
 >
+> **[Withdrawn on day twelve.** That was a coincidence at one operating point. Re-measured
+> at 0.67 Hz, 0.83 L and curvature 4.51, the ceiling is 0.274 mm/s and the model reaches
+> 0.275 -- 100% of it -- at a travelling index of 0.85, not 85%. The *bound* on U/V stands
+> and so does the target inconsistency; the proportionality does not. What replaces it:
+> the model now extracts essentially all the thrust a sinusoidal wave of its own kinematics
+> allows, so speed is a kinematics question rather than a waveform one.**]
+>
 > ### What that makes the next move
 >
 > Raise the travelling index from +0.61. It was +0.75 before `head_delay` went in, so the

@@ -985,7 +985,7 @@ class SensoryParams:
     # milliseconds to tens of milliseconds, none of which this model represents anywhere.
     #
     # Zero by default until measured.
-    # 0.60 s, and this is the largest fitted number in the model. It is what finally moved
+    # 0.28 s, and this is the largest fitted number in the model. It is what finally moved
     # the two headline discrepancies, and the honesty about where it comes from matters
     # more than the result. Measured at reach 0.16, three seeds:
     #
@@ -1027,13 +1027,17 @@ class SensoryParams:
     # dt = 0.5 ms, where the coupling was correct -- but it is now unsupported by anything
     # except that it lands the frequency, which makes it a fit and not an explanation.
     #
-    # And there is now direct evidence that it is the wrong *kind* of thing. A fixed delay
-    # contributes fixed phase at every frequency, so it pins the loop's crossover no matter
-    # what the medium does to the mechanical load -- and gait modulation, measured across
-    # three media, is correspondingly dead: 0.45 Hz on agar, 0.18 in viscous, 0.19 in
-    # buffer, where the animal goes 0.30 crawling to 1.76 swimming. The animal *cannot*
-    # speed up in water while this delay dominates the loop's phase. Whatever replaces it
-    # has to have a frequency that follows the load, which a transport delay never will.
+    # It was once argued here that a fixed delay must kill gait modulation outright, since
+    # it contributes fixed phase at every frequency and so pins the loop's crossover
+    # whatever the medium does to the load. The evidence for that was 0.45 Hz on agar
+    # against 0.18 in buffer -- backwards, where the animal speeds up. **That argument was
+    # wrong, or at least not the binding one.** With the reflex distributed and the command
+    # layer re-fitted, the same delay now gives 0.67 Hz on agar and 0.85 in buffer: the
+    # right direction, for the first time in this project. What had been killing modulation
+    # was a reversal flicker in the command layer, not this parameter.
+    #
+    # The delay is still unearned and still the largest fitted number here. But the case
+    # against it is now one count shorter, and honest bookkeeping says so.
     head_delay: float = 0.28          # s   transport delay in the head stretch reflex
 
     # -- the command layer ----------------------------------------------------------------

@@ -255,38 +255,22 @@ episodes long enough to be reversals rather than threshold flicker.
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **The animal crawls at 0.105 mm/s, and the 0.219 it is scored against is not reachable
-  at the frequency it is also scored against.** A travelling wave of frequency *f* and
-  wavelength *L* runs along the body at *V = f·L*, and an inextensible body in a viscous
-  medium cannot advance faster than its own wave — *U/V* < 1 strictly. The 0.219 mm/s is
+- **The animal crawls at 0.275 mm/s where the table says 0.219, and the frequency target
+  it is also scored against is not reachable with either.** A travelling wave of frequency
+  *f* and wavelength *L* runs along the body at *V = f·L*, and an inextensible body in a
+  viscous medium cannot advance faster than its own wave — *U/V* < 1 strictly. The 0.219 is
   Ramot et al.'s; the 0.30 Hz and 0.65 L are Fang-Yen et al.'s; together they need
-  *U/V* = 1.12, which is above the bound. They are different experiments under different
-  conditions and no animal satisfies all three.
+  *U/V* = 1.12, above the bound. They are different experiments under different conditions
+  and no animal satisfies all three.
 
-  Measured at the agar anisotropy of 40 that Berri et al. report, and at the animal's own
-  curvature, the mechanics here cap *U/V* at about 0.51. So 0.30 Hz with a 0.65 L
-  wavelength implies at most **0.099 mm/s**, and 0.219 mm/s implies **0.66 Hz**. Against a
-  self-consistent reading the model's 0.105 mm/s at 0.45 Hz is far closer than the table
-  suggests, and the table's speed row should be read with that in mind.
+  Measured at the agar anisotropy of 40 that Berri et al. report, the mechanics here cap
+  *U/V* near **0.50**. So 0.30 Hz with a 0.65 L wavelength implies at most 0.099 mm/s, and
+  0.219 mm/s implies about 0.66 Hz.
 
-  What *is* a real deficit: the model collects 62% of the thrust its own kinematics allow.
-  A clean prescribed wave at 0.45 Hz and 0.73 L reaching the same curvature gets
-  0.169 mm/s. The missing 38% is the travelling-wave index almost exactly — 0.169 × 0.61 =
-  0.103 against a measured 0.105 — because a standing wave produces no net thrust at all.
-  **Thrust and the travelling index are one problem, not two** (`tools/thrust.py`).
-
-  This is visible all the way up. Every taxis assay depends on the animal covering enough
-  ground to sample a gradient, and they all weakened when the gait slowed: aerotaxis no
-  longer reaches the lawn at all (21.0% oxygen occupied, i.e. ambient), and thermotaxis
-  regressed from moving both groups towards the cultivation isotherm to moving neither.
-  The chemosensory drive fell with it, 0.58 to 0.35 pA, because a slower animal crosses
-  the gradient more slowly.
-
-  So frequency and speed are currently traded against each other, which they should not
-  be — a real worm does 0.30 Hz *and* 0.219 mm/s. Something is wrong with how much thrust
-  the model gets per undulation, and that is now the sharpest open question in the
-  locomotion.
-
+  The model is at *U/V* = 0.49 — that is, **it now extracts essentially all the thrust a
+  sinusoidal wave of its own kinematics allows**, so speed is no longer a waveform problem.
+  It overshoots 0.219 because its wave is a little fast and a little long: at *U/V* ≈ 0.5,
+  0.219 mm/s wants *f·L* ≈ 0.44 and the model sits at 0.56.
 - **The tap-withdrawal reflex does not work, so the memory below has nothing to act on.**
   Forward progress over the three seconds after a tap is +0.739 mm against +0.786 with no
   tap. The animal now reverses spontaneously — 4.67 times a minute in episodes of 0.69 s,
@@ -463,6 +447,10 @@ tools/habituation.py    tap habituation — decrement, interval dependence, reco
 tools/loop_phase.py     open the head loop and measure each stage's gain and phase
 tools/wave_speed.py     what sets the wavelength and the frequency
 tools/body_oscillator.py  can the body carry the rhythm instead of the head?
+tools/head_circuit.py   lumped against distributed head reflex, scored on the wave
+tools/thrust.py         what speed the mechanics allow, and what the circuit collects
+tools/ase_opponency.py  which way round the ON and OFF chemosensors should push
+tools/scorecard.py      every headline number at once, across seeds, in three media
 ```
 
 ## Data and licensing
