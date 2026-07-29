@@ -25,7 +25,7 @@ from .nervous import _sigmoid
 
 class Muscles:
     def __init__(self, conn: Connectome, p: MuscleParams, body: BodyParams, dt: float,
-                 s_eq: float):
+                 s_eq: float, omega_gain: float = 1.0):
         self.conn = conn
         self.p = p
         self.dt = dt
@@ -46,11 +46,35 @@ class Muscles:
         self.excitatory_pre = ~conn.inhibitory
         if p.normalise_nmj:
             self._balance(conn)
+
+        # RIV's gain, applied to its *deviation* from rest rather than to its conductance.
+        #
+        # RIV is the omega-turn cell and it is exclusively ventral -- nine neuromuscular
+        # contacts ventral, none dorsal -- but it is also tonically active: its release
+        # sits at 0.075 against the 0.091 the balance assumes, and rises only to 0.114
+        # during reversals. Scaling its conductance amplifies the tonic part along with
+        # the phasic one, and neither position in the constructor gives the wanted one:
+        # scaling after _balance amplifies the tonic release and bends the animal
+        # permanently (gain 5 quadrupled reorientation and took net speed 0.301 -> 0.027
+        # mm/s), while scaling before it is very nearly a no-op, because the balance
+        # equalises each cell's total drive and divides the change straight back out
+        # (gain 8 moved reorientation 18.1 -> 14.6 deg).
+        #
+        # The balance cancels resting tone on the assumption that every neuron sits at
+        # s_eq, so amplifying deviations *from s_eq* leaves the balanced resting state
+        # untouched by construction and acts only on the phasic, reversal-linked part.
+        # A gain of 1 leaves s_pre exactly unchanged, so this is applied to the whole
+        # vector rather than to an index set. See SensoryParams.omega_gain.
+        self.phasic_gain = np.ones(conn.n)
+        if omega_gain != 1.0:
+            self.phasic_gain[conn.group("RIV")] = omega_gain
         self.G_gap = self._muscle_coupling(conn, p)
         self.gap_total = self.G_gap.sum(axis=1)
         # Row index 1..24 within each quadrant, and the normalised body position of each.
         self.row = np.array([int(name[3:]) for name in conn.muscle_names])
         self.pos = conn.muscle_pos
+
+        self._any_phasic = bool(np.any(self.phasic_gain != 1.0))
 
         self._decay_ca = np.exp(-dt / p.tau_calcium)
         self._decay_te = np.exp(-dt / p.tau_tension)
@@ -144,6 +168,9 @@ class Muscles:
         if dt is None:
             dt = self.dt
         p = self.p
+
+        if self._any_phasic:
+            s_pre = np.clip(self.s_eq + self.phasic_gain * (s_pre - self.s_eq), 0.0, 1.0)
 
         g = self.G @ s_pre                              # (M,) total NMJ conductance
         e = self.G @ (s_pre * self.E_pre)               # (M,) conductance-weighted reversal

@@ -842,6 +842,41 @@ class SensoryParams:
     # stimulus -- a dish wall pushes far harder than an eyebrow hair -- before anything
     # clamps. The mechanoreceptor current is the better constrained quantity and it lands
     # in the tens of pA that O'Hagan, Chalfie & Goodman (2005) measured.
+    # The omega turn, or the beginning of one.
+    #
+    # A reversal in this animal reorients it by 23 degrees; a real one ends in an omega
+    # turn of 160-170 about a third of the time, and without that a biased random walk has
+    # nothing to bias -- which is why three assays here report a correct mechanism and a
+    # null outcome (see the README).
+    #
+    # The substrate is present and already engaged. RIV innervates ventral body muscle and
+    # nothing else -- 9 contacts ventral, 0 dorsal, which is exactly the anatomy of a cell
+    # whose job is to bend the animal one way -- and it is measurably more active during
+    # reversals than during forward runs, 0.594 against 0.524, reached through RIA and SMDV
+    # rather than from the command pool directly. What it lacks is authority: those 9
+    # contacts are 1.8% of the ventral innervation, and the per-cell muscle balance then
+    # puts RIV on equal footing with every other input.
+    #
+    # omega_gain scales RIV's neuromuscular output alone, acting on its deviation from its
+    # resting release rather than on its conductance, so that the muscle balance is left
+    # undisturbed and only the phasic part is amplified (see Muscles.phasic_gain).
+    #
+    # It stays at 1.0, which is exactly the unmodified model, because the experiment was
+    # run and RIV is the wrong cell for this. Over a 180 s run, 0.5% of RIV's release
+    # variance is explained by the direction state and 99.5% is the undulation it rides
+    # on -- so any gain amplifies the gait two hundred times harder than the turn signal,
+    # and the measurement says exactly that: at gain 12 the median reorientation reaches
+    # 55 degrees and never once exceeds 120, while net speed falls 0.301 -> 0.058 mm/s and
+    # the travelling-wave index +0.84 -> +0.74. Scaling the conductance instead fails in
+    # both available positions, for two different reasons. tools/omega.py has the table.
+    #
+    # The knob is kept rather than deleted because the deviation-gain machinery is the
+    # right way to amplify any phasic drive without disturbing the resting balance, and
+    # whatever eventually drives the omega turn will want it. That driver has to be
+    # something whose variance *is* reversal-locked; in the animal the turn fires at the
+    # reversal-to-forward transition rather than during the reversal.
+    omega_gain: float = 1.0
+
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
 

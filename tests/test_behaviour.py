@@ -450,3 +450,68 @@ def test_rising_attractant_inhibits_aiy():
         "direction relative to leaving it excitatory (%.4f mV against %.4f): a rising "
         "attractant would not suppress turning, and chemotaxis would run backwards"
         % (chloride, uncorrected))
+
+
+def test_omega_gain_of_one_changes_nothing():
+    """The RIV phasic gain must be exactly inert at 1.0, not merely close to it.
+
+    `SensoryParams.omega_gain` stays at 1.0 because RIV turned out to be the wrong cell
+    to amplify (tools/omega.py), so the whole shipped model runs through the deviation
+    formula in `Muscles.step`. If that formula were only approximately the identity, every
+    gait number in this file would be measuring the rounding rather than the biology.
+    s_eq + 1.0 * (s - s_eq) is the identity in exact arithmetic but not in floating point,
+    so the guard is that the gain is not applied at all when nothing asks for it.
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    assert sim.p.sensory.omega_gain == 1.0, "the shipped model is no longer the unmodified one"
+    assert not sim.muscles._any_phasic, (
+        "the deviation formula is being applied at unit gain, which perturbs every "
+        "muscle drive in the last bits for no reason")
+    assert np.all(sim.muscles.phasic_gain == 1.0)
+
+
+def test_omega_gain_amplifies_only_the_phasic_part():
+    """A gain on RIV must leave the resting posture alone and act only on deviations.
+
+    This is the property that made the deviation form worth keeping even though RIV
+    itself does not produce a turn: scaling RIV's *conductance* after the muscle balance
+    amplifies its tonic release and curls the animal permanently -- measured, a gain of 5
+    took net speed from 0.301 to 0.027 mm/s -- whereas scaling its deviation from s_eq
+    leaves the balanced resting state untouched by construction. Whatever eventually
+    drives the omega turn will need that guarantee.
+    """
+    import dataclasses
+
+    def resting_tension(gain):
+        p = dataclasses.replace(Params(), sensory=dataclasses.replace(
+            Params().sensory, omega_gain=gain))
+        sim = Simulation(p, seed=0, world=bare_world(p))
+        # Hold the neurons at exactly the resting release the balance assumes, so the
+        # only thing under test is what the gain does to a neuron sitting at s_eq.
+        s = np.full(sim.conn.n, sim.muscles.s_eq)
+        for _ in range(int(1.5 / sim.dt)):
+            sim.muscles.step(s)
+        return sim.muscles.row_tension()
+
+    d1, v1 = resting_tension(1.0)
+    d8, v8 = resting_tension(8.0)
+    assert np.abs(d8 - d1).max() < 1e-9 and np.abs(v8 - v1).max() < 1e-9, (
+        "an eightfold gain on RIV moved the resting posture (dorsal %.2e, ventral %.2e); "
+        "it is amplifying tonic release, which is the failure mode the deviation form "
+        "exists to avoid"
+        % (np.abs(d8 - d1).max(), np.abs(v8 - v1).max()))
+
+    # And it must not be inert: away from s_eq the gain has to do something.
+    p = dataclasses.replace(Params(), sensory=dataclasses.replace(
+        Params().sensory, omega_gain=8.0))
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    riv = sim.conn.group("RIV")
+    assert len(riv), "no RIV in this connectome"
+    s = np.full(sim.conn.n, sim.muscles.s_eq)
+    s[riv] += 0.02
+    ref = np.full(sim.conn.n, sim.muscles.s_eq)
+    ref[riv] += 0.02 * 8.0
+    got = np.clip(sim.muscles.s_eq + sim.muscles.phasic_gain * (s - sim.muscles.s_eq),
+                  0.0, 1.0)
+    assert np.allclose(got, ref), "the gain is not reaching RIV's deviation"
