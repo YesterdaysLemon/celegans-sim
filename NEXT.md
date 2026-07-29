@@ -1,5 +1,53 @@
 # Where this is, and what to do next
 
+> ## Day thirteen. One thing is missing, and it explains every remaining sensory failure.
+>
+> **The animal reverses and does not reorient. Median heading change across a reversal is
+> 23 degrees; not one of 53 exceeded 120. A real animal ends about 35% of its reversals in
+> an omega turn of 160-170 degrees.**
+>
+> A biased random walk steers by choosing *when* to change direction. If changing direction
+> does not change the direction, there is nothing to bias. The animal reverses along the
+> axis it came in on and retraces its own path, so a correctly-signed turning bias moves it
+> nowhere -- which is exactly what every taxis assay reports:
+>
+> * **chemotaxis** -- pirouette ratio 1.24, correctly above 1, index +0.002;
+> * **aerotaxis** -- the circuit biases turning correctly, 3.67 reversals a minute at
+>   ambient against 2.67 in a lawn, and the animal still ascends the gradient;
+> * **thermotaxis** -- the cold group moves +28 mm towards warmer, correctly, and the warm
+>   group does not turn round.
+>
+> Three assays, three correct mechanisms, three null outcomes. **Nociception is the one that
+> works, and it is the one that does not need reorientation** -- "get away from here" is
+> achievable by reversing alone.
+>
+> So omega turns are not a refinement to add later. They are the missing half of the
+> steering, and until they exist no amount of sensory gain or receptor bookkeeping will
+> produce a taxis. That is the next thing, and it is well specified: 35% of reversals should
+> terminate in a turn of 160-170 degrees, which needs deep ventral bending -- in the animal
+> that is RIV and SMD driving a coil the body cannot make in two dimensions with the current
+> muscle model. Whether it can be done at all in 2D is the first question.
+>
+> ### Two world bugs found on the way there
+>
+> **Oxygen had no gradient.** It was derived pointwise from the food field, so outside a
+> lawn edge it was exactly ambient everywhere -- a cliff, not a slope, with nothing for an
+> animal to follow. The attractant has had a 9 mm exponential skirt all along; oxygen now
+> has a 5 mm one, shorter because oxygen is also resupplied from the air above the agar
+> rather than only laterally. Out from a lawn centre it now reads 6.0, 6.2, 10.9, 14.3,
+> 18.0, 20.9% where it used to read 6.0, 20.7, 21.0, 21.0, 21.0, 21.0.
+>
+> **Oxygen was the only purely tonic sense, and that made its taxis point backwards.** A
+> run-and-tumble walker with a position-dependent turning rate settles at a density
+> proportional to that rate: it lingers where it turns often. So an animal that turns more
+> at high oxygen accumulates at high oxygen. Every other channel here already reports a
+> deviation from its own adapting baseline; oxygen now does too, and both terms are kept
+> because both are real -- URX is genuinely tonic, and the tonic part sets how much the
+> animal turns while the differential part decides where it ends up. Occupied oxygen went
+> 19.9% to 18.8%, which is the right direction and not nearly enough on its own, for the
+> reason above.
+
+
 > ## Day twelve. The best the gait has ever been, and gait modulation finally points the right way.
 >
 > **State: 38 tests pass. Travelling index +0.85, net-to-path 0.75, curvature 4.51 against

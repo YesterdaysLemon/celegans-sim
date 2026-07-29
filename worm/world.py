@@ -39,6 +39,9 @@ class World:
         self.attractant = np.zeros((g, g))
         self.repellent = np.zeros((g, g))
         self.food = np.zeros((g, g))
+        # How far the local oxygen is drawn below ambient by respiring bacteria. Held as
+        # its own field rather than derived from the food, for the reason in `oxygen`.
+        self.o2_deficit = np.zeros((g, g))
         self.food_initial_total = 0.0
 
         self.patches = []        # bookkeeping for the viewer
@@ -66,6 +69,17 @@ class World:
         # exponentially with a length sqrt(D/lambda). Written directly rather than relaxed
         # numerically, because relaxing it would take hours of simulated time.
         self.attractant += attractant * np.exp(-np.maximum(d - radius, 0.0) / length_scale)
+        # Oxygen gets the same treatment, and for the same reason. Bacteria consume it and
+        # it diffuses back in from the air, so a lawn sits at the centre of an oxygen
+        # depression with a skirt, exactly as it sits at the centre of a chemical gradient.
+        # Deriving it pointwise from the food density instead -- which is what this did --
+        # makes it a step function at the lawn edge: ambient everywhere outside, with no
+        # gradient anywhere for an animal to follow. Measured, that left aerotaxis with
+        # nothing to work on: the oxygen circuit biases turning correctly, 3.67 reversals a
+        # minute at ambient against 2.67 in a lawn, and never got the chance to.
+        self.o2_deficit += (self.p.o2_depth * density
+                            * np.exp(-np.maximum(d - radius, 0.0) / self.p.o2_length_scale))
+        self.o2_deficit *= self.inside
         self.patches.append({"x": x, "y": y, "r": radius, "kind": "food"})
         self.food *= self.inside
         self.attractant *= self.inside
@@ -89,14 +103,15 @@ class World:
         return self.p.temp_cold + (self.p.temp_warm - self.p.temp_cold) * np.clip(f, 0, 1)
 
     def oxygen(self, x, y):
-        """Fractional O2. Ambient is 21%; a dense lawn respires it down towards 5%.
+        """Fractional O2. Ambient is 21%; a dense lawn respires it down towards 6%.
 
         C. elegans is not indifferent to this: it avoids 21% and prefers 5-12%, which is
         one of the reasons wild isolates gather at the thick border of a lawn rather than
-        in the middle of it.
+        in the middle of it. The border is the point -- the animal has to be able to find
+        it from outside, which needs a gradient rather than a cliff.
         """
-        f = self.sample(self.food, x, y)
-        return 0.21 - 0.15 * np.clip(f, 0.0, 1.0)
+        return self.p.o2_ambient - np.clip(
+            self.sample(self.o2_deficit, x, y), 0.0, self.p.o2_ambient - 0.01)
 
     def sample(self, field: np.ndarray, x, y):
         """Bilinear sample of a grid field at world coordinates."""

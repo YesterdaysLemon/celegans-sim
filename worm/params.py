@@ -741,7 +741,15 @@ class WorldParams:
     # failing -- sustained wall contact re-depletes the mechanoreceptor -- and it would
     # have quietly corrupted every taxis assay too.
     radius: float = 45.0            # mm  a 50 mm petri dish
-    grid: int = 256          # 0.35 mm cells across a 9 cm plate                 # cells across the dish for the chemical fields
+    grid: int = 256          # 0.35 mm cells across a 9 cm plate
+
+    # Oxygen. Ambient air is 21%; a dense lawn respires it down, and the depression has a
+    # skirt because oxygen diffuses back in -- the same reason the attractant has one.
+    # 5 mm is the shorter of the two because oxygen is also resupplied from the air above
+    # the agar, not only laterally.
+    o2_ambient: float = 0.21
+    o2_depth: float = 0.15          # how far a full-density lawn draws it down
+    o2_length_scale: float = 5.0    # mm  skirt outside the lawn edge                 # cells across the dish for the chemical fields
     diffusion_attractant: float = 0.004   # mm^2/s   small molecules through agar
     diffusion_repellent: float = 0.004
     diffusion_oxygen: float = 0.02
@@ -783,6 +791,27 @@ class SensoryParams:
     cultivation_temp: float = 20.0   # degC
     oxygen_gain: float = 60.0        # pA per unit fractional O2 (so ~8 pA over the range)
     oxygen_preferred: float = 0.07   # fractional O2 that URX/AQR/PQR prefer
+
+    # Oxygen sensed as a *change* as well as a level, and the reason is mechanical rather
+    # than anatomical. A run-and-tumble walker with a position-dependent turning rate
+    # settles at a density proportional to that rate -- it lingers where it turns often --
+    # so an animal that turns more at high oxygen accumulates at high oxygen, which is
+    # backwards. Measured before this went in: the oxygen circuit biases turning in the
+    # right direction, 3.67 reversals a minute at ambient against 2.67 in a lawn, and the
+    # animal still climbed the gradient, starting at 16.5% and ending at 20.8%.
+    #
+    # What actually produces accumulation is Pierce-Shimomura's mechanism, the same one
+    # chemotaxis uses: suppress turning while conditions *improve*. That needs a derivative,
+    # and every other channel in this file already has one -- chemosensation, odour and
+    # thermosensation all adapt and report deviation from their own baseline. Oxygen was
+    # the only purely tonic channel, and it is the only one whose taxis pointed the wrong
+    # way.
+    #
+    # Both terms are kept because both are real: URX is a genuinely tonic receptor, and the
+    # tonic part is what sets how much the animal turns at all, while the differential part
+    # is what decides where it ends up.
+    oxygen_d_gain: float = 900.0     # pA per unit O2 per second, on the adapted deviation
+    oxygen_tau_adapt: float = 3.0    # s   baseline the differential part is measured from
     # Per uN of smoothed indentation force.
     #
     # This was 34 pA/uN against a receptor state that accumulated one whole force per step

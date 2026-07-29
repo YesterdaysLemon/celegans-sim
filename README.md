@@ -251,6 +251,23 @@ does not depend on the timestep.
 **Spontaneous reversals**, at 3.3 a minute against the animal's 3.2–3.5 off food, in
 episodes long enough to be reversals rather than threshold flicker.
 
+### The one thing missing that explains most of the rest
+
+**The animal reverses but does not reorient.** Median heading change across a reversal is
+23°, and not one of 53 measured exceeded 120°; a real animal ends about 35% of its
+reversals in an omega turn of 160–170°.
+
+A biased random walk steers by choosing *when* to change direction, so if changing
+direction does not change the direction there is nothing to bias. The animal reverses along
+the axis it arrived on and retraces its path. That is why three separate assays report a
+correct mechanism and a null outcome — chemotaxis with a pirouette ratio of 1.24, aerotaxis
+with the turning bias measurably the right way round, thermotaxis moving the cold group
+correctly — while nociception, the one behaviour that needs no reorientation, works.
+
+Omega turns are therefore not a refinement to add later; they are the missing half of the
+steering. Whether they are achievable at all in a two-dimensional model is the first
+question, since the real turn is a deep ventral coil.
+
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.

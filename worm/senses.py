@@ -113,6 +113,7 @@ class Senses:
         self.c_adapt = None
         self.odour_adapt = None
         self.t_adapt = None
+        self.o2_adapt = None
         self.touch_state = np.zeros(2)
         self.poke = np.zeros(2)          # (anterior, posterior) externally driven touch
         # Habituation. One resource per touch field, full at 1.0. See SensoryParams.
@@ -145,6 +146,7 @@ class Senses:
         self._odour_decay = np.exp(-dt / (2.0 * p.chemo_tau_adapt))
         self._odour_rate = 1.0 - self._odour_decay
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
+        self._o2_rate = 1.0 - np.exp(-dt / p.oxygen_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
         self._touch_rate = 1.0 - self._touch_decay
 
@@ -205,7 +207,13 @@ class Senses:
 
         # ------------------------------------------------------------------------- oxygen
         o2 = float(world.oxygen(nose[0], nose[1]))
-        I[self.urx] += p.oxygen_gain * (o2 - p.oxygen_preferred)
+        if self.o2_adapt is None:
+            self.o2_adapt = o2
+        do2 = o2 - self.o2_adapt
+        self.o2_adapt += (o2 - self.o2_adapt) * self._o2_rate
+        # Tonic and differential, and the differential is what makes the taxis point the
+        # right way -- see SensoryParams.oxygen_d_gain.
+        I[self.urx] += p.oxygen_gain * (o2 - p.oxygen_preferred) + p.oxygen_d_gain * do2
 
         # ----------------------------------------------------------------- mechanosensation
         mag = np.hypot(contact[:, 0], contact[:, 1])
@@ -324,7 +332,7 @@ class Senses:
 
         self.readout = {
             "attractant": c, "d_attractant": dc, "repellent": rep,
-            "temperature": T, "oxygen": o2, "food": f,
+            "temperature": T, "oxygen": o2, "d_oxygen": do2, "food": f,
             "touch": float(self.touch_state.sum()),
             "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
