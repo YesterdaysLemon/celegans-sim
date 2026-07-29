@@ -877,6 +877,90 @@ class SensoryParams:
     # reversal-to-forward transition rather than during the reversal.
     omega_gain: float = 1.0
 
+    # The omega turn proper: a transient locked to the reversal-to-forward *edge*.
+    #
+    # The RIV result above says what the driver cannot be -- anything whose output is
+    # dominated by the undulation, because a gain on that amplifies the gait rather than
+    # the turn. It also says what it must be: something whose variance is reversal-locked.
+    # In the animal the omega turn is not part of the reversal, it *follows* it. Gray, Hill
+    # & Bargmann (2005) score the pirouette as a reversal followed by a deep ventral turn,
+    # and the turn fires as forward locomotion resumes.
+    #
+    # So the signal is an edge, not a level. On the backward-to-forward transition a
+    # transient is injected into the ventral head and neck motor pool and decays over
+    # omega_tau; the animal resumes forward locomotion with a held ventral bias, and the
+    # undulation carries that bias down the body as a turn instead of a straight run.
+    #
+    # Two things follow from this shape rather than being fitted into it, and both are
+    # properties the animal has:
+    #
+    #   * the turn follows the reversal rather than accompanying it;
+    #   * longer reversals produce deeper turns, because the amplitude is set by the
+    #     reversal's own duration against omega_ref_reversal.
+    #
+    # The drive is a *differential*: the ventral head pool is depolarised and its dorsal
+    # partners are hyperpolarised by the same amount. Driving ventral alone does almost
+    # nothing, and the measurement is stark. Held on continuously, mean head curvature is
+    #
+    #     RIV + SMDV, ventral drive only          -0.39 /mm at 100 pA, -0.61 at 200
+    #     all 8 ventral cells, drive only         -0.31            "   -0.29     "
+    #     8 ventral driven, 6 dorsal inhibited    -3.07            "   -6.37     "
+    #
+    # against an undulation of 4.5 rms and the ~9 an omega turn needs. Ventral excitation
+    # alone saturates the cells long before it bends the animal -- 400 pA pins RIV and SMDV
+    # at an activation of 0.9999 and still only reaches -0.56 -- because their 19 ventral
+    # contacts are diluted by the per-cell muscle balance. Releasing the dorsal antagonist
+    # is worth an order of magnitude more than pushing the ventral one harder.
+    #
+    # That is the same lesson this file has now learned three times: the ASE pair cancelled
+    # itself until the two cells pushed AIY in opposite directions, the command pools move
+    # together so only their difference steers, and the head is a set of antagonistic pairs
+    # (SMDD/SMDV, RMDD/RMDV, SMBD/SMBV) that reads a difference. A turn is a differential,
+    # not a push. It is also what the animal does -- the dorsal head muscles relax as the
+    # ventral ones contract -- and the reciprocal inhibition it stands in for is present in
+    # the connectome between RMDD and RMDV, at a strength this model does not resolve.
+    #
+    # The pools are every cell in the reconstruction whose neuromuscular output is
+    # unambiguously one-sided, covering s = 0.08-0.35: the neck.
+    #
+    # The three constants were fitted together over current x duration, and the result is
+    # the strongest behavioural change in this model's history:
+    #
+    #     pA   tau | reorientation deg (median / >120%) | net   path   TWI   k_rms
+    #      0   1.5 |      25.3  /   0%                  | 0.273 0.373  +0.88  4.55
+    #    200   2.0 |      93.3  /  21%                  | 0.135 0.351  +0.88  4.50
+    #    300   1.5 |     106.1  /  32%                  | 0.102 0.351  +0.86  4.60
+    #    450   2.0 |     101.3  /  33%                  | 0.168 0.299  +0.74  4.98
+    #
+    # Read the two speed columns together. *Path* speed barely moves -- 0.373 to 0.351, six
+    # per cent -- while *net* speed halves. That is not the animal slowing down, it is the
+    # animal's track becoming tortuous, which is what turning means and is the whole point.
+    # The travelling-wave index and the curvature are untouched at 300 pA, so the gait
+    # itself is intact; by 450 the wave starts to suffer (+0.74) and that is the ceiling.
+    #
+    # omega_ref_reversal is 0.4 s because the model's own reversals have a median duration
+    # of 0.41 s. Setting it there means a typical reversal earns roughly full amplitude and
+    # a short one earns less, which is what produces the *distribution*: 32% of reversals
+    # exceed 120 degrees against roughly 35% of a real animal's ending in an omega turn.
+    # That fraction was never fitted -- it falls out of the duration scaling.
+    #
+    # A transient can also use amplitudes a sustained drive cannot. Held on continuously,
+    # 150 pA and above freezes the animal in a bent posture: the travelling index goes to
+    # +0.19 and path speed to 0.03 mm/s, because saturating one side of the head motor pool
+    # stops it oscillating. The transient decays back through that region instead of
+    # sitting in it, which is why 300 pA is usable here and would not be as a level.
+    #
+    # omega_current is fitted, and openly, and it is the largest injected current in this
+    # model -- an order of magnitude above cord_drive. Nothing measures what the turn
+    # circuit delivers. What is *not* fitted is the mechanism, which is why this is worth
+    # more than the gain it replaces. 0.0 disables it and reproduces the previous model.
+    omega_current: float = 300.0     # pA, ventral pool up and dorsal pool down by this
+    omega_tau: float = 1.5           # s   how long the bend is held after the edge
+    omega_ref_reversal: float = 0.4  # s   reversal length earning a full-amplitude turn
+    omega_ventral: tuple = ("RIVL", "RIVR", "SMDVL", "SMDVR",
+                            "RMDVL", "RMDVR", "SMBVL", "SMBVR")
+    omega_dorsal: tuple = ("SMDDL", "SMDDR", "RMDDL", "RMDDR", "SMBDL", "SMBDR")
+
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
 

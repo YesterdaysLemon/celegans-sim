@@ -126,6 +126,19 @@ class Senses:
         # is latched; see SensoryParams.gate_latched.
         self.going_forward = True
 
+        # The omega turn. Amplitude of the transient currently being delivered, the number
+        # of steps the reversal that earned it lasted, and the ventral head pool it goes
+        # to. See SensoryParams.omega_current.
+        self.omega = 0.0
+        self._rev_steps = 0
+        self._omega_decay = np.exp(-dt / p.omega_tau)
+        self._omega_v = conn.select(*p.omega_ventral)
+        self._omega_d = conn.select(*p.omega_dorsal)
+        self._omega_ref_n = max(1.0, p.omega_ref_reversal / dt)
+        if p.omega_current > 0.0 and not (len(self._omega_v) and len(self._omega_d)):
+            raise ValueError("omega pools matched nothing in this connectome: %r / %r"
+                             % (p.omega_ventral, p.omega_dorsal))
+
         # Scalar for the lumped reflex, one per neuron for the distributed one.
         self.head_signal = np.zeros(conn.n) if p.head_distributed else 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
@@ -282,6 +295,29 @@ class Senses:
             fwd_frac = 1.0 / (1.0 + np.exp(-p.gate_slope * (diff - bias)))
             bwd_frac = 1.0 - fwd_frac
 
+        # ----------------------------------------------------------------- the omega turn
+        # Fires on the backward-to-forward *edge*, not while reversing. Read from fwd_frac
+        # rather than from going_forward so it behaves the same whether or not the gate is
+        # latched. See SensoryParams.omega_current for why an edge is the right object.
+        forward_now = fwd_frac >= 0.5
+        if forward_now:
+            if self._rev_steps:
+                # A reversal just ended. Its length sets the depth of the turn, which is
+                # the animal's own relationship rather than a second fitted constant.
+                self.omega = min(1.0, self._rev_steps / self._omega_ref_n)
+                self._rev_steps = 0
+        else:
+            self._rev_steps += 1
+            self.omega = 0.0        # no turn while still reversing
+        self.omega *= self._omega_decay
+        if p.omega_current > 0.0 and self.omega > 1e-4:
+            # A differential, not a push: releasing the dorsal antagonist is worth an
+            # order of magnitude more than driving the ventral side harder, which
+            # saturates. See SensoryParams.omega_current for the measurement.
+            drive_om = p.omega_current * self.omega
+            I[self._omega_v] += drive_om
+            I[self._omega_d] -= drive_om
+
         # Descending drive to the selected cord. This is the gait, and it is deliberately
         # no longer carried by AVB's own membrane potential: the B and A motor neurons only
         # oscillate when their command interneuron is engaged (Kawano et al. 2011; Fouad et
@@ -336,6 +372,7 @@ class Senses:
             "touch": float(self.touch_state.sum()),
             "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
+            "omega": float(self.omega),
             **({} if mods is None else mods.readout()),
         }
         return I
