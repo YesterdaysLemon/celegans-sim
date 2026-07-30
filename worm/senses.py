@@ -387,11 +387,17 @@ class Senses:
         else:
             raw = float(np.dot(self._head_window, k_head))
         self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
+        # Stand the reflex down while the turn runs. It regulates head curvature, which is
+        # the quantity the turn is displacing, so left at full gain it opposes the turn
+        # until the oscillator stalls. See SensoryParams.omega_reflex_suppression.
+        head_gain = p.head_proprio_gain
+        if p.omega_reflex_suppression and abs(self.omega) > 1e-4:
+            head_gain *= max(0.0, 1.0 - p.omega_reflex_suppression * abs(self.omega))
         if p.head_distributed:
-            I += (np.tanh(self.head_signal) * p.head_proprio_gain * self.g_scale_head)
+            I += (np.tanh(self.head_signal) * head_gain * self.g_scale_head)
         else:
             I += (self.W_head_sign * self.g_scale_head
-                  * (np.tanh(self.head_signal) * p.head_proprio_gain))
+                  * (np.tanh(self.head_signal) * head_gain))
 
         self.readout = {
             "attractant": c, "d_attractant": dc, "repellent": rep,

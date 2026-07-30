@@ -40,6 +40,7 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
            "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_v, "1")
 
+import dataclasses  # noqa: E402
 import json  # noqa: E402
 import multiprocessing as mp  # noqa: E402
 import subprocess  # noqa: E402
@@ -52,14 +53,51 @@ from worm.engine import Simulation
 from worm.params import Params
 from worm.world import World
 
+from tools.stats import bootstrap_ci, fmt, mde, ratio_ci
+
 SAMPLE_DT = 0.05          # s between trajectory samples
 SETTLE = 6.0              # s discarded at the start, while the gait establishes
 
 
 # --------------------------------------------------------------------------- harness
+# Set per-trial by _dispatch. pooled() runs one OS process per trial, so this cannot
+# leak from one trial to the next -- which is the only reason a module global is safe
+# here, and is worth knowing before anyone moves the harness to a thread pool.
+OVERRIDE: dict = {}
+
+
+def apply_overrides(p, spec):
+    """Return `p` with dotted-path fields replaced: {"sensory.omega_current": 300.0}.
+
+    Exists so tools/compare.py can run two configurations against identical seeds without
+    anyone editing worm/ between them -- which was the old way, and is the one thing this
+    project has a standing rule against, because pooled() imports the model from disk per
+    trial and a mid-run edit silently mixes two code versions into one result.
+    """
+    if not spec:
+        return p
+    groups = {}
+    for path, value in spec.items():
+        group, _, field = path.partition(".")
+        if not field:
+            raise ValueError("override %r needs a group, e.g. sensory.omega_current" % path)
+        if not hasattr(p, group):
+            raise ValueError("no parameter group %r" % group)
+        if not hasattr(getattr(p, group), field):
+            raise ValueError("no field %r in %s" % (field, group))
+        groups.setdefault(group, {})[field] = value
+    return dataclasses.replace(p, **{g: dataclasses.replace(getattr(p, g), **f)
+                                     for g, f in groups.items()})
+
+
+def current_params():
+    """The Params every assay trial should build from, overrides applied."""
+    return apply_overrides(Params(), OVERRIDE)
+
+
 def run_trial(build_world, placement, duration, seed, params=None):
     """One animal, one plate. Returns sampled trajectory and sensory readouts."""
-    p = params or Params()
+    p = params if params is not None else current_params()
     world = build_world(p)
     sim = Simulation(p, seed=seed, world=world, placement=placement)
     dt = p.neural.dt
@@ -269,12 +307,14 @@ def chemotaxis(rows):
               % (r["seed"], (r["seed"] % 8) * 45, r["approach"],
                  r["d_final"], r["c_end"], r["n_rev"]))
     print()
-    print("  OUTCOME")
-    print("    approach  %+.2f +- %.2f mm  (positive = ended closer)"
-          % (app.mean(), app.std()))
-    print("    drift     %+.3f mm/min" % np.mean([r["drift"] for r in rows]))
-    print("    CI        %+.3f            real animal: +0.5 or better" % ci.mean())
+    print("  OUTCOME            value [95% interval, bootstrapped over animals]")
+    print("    approach  %s mm  (positive = ended closer)"
+          % fmt(*bootstrap_ci(app), spec="%+.2f"))
+    print("    drift     %s mm/min"
+          % fmt(*bootstrap_ci([r["drift"] for r in rows])))
+    print("    CI        %s   real animal: +0.5 or better" % fmt(*bootstrap_ci(ci)))
     print("    approached: %d/%d animals" % ((app > 0).sum(), len(app)))
+    print("    smallest effect this many animals could resolve: %.3f in CI" % mde(ci))
 
     ru = np.mean([r["rate_up"] for r in rows])
     rd = np.mean([r["rate_down"] for r in rows])
@@ -291,8 +331,13 @@ def chemotaxis(rows):
     if ru + rd < 1e-9:
         print("    -> no reversals at all: this mechanism is unavailable to the animal")
     else:
-        print("    -> worsening/improving ratio %.2f  (real animal ~2; >1 is chemotaxis)"
-              % (rd / max(ru, 1e-9)))
+        # Resampled as a pair per animal: an interval on each rate separately would throw
+        # away the fact that both come from the same trajectory.
+        print("    -> worsening/improving ratio %s"
+              % fmt(*ratio_ci([r["rate_down"] for r in rows],
+                              [r["rate_up"] for r in rows]), spec="%.2f"))
+        print("       (real animal ~2; the claim is chemotaxis only if the whole")
+        print("        interval clears 1)")
 
     sl = np.array([r["slope"] for r in rows if np.isfinite(r["slope"])])
     print()
@@ -300,9 +345,8 @@ def chemotaxis(rows):
     print("    mean |turn rate| during forward runs: %.2f deg/s"
           % np.mean([r["heading_drift"] for r in rows]))
     if len(sl):
-        t = sl.mean() / max(sl.std() / np.sqrt(len(sl)), 1e-9)
-        print("    turn rate vs bearing-to-source: %+.3f +- %.3f deg/s per rad (t=%.1f)"
-              % (sl.mean(), sl.std(), t))
+        print("    turn rate vs bearing-to-source: %s deg/s per rad"
+              % fmt(*bootstrap_ci(sl)))
         print("    -> positive means runs curve towards the source; ~0 means ballistic")
     return rows
 
@@ -330,7 +374,8 @@ def aerotaxis(rows):
     print("  O2 at start:      %.1f%%" % (100 * np.mean([r["o2_start"] for r in rows])))
     print("  O2 occupied mean: %.1f%%" % (100 * om.mean()))
     print("  O2 at end:        %.1f%% +- %.1f" % (100 * oe.mean(), 100 * oe.std()))
-    print("  lowest reached:   %.1f%%" % (100 * np.mean([r["o2_min"] for r in rows])))
+    print("  lowest reached:   %s%%"
+          % fmt(*bootstrap_ci([100 * r["o2_min"] for r in rows]), spec="%.1f"))
     print("\n  ambient 21%, lawn floor 6%. N2 prefers 5-12%, so a working aerotaxis")
     print("  circuit ends well below 21% and spends its time near the lawn edge.")
     return rows
@@ -359,9 +404,9 @@ def thermotaxis(rows):
         g = [r for r in rows if r["start_x"] == x]
         dx = np.array([r["dx"] for r in g])
         want = "warmer (+x)" if x < -6.25 else "cooler (-x)"
-        got = np.mean(dx)
-        print("  start x %+5.1f mm (%.1f C): moved %+.2f +- %.2f mm, should move %s"
-              % (x, np.mean([r["t_start"] for r in g]), got, dx.std(), want))
+        print("  start x %+5.1f mm (%.1f C): moved %s mm, should move %s"
+              % (x, np.mean([r["t_start"] for r in g]),
+                 fmt(*bootstrap_ci(dx), spec="%+.2f"), want))
     print("\n  a working thermotaxis circuit moves both groups towards x = -6.2 mm")
     return rows
 
@@ -415,8 +460,10 @@ def nociception(rows):
     fe = np.array([r["frac_exposed"] for r in rows])
     print("  peak repellent met:        %.3f" % np.mean([r["peak"] for r in rows]))
     print("  time spent exposed:        %.0f%%" % (100 * fe.mean()))
-    print("  reversals/min while exposed:     %.2f" % ri.mean())
-    print("  reversals/min while clear:       %.2f" % ro.mean())
+    print("  reversals/min while exposed:     %s" % fmt(*bootstrap_ci(ri), spec="%.2f"))
+    print("  reversals/min while clear:       %s" % fmt(*bootstrap_ci(ro), spec="%.2f"))
+    print("  difference (exposed - clear):    %s"
+          % fmt(*bootstrap_ci(ri - ro), spec="%+.2f"))
     print("  repellent at end vs start:  %.3f -> %.3f"
           % (np.mean([r["r_start"] for r in rows]), np.mean([r["r_end"] for r in rows])))
     print("\n  avoidance = more reversals while exposed, and a lower concentration at the")
@@ -486,10 +533,17 @@ ORDER = ["triage", "chemotaxis", "aerotaxis", "thermotaxis", "nociception"]
 
 
 def _dispatch(job):
-    """Run one job from any assay. The queue is flat, so each job says which it belongs to."""
-    name, payload = job
+    """Run one job from any assay. The queue is flat, so each job says which it belongs to.
+
+    A third element, when present, is a parameter override for this trial -- that is how
+    tools/compare.py puts two configurations into one queue on identical seeds.
+    """
+    global OVERRIDE
+    name, payload = job[0], job[1]
+    OVERRIDE = job[2] if len(job) > 2 else {}
     row = ASSAYS[name][0](payload)
     row["_assay"] = name
+    row["_arm"] = job[3] if len(job) > 3 else 0
     return row
 
 

@@ -1,5 +1,82 @@
 # Where this is, and what to do next
 
+> ## Day eighteen. Error bars, and the first thing they killed.
+>
+> The assays got confidence intervals and a paired A/B harness, and then the harness
+> immediately refuted the hypothesis it was built to test. Both halves are worth reading.
+>
+> ### The measurement problem
+>
+> Chemotaxis is sixteen animals scattering by ±12 mm about a mean of −10. A chemotaxis
+> index quoted as "+0.070" from that carries an uncertainty near ±0.09 — not
+> distinguishable from zero, and certainly not from "+0.014". Days of this project compared
+> two such numbers and believed the difference.
+>
+> Two fixes, one of them free:
+>
+> - **Bootstrapped intervals** on every headline number, seeded so they are reproducible.
+>   Bootstrap rather than normal theory because the samples are small and several
+>   statistics are ratios — the pirouette ratio has a denominator that can be zero.
+> - **Common random numbers.** `tools/compare.py` runs two configurations in one queue on
+>   *identical seeds*, so the animal-to-animal variance — most of the variance — cancels in
+>   the difference. Both arms differ by a per-trial parameter override rather than an edit
+>   to `worm/`, which also retires the workflow this project has a standing rule against.
+>
+> ```bash
+> PYTHONPATH=. .venv/bin/python tools/compare.py all sensory.omega_current=450
+> ```
+>
+> Every verdict is "no effect detected" unless the interval clears zero, and nulls are
+> reported next to the smallest effect the sample could have resolved.
+>
+> ### And the first thing it killed
+>
+> The plan was that the omega turn saturates because it is *fighting the head reflex* —
+> `head_proprio_gain` is 150 and that reflex regulates exactly the quantity the turn is
+> displacing. Standing it down during the transient should buy depth without costing the
+> travelling index.
+>
+> A first look at four seeds showed the median turn going 59° → 89° at half suppression.
+> That reads as a clear win. With six seeds and intervals, over 60–69 turns per condition:
+>
+> | suppression | median turn | >120% | TWI |
+> |---|---|---|---|
+> | 0.00 | 67.2 [48.5, 89.8] | 13% [6, 22] | +0.88 |
+> | 0.40 | 54.9 [39.3, 93.0] | 12% [4, 19] | +0.78 |
+> | 0.70 | 65.3 [48.2, 93.2] | 13% [5, 23] | +0.86 |
+> | 1.00 | 42.5 [28.0, 72.1] | 3% [0, 8] | +0.82 |
+>
+> Every interval overlaps every other. **The harness caught a false positive on its first
+> real use**, which is the whole argument for building it.
+>
+> ### What the refutation points at
+>
+> Turn rate is path speed × path curvature, and path speed is pinned near 0.35 mm/s. A 180°
+> turn in the two seconds a real omega takes needs a radius of **0.22 mm** — a 1 mm animal
+> curled into a circle a fifth of its length. That is a whole-body coil, and the transient
+> only drives head and neck (s = 0.08–0.35). So: drive the body's B-class too.
+>
+> That fails as well, and the two failures together are the actual finding:
+>
+> | pool | pA | turn deg/s | path mm/s | TWI |
+> |---|---|---|---|---|
+> | head + neck | 60 | 19.7 | 0.346 | +0.91 |
+> | head + neck | 120 | 1.8 | 0.060 | +0.58 |
+> | + body B-class | 60 | 20.6 | 0.100 | +0.52 |
+> | + body B-class | 120 | 9.4 | 0.014 | +0.43 |
+>
+> **Turn depth is limited by dynamic range, not by drive and not by opposition.** A
+> sustained bend has to be carried by the same motor neurons already spending their range
+> on the travelling wave. A DC offset through them collapses the wave, and without the wave
+> there is no forward motion — and turn rate is speed times curvature. Head-only saturates
+> near 20 deg/s; whole-body trades away the propulsion and buys nothing.
+>
+> So the next attempt is not another target set or another gain. The bend has to cost the
+> wave less: more headroom in the motor units, or the static component applied where it does
+> not compete with the oscillation for the same range. Everything downstream waits on it —
+> the ventral bias can come back, and `serotonin_mod1` can be switched on, only once a turn
+> is worth what it costs in reversals.
+
 > ## Day seventeen. The worm was flying in circles, and I put it there.
 >
 > Going after the sensory route for suppressing reversals on food found something else

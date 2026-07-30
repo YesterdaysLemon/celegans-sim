@@ -993,6 +993,73 @@ class SensoryParams:
     # animal. When the turns reach the animal's depth this is the parameter to put back.
     omega_ventral_fraction: float = 0.5
 
+    # How much of the head proprioceptive reflex to switch off while the turn is running.
+    #
+    # The turn saturates. Held on, 150 pA and above freezes the animal in a bent posture
+    # -- travelling index +0.19, path speed 0.03 mm/s -- and even the decaying transient
+    # tops out near 22 deg/s, where 180 degrees in the two seconds a real omega takes
+    # would need about 90. Pushing harder does not help, which is the signature of
+    # fighting something rather than being short of drive.
+    #
+    # What it is fighting is the head reflex. head_proprio_gain is 150, and that reflex is
+    # a high-gain regulator *on head curvature*: the exact quantity the turn is trying to
+    # displace. Every pA of turn drive is opposed by a controller whose job is to give the
+    # head back its sweep, so the two fight until the oscillator stalls -- which is why the
+    # cost shows up as a collapsed travelling index rather than as a shallower bend.
+    #
+    # Gating the reflex down while the transient runs is the standard motif for this in
+    # motor control: a descending command suppresses the local reflex it would otherwise
+    # have to overpower. It also predicts something specific and falsifiable -- turn depth
+    # should rise *without* the travelling index collapsing, because the turn stops
+    # fighting rather than pushing harder.
+    #
+    # Scaled by the live turn amplitude, so it is exactly zero between turns and the gait
+    # is untouched.
+    #
+    # It was tried, and it does nothing. Over 60-69 turns per condition:
+    #
+    #   suppression |  median turn deg      | %>120         | TWI
+    #      0.00     |  67.2 [48.5, 89.8]    | 13% [6, 22]   | +0.88
+    #      0.40     |  54.9 [39.3, 93.0]    | 12% [4, 19]   | +0.78
+    #      0.70     |  65.3 [48.2, 93.2]    | 13% [5, 23]   | +0.86
+    #      1.00     |  42.5 [28.0, 72.1]    |  3% [0, 8]    | +0.82
+    #
+    # Every interval overlaps every other. Worth recording how close this came to being
+    # believed: a first look at four seeds showed the median going 59 -> 89 degrees at
+    # half suppression, which reads as a clear win, and it was tools/stats.py -- on its
+    # first real use -- that turned it back into noise.
+    #
+    # Left in at 0.0 rather than deleted, because the refutation is the useful part and a
+    # future attempt should not have to rediscover it.
+    omega_reflex_suppression: float = 0.0
+
+    # WHAT ACTUALLY LIMITS THE TURN, as far as this has been measured.
+    #
+    # Turn rate is path speed times path curvature, and path speed is pinned near 0.35
+    # mm/s by the mechanics. A 180 degree turn in the two seconds a real omega takes needs
+    # a turn radius of 0.22 mm -- a one-millimetre animal curled into a circle a fifth of
+    # its own length. That is a whole-body coil, not a neck bend.
+    #
+    # Driving the body's own B-class motor neurons to make one does not work either.
+    # Held on, with the head pools:
+    #
+    #   pool               pA  | turn deg/s | path mm/s |  TWI
+    #   head + neck        60  |   19.7     |   0.346   | +0.91
+    #   head + neck       120  |    1.8     |   0.060   | +0.58
+    #   + body B-class     60  |   20.6     |   0.100   | +0.52
+    #   + body B-class    120  |    9.4     |   0.014   | +0.43
+    #
+    # Both candidates fail the same way, and it is not opposition and not lack of drive:
+    # **it is dynamic range**. A sustained bend has to be carried by the same motor neurons
+    # that are already spending their range on the travelling wave, so a DC offset through
+    # them collapses the wave -- and without the wave there is no forward motion, and turn
+    # rate is speed times curvature. Head-only saturates near 20 deg/s; whole-body trades
+    # the propulsion away to buy nothing.
+    #
+    # So the next attempt should not be another target set or another gain. It needs the
+    # bend to cost the wave less: more headroom in the motor units, or the static component
+    # applied where it does not compete with the oscillation for the same range.
+
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
 
