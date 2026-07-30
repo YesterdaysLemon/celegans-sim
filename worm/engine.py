@@ -25,6 +25,7 @@ import numpy as np
 from . import dataset
 from .body import Body
 from .modulators import Modulators
+from .pharynx import Pharynx
 from .muscle import Muscles
 from .nervous import NervousSystem
 from .params import MEDIA, Params
@@ -65,6 +66,7 @@ class Simulation:
                              rng=self.rng)
         self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt,
                                      g_rest=self.nervous.g_rest)
+        self.pharynx = Pharynx(self.conn, self.p.pharynx, self.p.neural.dt)
 
         self.dt = self.p.neural.dt
         self.t = 0.0
@@ -107,7 +109,7 @@ class Simulation:
         # The modulators read the same activation the senses do and are updated first, so
         # that within a step the wireless layer is one step behind the wired one -- the
         # same consistent unit delay used everywhere else in this model.
-        self.modulators.step(activation)
+        self.modulators.step(activation, alive=self.nervous.alive)
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
                                   self.modulators)
 
@@ -129,12 +131,16 @@ class Simulation:
             self.body.step(moment, node_forces=self._contact)
         self._nodes = self.body.nodes()
 
-        # Feeding. The worm pumps when its head is on a lawn; what it eats disappears.
+        # Feeding. The pharynx decides when to pump and how much that moves; the world
+        # only has to lose it. See worm/pharynx.py -- this used to be a flat rate applied
+        # whenever the head was over food, with the twenty pharyngeal neurons driving
+        # nothing at all.
         head = self._nodes[0]
         food_here = float(self.world.sample(self.world.food, head[0], head[1]))
-        if food_here > 0.01:
-            self.food_eaten += self.world.eat(
-                head[0], head[1], p.world.ingestion_rate * self.dt)
+        moved = self.pharynx.step(activation, food_here, self.modulators,
+                                  alive=self.nervous.alive)
+        if moved > 0.0:
+            self.food_eaten += self.world.eat(head[0], head[1], moved)
 
         self.world.step(self.dt)
         self.t += self.dt
@@ -229,5 +235,6 @@ class Simulation:
             "path_speed": round(self.path_speed, 6),
             "direction": self.direction(),
             "food_eaten": round(self.food_eaten, 4),
+            "pharynx": {k: round(float(v), 5) for k, v in self.pharynx.readout().items()},
             "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
         }

@@ -1627,6 +1627,65 @@ class ModulatorParams:
 
 
 @dataclass(frozen=True)
+class PharynxParams:
+    """Feeding. See worm/pharynx.py for who does what and why it is myogenic."""
+
+    # The pump with no neural drive at all. Avery & Horvitz (1989) killed every pharyngeal
+    # neuron and the pharynx still pumped, slowly, so the oscillator is not built out of
+    # neurons and this is not zero. It is the floor an animal falls to, not its resting
+    # rate: off food the model lands near this, on food the neurons carry it up.
+    myogenic_rate: float = 0.5       # Hz
+
+    # MC is the pacemaker, and it is the eat-2 phenotype that says how much it is worth:
+    # animals lacking the receptor MC acts on pump several-fold slower and grow up
+    # starved. The gain is large because the *signal* is small -- MC's activation moves
+    # only 0.557 -> 0.599 between a bare plate and a lawn, since the food signal reaches
+    # it second-hand through NSM and the pharynx's own wiring rather than directly.
+    mc_rate_gain: float = 1.30       # Hz per unit MC drive
+
+    # I2 inhibits pumping (Bhatla & Horvitz 2015, where it drives the feeding arrest that
+    # follows light or peroxide). Small here, because in this model I2 is *excited* by
+    # food -- see glucl_pre below for why that is probably wrong and what it costs.
+    i2_rate_gain: float = 1.0        # Hz per unit I2 activation above rest
+
+    # Serotonin is the other half of the food response and the better-attested half: a
+    # starved animal given exogenous 5-HT pumps as though it were fed (Horvitz et al.
+    # 1982), and NSM is the cell that releases it on tasting food. In this model serotonin
+    # sits at +0.013 off food and +0.160 on it, so this coefficient carries most of the
+    # on-food increase and MC carries the rest.
+    serotonin_to_mc: float = 20.0    # added to MC's drive per unit serotonin
+    octopamine_to_mc: float = 4.0    # subtracted per unit octopamine, the starvation signal
+
+    max_rate: float = 6.0            # Hz  a hard ceiling; the animal tops out near 5
+
+    # M3 repolarises the pharyngeal muscle and so terminates the pump. M3-killed animals
+    # have measurably longer pumps, which is the whole reason duration is separate from
+    # rate here.
+    pump_duration: float = 0.18      # s   ~150-200 ms in a fed animal
+    m3_duration_gain: float = 3.0    # per unit M3 activation above rest
+
+    # What one pump takes in, at full lawn density. Chosen so that the animal feeding at
+    # its target rate ingests what WorldParams.ingestion_rate was calibrated to deliver:
+    # 0.02 units/s at 4 Hz is 0.005 per pump. That keeps every foraging number this
+    # project has already measured, while making the rate a consequence of the circuit
+    # rather than a constant.
+    volume_per_pump: float = 0.005   # patch density units per pump on full food
+
+    # Isthmus peristalsis: M4 is what moves the lumen's contents to the intestine. An
+    # M4-ablated animal pumps normally and starves anyway, so this is modelled as its own
+    # step -- capture fills the lumen, M4 empties it, and a full lumen stops capture. The
+    # base rate is non-zero because grinding is not entirely neurogenic; the gain is what
+    # M4 adds.
+    # The base is deliberately almost nothing. An M4-ablated animal pumps normally and
+    # starves, so transport without M4 has to be nearly absent -- a generous base rate
+    # reproduced the pumping half of the phenotype and none of the starving half, which
+    # is the whole reason capture and transport are separate steps here.
+    m4_transport: float = 0.05       # 1/s  lumen emptied per second with M4 gone
+    m4_gain: float = 27.0            # 1/s per unit M4 activation above rest
+    lumen_capacity: float = 0.05     # units; about ten pumps' worth
+
+
+@dataclass(frozen=True)
 class Params:
     neural: NeuralParams = field(default_factory=NeuralParams)
     muscle: MuscleParams = field(default_factory=MuscleParams)
@@ -1634,6 +1693,7 @@ class Params:
     world: WorldParams = field(default_factory=WorldParams)
     sensory: SensoryParams = field(default_factory=SensoryParams)
     modulator: ModulatorParams = field(default_factory=ModulatorParams)
+    pharynx: PharynxParams = field(default_factory=PharynxParams)
     medium: MediumParams = field(default_factory=lambda: MEDIA["agar"])
 
     def with_medium(self, name: str) -> "Params":

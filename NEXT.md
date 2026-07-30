@@ -1,5 +1,64 @@
 # Where this is, and what to do next
 
+> ## Day nineteen. The pharynx eats.
+>
+> Twenty neurons were simulated in full and drove nothing. Measured in this reconstruction
+> the pharyngeal nervous system makes 203 chemical contacts and 86 gap junctions *within
+> itself*, **zero** chemical contacts to or from the somatic nervous system, and four gap
+> junctions across — the I1–RIP coupling, the single anatomical bridge, which is why
+> Albertson & Thomson called it autonomous. It also makes zero neuromuscular contacts here,
+> because pharyngeal muscle is not among the 95 body-wall cells. So it could have been
+> deleted without changing a number, while feeding was a flat rate applied whenever the
+> head happened to be over food.
+>
+> Now it pumps, and the pump is what feeds the animal.
+>
+> **The pump is myogenic and the neurons modulate it** — Avery & Horvitz killed every
+> pharyngeal neuron and the pharynx still pumped, slowly, while the animal starved. So the
+> oscillator is a relaxation cycle with its own base rate that MC speeds up, M3 shortens,
+> I2 slows and M4 gates.
+>
+> The food signal already travelled that way through the reconstructed wiring, before
+> anything was fitted. Dropped on a lawn: NSM 0.390 → 0.969, and from there I2 +0.216,
+> M3 +0.080, MC +0.042, M4 +0.045. What was missing was not a signal. It was an effector.
+>
+> ```
+> condition    | off food /min | on food /min | pump ms | ingested /s
+> intact       |      33       |     249      |   150   |  0.0143
+> MC (eat-2)   |      32       |      22      |   144   |  0.0015
+> M3           |       0       |     239      |   180   |  0.0148
+> M4           |      16       |     252      |   151   |  0.0022
+> I2           |      33       |     258      |   151   |  0.0148
+> NSM          |      60       |      40      |   173   |  0.0028
+> ```
+>
+> The rate is fitted — three coefficients put it in the animal's 200–300/min. **The
+> ablations are not fitted to anything**, and all five go the right way:
+>
+> - **MC** — 11× slower and starving. The eat-2 phenotype.
+> - **M4** — pumps at a *normal rate* and starves anyway, with food backing up in the lumen
+>   to 0.044 against a 0.05 capacity. This is the phenotype that forced capture and
+>   transport to be separate steps; a model where ingestion is a property of the pump
+>   cannot express it at all.
+> - **M3** — pumps lengthen 150 → 180 ms.
+> - **NSM** — the on-food rate collapses to the off-food one.
+> - **I2** — faster, by disinhibition.
+>
+> ### Two things the pharynx forced, both bugs elsewhere
+>
+> **Serotonin had to act *through* MC, not beside it.** Modelled as a parallel term,
+> ablating MC cost 5% of the rate — the serotonergic drive simply carried on with no
+> pacemaker to act on. Routing it through MC is also the better biology: SER-7 is expressed
+> in MC and that is where serotonin's stimulation of pumping acts (Song & Avery 2012),
+> which makes the pacemaker epistatic to the food signal.
+>
+> **An ablated cell was signalling in reverse.** Modulator levels and pharyngeal drives are
+> deviations from a resting activation of 0.5, and an ablated neuron reads 0.0 — so killing
+> NSM drove serotonin to **−0.133** where it should have gone to zero, and flipped the
+> serotonergic turn bias from +0.090 to −0.080. Every ablation experiment that touched a
+> modulator source has been reading a sign error. The pharynx only made it visible because
+> it turned the pacemaker off outright.
+
 > ## Day eighteen. Error bars, and the first thing they killed.
 >
 > The assays got confidence intervals and a paired A/B harness, and then the harness
