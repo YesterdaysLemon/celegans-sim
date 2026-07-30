@@ -1,5 +1,77 @@
 # Where this is, and what to do next
 
+> ## Day seventeen. The worm was flying in circles, and I put it there.
+>
+> Going after the sensory route for suppressing reversals on food found something else
+> first: **the omega turn shipped on day fifteen bends the animal the same way every
+> time.** Every turn was ventral by construction, so the heading changes accumulated
+> instead of cancelling. On a lawn, where reversals are most frequent, the animal rotated
+> at **+17.4 deg/s — a full circle every twenty seconds** — with net-to-path 0.18.
+>
+> It hid off food, where reversals are half as frequent and the drift reads as noise. And
+> it had been misdiagnosed as a reversal-rate problem: the giveaway was that killing
+> reversals outright did *not* restore net-to-path, which is what pointed at the turns.
+>
+> | ventral fraction | off-food rotation | on-food rotation | on-food net/path |
+> |---|---|---|---|
+> | 1.00 (as shipped) | 5.8 deg/s | 17.0 deg/s | 0.084 |
+> | 0.80 | 4.6 | 13.5 | 0.142 |
+> | 0.50 | 1.8 | 5.8 | 0.277 |
+>
+> The bias is not what is wrong — **the turns are too shallow for it**. A real omega turn
+> is 160–170°, and at that depth it hardly matters which way the animal bends: it ends up
+> reversed either way. Ours are 50–100°, where ventral and dorsal differ by a hundred
+> degrees, so a bias the animal carries harmlessly becomes a spiral here.
+>
+> ### A correction to day fifteen
+>
+> The reorientation figures reported then — 55.5° median, 24% above 120° — **were inflated
+> by this circling**. The measure compares mean heading two seconds before a reversal to
+> two seconds after, and at 17 deg/s the spiral lands inside that window. With the drift
+> removed the honest figure is 37.7° off food, against a pre-omega baseline of 21.1°. The
+> omega turn still nearly doubles reorientation; it does not reach 120° nearly as often as
+> claimed.
+>
+> ### What that bought
+>
+> Fixing the sign is a clean win with no cost anywhere:
+>
+> | | before | after |
+> |---|---|---|
+> | on-food net/path | 0.149 | **0.332** |
+> | chemotaxis index | +0.070 | **+0.083** |
+> | aerotaxis, lowest reached | 9.8% | 9.9% |
+> | nociception, exposed/clear | 5.15 / 0.34 | **7.25 / 0.46** |
+>
+> ### And the sensory route itself
+>
+> It was built, and it works, and it is switched off.
+>
+> The requirement was a signal that exists only on food. Serotonin already is one — +0.013
+> off food against +0.160 on it, because NSM is driven by bacteria sampled at the nose and
+> not by the diffusible attractant. What was missing was any route to the command layer,
+> and there is no synaptic one: **CEP, ADE, PDE and NSM make zero contacts onto AIY, AIB or
+> AVA** in this reconstruction, which is why raising `food_gain` elevenfold moves the
+> command difference by a tenth of its own standard deviation and then stops.
+>
+> So it goes through the wireless layer, as a **MOD-1-style serotonin-gated chloride
+> conductance** — a conductance, not a current, so it shunts and saturates like the channel
+> it represents. AIB is where MOD-1 actually is, and AIB does not work: the channel silences
+> it perfectly (activation 0.65 → 0.08, −20 → −45 mV) and the signal reaches RIM (0.573 →
+> 0.455), but AVA moves 0.584 → 0.572 and the command difference not at all. Three chemical
+> contacts and six gap junctions cannot move a pool that heavily coupled.
+>
+> On the command pool itself it works, and the food selectivity survives: +0.155 on food
+> against +0.014 off it. On-food reversals 6.45 → 2.85 a minute, net-to-path *higher* on
+> food than off it for the first time, and a **pirouette ratio of 1.58** — the best this
+> model has produced, against every other configuration sitting within noise of 1.
+>
+> But the chemotaxis index falls +0.083 → +0.014 and aerotaxis weakens. A better mechanism
+> and a worse outcome: the model is steering correctly and not far enough, so the reversals
+> being suppressed are the same ones carrying the taxis. **Until the omega turn reorients as
+> deeply as the animal's, spending reversals costs more than biasing them gains.** That is
+> the dependency, and it says plainly what to do next: deepen the turn, then switch this on.
+
 > ## Day sixteen. The on-food latch, and one number serving two masters.
 >
 > On a lawn the animal spent **57% of its time reversing** at 10 commanded reversals a

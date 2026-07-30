@@ -306,7 +306,8 @@ class NervousSystem:
         return V
 
     # ------------------------------------------------------------------------- stepping
-    def step(self, I_ext: np.ndarray | None = None) -> None:
+    def step(self, I_ext: np.ndarray | None = None,
+             g_mod: np.ndarray | None = None) -> None:
         p = self.p
         V, s = self.V, self.s
 
@@ -333,6 +334,12 @@ class NervousSystem:
         g_tot = self.g_leak + self.gap_total + gs + g_ad + g_c
         fixed = (self.g_leak * self.E_leak + Es
                  + g_ad * p.E_K + g_c * p.E_Ca + I)
+        if g_mod is not None:
+            # Ligand-gated modulatory conductance, chloride. A conductance and not a
+            # current, so it shunts and saturates instead of driving the cell without
+            # limit. See ModulatorParams.serotonin_mod1.
+            g_tot = g_tot + g_mod
+            fixed = fixed + g_mod * p.E_inh
         decay = np.exp(-g_tot * self.dt / self._C_nF)
 
         # Embedded membrane time constants span 0.1 ms to 150 ms across the connectome, so

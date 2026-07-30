@@ -309,6 +309,55 @@ the distribution falls out: about a third of reversals past 120° against the an
 None is yet at the animal's magnitude — the chemotaxis index is seven times short — so this
 opens the problem rather than closing it.
 
+### The turn that flew in circles
+
+The omega turn described above bent the animal **the same way every time** — every turn was
+ventral by construction, so heading changes accumulated instead of cancelling. On a lawn,
+where reversals are most frequent, the animal rotated at **+17.4 deg/s, a full circle every
+twenty seconds**, with net-to-path 0.18. It hid off food, where reversals are half as
+frequent and the drift reads as noise.
+
+The bias is not what is wrong — the turns are too shallow for it. A real omega turn is
+160–170°, and at that depth it hardly matters which way the animal bends: it ends up
+reversed either way. Ours are 50–100°, where ventral and dorsal differ by a hundred degrees.
+
+Making the direction ventrally-biased-but-not-exclusive is a clean win:
+
+| | before | after |
+|---|---|---|
+| on-food net/path | 0.149 | **0.332** |
+| chemotaxis index | +0.070 | **+0.083** |
+| nociception, exposed/clear | 5.15 / 0.34 | **7.25 / 0.46** |
+
+**A correction to the section above:** the reorientation figures first reported for the
+omega turn — 55.5° median, 24% above 120° — were inflated by this circling, because the
+measure compares mean heading two seconds either side of a reversal and the spiral lands
+inside that window. The honest figure is 37.7° off food against a pre-omega baseline of
+21.1°. The turn still nearly doubles reorientation; it reaches 120° much less often than
+first claimed.
+
+### The sensory route for food, built and switched off
+
+Food should suppress reversals, and doing it by shifting the shared decision boundary costs
+every other behaviour (below). The requirement is a signal that exists *only* on food.
+Serotonin already is one — +0.013 off food against +0.160 on it, since NSM is driven by
+bacteria at the nose rather than the diffusible attractant. What was missing was a route to
+the command layer, and there is no synaptic one: **CEP, ADE, PDE and NSM make zero contacts
+onto AIY, AIB or AVA** in this reconstruction.
+
+So it goes through the wireless layer as a **MOD-1-style serotonin-gated chloride
+conductance** — a conductance, not a current, so it shunts and saturates like the real
+channel. AIB, where MOD-1 actually is, does not carry: the channel silences AIB perfectly
+(−20 → −45 mV) and reaches RIM, but AVA moves 0.584 → 0.572 and the command difference not
+at all. On the command pool itself it works — on-food reversals 6.45 → 2.85/min, and a
+**pirouette ratio of 1.58**, the best this model has produced against every other
+configuration sitting within noise of 1.
+
+It ships at zero anyway, because the chemotaxis index falls +0.083 → +0.014 with it on. A
+better mechanism and a worse outcome: the reversals being suppressed are the same ones
+carrying the taxis. Until the omega turn reorients as deeply as the animal's, spending
+reversals costs more than biasing them gains — which says exactly what to do next.
+
 ### On food, and a bound that was missing
 
 On a lawn the animal used to spend **57% of its time reversing** — 10 commanded reversals a

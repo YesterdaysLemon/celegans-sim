@@ -961,6 +961,38 @@ class SensoryParams:
                             "RMDVL", "RMDVR", "SMBVL", "SMBVR")
     omega_dorsal: tuple = ("SMDDL", "SMDDR", "RMDDL", "RMDDR", "SMBDL", "SMBDR")
 
+    # How often the turn goes ventral rather than dorsal.
+    #
+    # The animal's omega turns are ventrally *biased*, not exclusively ventral, and the
+    # difference is not cosmetic. Shipped exclusively ventral, every turn bent the same
+    # way, so the heading changes accumulated instead of cancelling and the animal flew in
+    # circles. Measured on a lawn, where the reversal rate is highest: a net rotation of
+    # +17.4 deg/s -- a full circle every twenty seconds -- and net-to-path of 0.18. With
+    # the turn switched off entirely the same animal drifts -0.02 deg/s and reaches 0.83.
+    #
+    # It was invisible off food, where reversals are half as frequent and the drift is
+    # small enough to read as noise. It only showed up when the on-food behaviour was
+    # examined, and it had been mistaken for a reversal-rate problem: killing reversals
+    # outright did *not* fix the net-to-path, which is what pointed here instead.
+    #
+    # Swept, and the drift scales straight with the bias:
+    #
+    #   ventral | off-food |rotation| | on-food |rotation| | on-food net/path
+    #     0.50  |       1.8 deg/s     |       5.8 deg/s    |      0.277
+    #     0.65  |       2.6           |       8.4          |      0.183
+    #     0.80  |       4.6           |      13.5          |      0.142
+    #     1.00  |       5.8           |      17.0          |      0.084
+    #
+    # The honest reading is that the bias is not what is wrong -- *the turns are too
+    # shallow for it*. A real omega turn is 160-170 degrees, and at that depth it barely
+    # matters which way the animal bends: it ends up reversed either way. Ours are 50-100
+    # degrees, where a ventral turn and a dorsal turn differ by a hundred degrees, so a
+    # bias the animal carries harmlessly becomes a spiral here.
+    #
+    # So this sits at 0.5 -- no bias -- and it is a stand-in, not a claim about the
+    # animal. When the turns reach the animal's depth this is the parameter to put back.
+    omega_ventral_fraction: float = 0.5
+
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
 
@@ -1458,6 +1490,73 @@ class ModulatorParams:
     # roaming/dwelling hysteresis works and deserves its own measurement.
     octopamine_speeding: float = 0.0
     pdf_roaming: float = 0.0
+
+    # MOD-1: the sensory route by which food suppresses reversals.
+    #
+    # The problem this solves is that on a lawn the animal reverses far too often, and the
+    # obvious fixes are all global. Shifting the direction gate's decision boundary moves
+    # it for every behaviour at once, and the measurement in SensoryParams.turn_bias_limit
+    # shows what that costs: tighten it enough to calm the animal on food and chemotaxis
+    # inverts, aerotaxis climbs the wrong way and nociception stops, because the reversals
+    # the taxis behaviours run on are the same ones being removed.
+    #
+    # What is wanted is a signal that exists *only* on food. The model has one already --
+    # serotonin sits at +0.013 off food and +0.160 on it, a thirteenfold difference, since
+    # NSM is driven by bacteria sampled at the nose rather than by the diffusible
+    # attractant. What it lacked was any route from there to the command layer.
+    #
+    # There is no synaptic route. Measured in this reconstruction, CEP, ADE, PDE and NSM
+    # make *zero* chemical or electrical contacts onto AIY, AIB or AVA, which is why
+    # raising food_gain elevenfold moves the forward/backward command difference by 0.1
+    # of its own standard deviation and then stops. The food sensors are anatomically
+    # disconnected from the decision they ought to inform.
+    #
+    # That is exactly the case this layer exists for. Bentley et al. (2016), quoted at the
+    # top of worm/modulators.py, found the monoamine network comparably dense to the
+    # synaptic one and largely non-overlapping with it -- a neuron's modulatory targets
+    # are mostly not the cells it synapses onto. And the receptor here is a documented
+    # one: MOD-1 is a serotonin-gated *chloride* channel expressed on AIB (Ranganathan,
+    # Cannon & Horvitz 2000), and mod-1 mutants are defective in exactly the food-related
+    # behaviours this is about.
+    #
+    # AIB was tried first, because that is where MOD-1 actually is, and it does not work.
+    # The channel itself behaves perfectly -- at a large coefficient AIB's activation goes
+    # 0.65 -> 0.08 and its membrane potential -20 -> -45 mV, fully silenced -- and the
+    # signal does reach RIM, whose activation falls 0.573 -> 0.455 through those 32
+    # contacts. But AVA barely notices: 0.584 -> 0.572, and the forward/backward command
+    # difference moves from +0.1451 to +0.1412, which is nothing. Across coefficients from
+    # 0 to 50 the on-food reversal rate stays flat at about 8 a minute. The AIB->RIM->AVA
+    # path is three chemical contacts and six gap junctions wide, against a command pool
+    # that is heavily gap-coupled to everything else, and it cannot move the decision.
+    #
+    # So the channel is placed on the backward command pool itself. That is a coarser
+    # claim than the receptor biology supports -- MOD-1 is documented on AIB and AIY, not
+    # on AVA -- and it is recorded as a shortcut rather than dressed up: the anatomically
+    # correct target was tried, measured, and found not to carry. What the shortcut keeps
+    # is the part that matters, which is that the signal is *sensory and food-specific*
+    # rather than a global shift of a decision boundary every behaviour shares. Serotonin
+    # sits at +0.013 off food and +0.160 on it, and the selectivity follows: at the
+    # adopted coefficient the command difference rises by 0.155 on food and 0.014 off it.
+    #
+    # Expressed as a conductance rather than a current, because that is what a ligand-gated
+    # channel is: it saturates, it shunts, and it cannot drive the cell past its own
+    # reversal potential however much serotonin arrives. Given as a fraction of the
+    # target's resting conductance, the same convention as ca_ratio and adapt_ratio.
+    #   mod1 | cond     | rev/min | net/path | net mm/s
+    #   0.00  | off food |  4.27   |  0.341   |  0.1177
+    #   0.00  | on food  |  6.45   |  0.277   |  0.0880
+    #   0.30  | off food |  3.67   |  0.350   |  0.1250   <- adopted
+    #   0.30  | on food  |  2.85   |  0.377   |  0.1374
+    #   0.60  | on food  |  0.68   |  0.153   |  0.0583
+    #
+    # At 0.30 the off-food rate lands in the animal's 3.2-3.5 band and the on-food rate
+    # more than halves, while net-to-path *rises* on food -- the animal now travels better
+    # on a lawn than off one, which is the first time that has been true. 0.60 reaches the
+    # on-food reversal target outright but costs the locomotion to get there, so it is
+    # past the corner. On food the animal still reverses 2.9 times a minute against
+    # 0.7-1.25, so this closes most of the gap rather than all of it.
+    serotonin_mod1: float = 0.0
+    mod1_targets: tuple = ("AVA", "AVD", "AVE")
 
 
 @dataclass(frozen=True)
