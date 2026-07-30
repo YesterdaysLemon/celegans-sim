@@ -548,6 +548,26 @@ dopaminergic neurons sense the bacterial lawn mechanically. Every channel adapts
 sensation is differential — a worm sitting in a uniform concentration, however high, stops
 responding to it within seconds.
 
+## It runs in the browser
+
+The animal itself is compiled to WebAssembly, so the page needs no simulation server: open
+it and you get *your own* worm — two of them, in fact, sharing a dish. `wasm/README.md` has
+the details; the short version is that **Python is the compiler and WebAssembly is the
+runtime**. Everything expensive that happens once at construction stays in Python and is
+exported as a block of arrays; the WASM implements only the step functions.
+
+`tools/conform.py` and `wasm/conform.mjs` check the two implementations against each other
+step by step with the noise off, and they agree to the precision the reference file stores
+— 5e-13 mm on node positions, 5e-11 mV on membrane potentials, and the direction gate never
+disagrees. The Docker build runs that check and **fails if the port has drifted**.
+
+One worm runs at 0.87× real time in the browser, two at 0.43×, and the whole animal is
+~70 kB gzipped (51 kB model + 19 kB wasm).
+
+```bash
+docker build -t celegans-sim . && docker run --rm -p 8080:8080 celegans-sim
+```
+
 ## The viewer
 
 `web/` is a single page with no build step and no dependencies. Telemetry is packed

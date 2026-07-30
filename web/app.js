@@ -21,6 +21,8 @@
  * midpoint, so "straight" reads as nothing rather than as a colour.
  */
 
+import { LocalEngine } from './local.js';
+
 const MAGIC = 0x574f524d;
 const FIELD_MAGIC = 0x574f524e;
 const HEADER_BYTES = 92;   // 6 uint32 + 17 float32
@@ -79,6 +81,9 @@ const S = {
   freq: 0, freqBuf: [],
   pumpFlash: 0, lastPumping: 0,
   connected: false,
+  engine: null,        // the local WASM engine, when running client-side
+  others: [],          // every worm after the first, for the dish
+  trails: [],          // one track per worm
 };
 
 const el = (id) => document.getElementById(id);
@@ -211,6 +216,18 @@ function drawDish() {
     ctx.fill(); ctx.stroke();
   }
 
+  if (S.layers.trail) {
+    for (const tr of S.trails) {
+      if (!tr || tr.length < 2) continue;
+      ctx.strokeStyle = T.trail;
+      ctx.lineWidth = S.theme === 'cartoon' ? 1.6 : 1.2;
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      tr.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
   if (S.layers.trail && S.trail.length > 1) {
     ctx.strokeStyle = T.trail;
     ctx.lineWidth = S.theme === 'cartoon' ? 2 : 1.5;
@@ -220,6 +237,12 @@ function drawDish() {
     ctx.stroke();
   }
 
+  // Every animal in the dish. They share the plate and the anatomy; only the state
+  // differs, which is why a second one costs almost nothing.
+  for (let i = 0; i < S.others.length; i++) {
+    const o = S.others[i];
+    if (o) T.worm(ctx, geometry(o, X, Y, scale), o, scale);
+  }
   if (f) T.worm(ctx, geometry(f, X, Y, scale), f, scale);
   if (T.vignette) drawVignette(ctx, w, h);
   ctx.restore();
@@ -998,7 +1021,22 @@ function updateAblateUI() {
     : (n ? n + ' ablated' : 'hover a neuron');
 }
 
-function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+function send(msg) {
+  const eng = S.engine;
+  if (eng) {
+    if (msg.cmd === 'play') eng.running = true;
+    else if (msg.cmd === 'pause') eng.running = false;
+    else if (msg.cmd === 'rate') eng.rate = msg.value;
+    else if (msg.cmd === 'drop_food') eng.dropFood(msg.x, msg.y, msg.r);
+    else if (msg.cmd === 'poke') eng.poke(msg.where, msg.strength);
+    else if (msg.cmd === 'medium') {
+      const h = eng.head.scalars;
+      eng.setMedium(h[`med_${msg.value}_ct`], h[`med_${msg.value}_cn`]);
+    }
+    return;
+  }
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
 
 function connect() {
   const port = Number(location.port || 8080) + 1;
@@ -1198,6 +1236,102 @@ function updateStats(t, speed, food, dir, achieved, running) {
   }
 }
 
+/* ------------------------------------------------------------------ local engine -- */
+/* When the animal runs in this tab there is no socket and no server: the loop steps the
+ * WASM directly and reads its state out of linear memory. Everything downstream -- the
+ * panels, the kymograph, the traces -- is unchanged, because it only ever wanted numbers.
+ */
+
+let fieldClock = 0;
+
+function localTick(now) {
+  const eng = S.engine;
+  if (!eng || !eng.ready) return;
+  eng.advance(now);
+
+  if (!S.meta) {
+    S.meta = eng.meta;
+    layout = null;
+    const want = ['DB01', 'VB01', 'AVBL'];
+    S.selected = want.map((n) => S.meta.neurons.findIndex((x) => x.name === n))
+                     .filter((i) => i >= 0);
+    S.traces = S.selected.map(() => []);
+    el('trace-hint').textContent = S.selected.map((k) => S.meta.neurons[k].name).join(', ');
+    S.trails = eng.worms.map(() => []);
+    S.recentre = true;
+    el('banner').classList.add('gone');
+  }
+
+  const f0 = eng.frame(0);
+  S.frame = {
+    t: f0.t, speed: 0, food: f0.food, dir: f0.dir, achieved: eng.achieved,
+    sensed: f0.sensed, nodes: f0.nodes, act: f0.act, V: f0.V,
+    tension: f0.tension, kappa: f0.kappa, running: f0.running,
+  };
+  S.others = [];
+  for (let i = 1; i < eng.worms.length; i++) {
+    const fi = eng.frame(i);
+    S.others.push({ nodes: fi.nodes, kappa: fi.kappa });
+  }
+
+  // Trails, one per animal.
+  for (let i = 0; i < eng.worms.length; i++) {
+    const fi = i === 0 ? f0 : { nodes: S.others[i - 1].nodes };
+    let cx = 0, cy = 0;
+    const nn = fi.nodes.length / 2;
+    for (let k = 0; k < nn; k++) { cx += fi.nodes[k * 2]; cy += fi.nodes[k * 2 + 1]; }
+    cx /= nn; cy /= nn;
+    const tr = S.trails[i] || (S.trails[i] = []);
+    const last = tr[tr.length - 1];
+    if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {
+      tr.push([cx, cy]);
+      if (tr.length > 2200) tr.shift();
+    }
+    if (i === 0) {
+      if (S.recentre) { S.view.cx = cx; S.view.cy = cy; S.recentre = false; }
+      if (S.cam === 'follow') {
+        const dead = S.view.span * 0.18;
+        const dx = cx - S.view.cx, dy = cy - S.view.cy, d = Math.hypot(dx, dy);
+        if (d > dead) { const pull = (d - dead) / d; S.view.cx += dx * pull; S.view.cy += dy * pull; }
+      }
+    }
+  }
+
+  // Speed of the first animal, over a window of *simulated* time. Dividing by anything
+  // else makes the number a statement about the frame rate: an undulating worm slews its
+  // centroid from side to side once a cycle, so a short window reports the slosh.
+  if (S.speedWin === undefined) S.speedWin = [];
+  const c0 = S.trails[0][S.trails[0].length - 1];
+  if (c0) {
+    S.speedWin.push([f0.t, c0[0], c0[1]]);
+    while (S.speedWin.length > 1 && f0.t - S.speedWin[0][0] > 2.0) S.speedWin.shift();
+    const a = S.speedWin[0], b = S.speedWin[S.speedWin.length - 1];
+    const span = b[0] - a[0];
+    S.frame.speed = span > 0.2 ? Math.hypot(b[1] - a[1], b[2] - a[2]) / span : 0;
+  }
+
+  const sensed = Object.assign({}, f0.sensed, {
+    pumpNorm: f0.pumpRate / 6.0, lumenNorm: f0.lumen / 0.05,
+  });
+  drawSenses(sensed);
+  if (f0.pumping > 0.5 && S.lastPumping <= 0.5) S.pumpFlash = 1;
+  S.lastPumping = f0.pumping;
+  el('s-pump').innerHTML = `${(f0.pumpRate * 60).toFixed(0)}<small>/min</small>`;
+  el('pump-dot').classList.toggle('on', S.pumpFlash > 0.35);
+
+  pushKymo(f0.kappa, f0.t);
+  S.selected.forEach((idx, k) => {
+    const tr = S.traces[k] || (S.traces[k] = []);
+    tr.push(f0.V[idx]);
+    if (tr.length > 420) tr.shift();
+  });
+  updateFreq(f0.kappa[Math.floor(f0.kappa.length / 2)], f0.t);
+  updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running);
+
+  // The fields change slowly; rebuilding the image every frame is wasted work.
+  if (now - fieldClock > 1000) { S.field = eng.fieldImage(); fieldClock = now; }
+}
+
 /* ----------------------------------------------------------------------- loop ----- */
 
 let lastTick = 0;
@@ -1207,6 +1341,7 @@ function tick(now) {
   const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
   lastTick = now;
   if (S.pumpFlash > 0) S.pumpFlash = Math.max(0, S.pumpFlash - dt * 6.5);
+  if (S.engine) localTick(now);
 
   drawDish();
   drawNeurons();
@@ -1216,6 +1351,19 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+/* Local by default: the point of the WASM port is that no server is involved. `?server`
+ * falls back to the WebSocket feed, which is still how the Python model is driven. */
 wire();
-connect();
+if (location.search.includes('server')) {
+  connect();
+} else {
+  el('banner').firstElementChild.innerHTML =
+    '<b>Loading the animal&hellip;</b>302 neurons, compiled to WebAssembly';
+  new LocalEngine().init(2).then((eng) => { S.engine = eng; })
+    .catch((err) => {
+      el('banner').firstElementChild.innerHTML =
+        `<b>Could not start the local engine</b>${err}<code>?server</code>`;
+      console.error(err);
+    });
+}
 requestAnimationFrame(tick);

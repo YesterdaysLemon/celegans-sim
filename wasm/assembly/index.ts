@@ -1,0 +1,1028 @@
+/* celegans-sim, WebAssembly runtime.
+ *
+ * This is the *stepping* half of the model. Everything expensive and fiddly that happens
+ * once at construction -- the resting-potential solve, the per-cell muscle balance, the
+ * proprioceptive receptive fields, the drag masks -- stays in Python and arrives here as
+ * a block of precomputed arrays (see tools/export_model.py). The code below is only the
+ * per-step arithmetic, and it reads the same numbers the Python does.
+ *
+ * That split is the reason this port can be trusted rather than merely believed: any
+ * disagreement between the two implementations cannot be in the setup, because both read
+ * it out of the same file. Whatever differs is in the stepping, which is where a
+ * conformance test can actually localise it.
+ *
+ * ONE THING CANNOT MATCH, BY CONSTRUCTION. The background noise is an Ornstein-Uhlenbeck
+ * current driven by numpy's PCG64 and its ziggurat normal sampler. Reproducing that bit
+ * for bit would mean porting both, and would buy nothing -- the noise is meant to be
+ * noise. So conformance runs with noise disabled, where the two must agree to
+ * floating-point tolerance; the noisy case is checked on gait *statistics* instead.
+ * Anything else would be measuring the random number generator.
+ *
+ * Layout: one shared Model (read-only, the payload), one shared World (the fields the
+ * animals eat from), and N independent Worms. That last part is why two worms in one dish
+ * is nearly free -- the 302x302 matrices are anatomy, identical for every animal, so only
+ * the state is duplicated.
+ */
+
+import * as G from "./model_gen";
+
+// ---------------------------------------------------------------------------- payload --
+
+let B: usize = 0;
+
+export function alloc(nbytes: i32): usize { return heap.alloc(<usize>nbytes); }
+export function setPayload(ptr: usize): void { B = ptr; }
+
+@inline function m(off: usize, i: i32): f64 { return load<f64>(B + off + (<usize>i << 3)); }
+@inline function mi(off: usize, i: i32): i32 { return load<i32>(B + off + (<usize>i << 2)); }
+
+@inline function sigmoid(x: f64): f64 {
+  if (x >= 0) return 1.0 / (1.0 + Math.exp(-x));
+  const e = Math.exp(x);
+  return e / (1.0 + e);
+}
+@inline function clamp(v: f64, lo: f64, hi: f64): f64 {
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+
+/* ------------------------------------------------------------------------- linear algebra
+ * The body is the expensive part of a step: assembling a (n+2)^2 drag metric out of
+ * several n x n products and then solving it. Everything here is dense and small
+ * (n = 48), so straightforward loops beat anything cleverer.
+ */
+
+// Dense LU with partial pivoting, solving A x = b in place. A is (n x n) row-major.
+// Returns false if the matrix is singular, which for this drag metric would mean the
+// medium has no viscosity -- worth reporting rather than silently producing NaNs.
+function solveInPlace(A: StaticArray<f64>, b: StaticArray<f64>, n: i32): bool {
+  for (let k = 0; k < n; k++) {
+    let piv = k;
+    let best = Math.abs(unchecked(A[k * n + k]));
+    for (let r = k + 1; r < n; r++) {
+      const v = Math.abs(unchecked(A[r * n + k]));
+      if (v > best) { best = v; piv = r; }
+    }
+    if (best < 1e-300) return false;
+    if (piv != k) {
+      for (let c = k; c < n; c++) {
+        const t = unchecked(A[k * n + c]);
+        unchecked(A[k * n + c] = unchecked(A[piv * n + c]));
+        unchecked(A[piv * n + c] = t);
+      }
+      const t = unchecked(b[k]); unchecked(b[k] = unchecked(b[piv])); unchecked(b[piv] = t);
+    }
+    const d = unchecked(A[k * n + k]);
+    for (let r = k + 1; r < n; r++) {
+      const f = unchecked(A[r * n + k]) / d;
+      if (f == 0.0) continue;
+      unchecked(A[r * n + k] = 0.0);
+      for (let c = k + 1; c < n; c++) {
+        unchecked(A[r * n + c] -= f * unchecked(A[k * n + c]));
+      }
+      unchecked(b[r] -= f * unchecked(b[k]));
+    }
+  }
+  for (let r = n - 1; r >= 0; r--) {
+    let acc = unchecked(b[r]);
+    for (let c = r + 1; c < n; c++) acc -= unchecked(A[r * n + c]) * unchecked(b[c]);
+    unchecked(b[r] = acc / unchecked(A[r * n + r]));
+  }
+  return true;
+}
+
+// -------------------------------------------------------------------------------- rng --
+// xoshiro256++ with a Box-Muller normal. Deliberately not numpy's: see the header.
+class Rng {
+  s0: u64 = 0; s1: u64 = 0; s2: u64 = 0; s3: u64 = 0;
+  spare: f64 = 0.0; hasSpare: bool = false;
+  constructor(seed: u64) {
+    let z: u64 = seed;
+    for (let i = 0; i < 4; i++) {
+      z += 0x9E3779B97F4A7C15;
+      let x = z;
+      x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9;
+      x = (x ^ (x >> 27)) * 0x94D049BB133111EB;
+      x = x ^ (x >> 31);
+      if (i == 0) this.s0 = x; else if (i == 1) this.s1 = x;
+      else if (i == 2) this.s2 = x; else this.s3 = x;
+    }
+  }
+  @inline next(): u64 {
+    const r = rotl(this.s0 + this.s3, 23) + this.s0;
+    const t = this.s1 << 17;
+    this.s2 ^= this.s0; this.s3 ^= this.s1; this.s1 ^= this.s2; this.s0 ^= this.s3;
+    this.s2 ^= t; this.s3 = rotl(this.s3, 45);
+    return r;
+  }
+  @inline uniform(): f64 { return <f64>(this.next() >> 11) * (1.0 / 9007199254740992.0); }
+  normal(): f64 {
+    if (this.hasSpare) { this.hasSpare = false; return this.spare; }
+    let u = this.uniform(); if (u < 1e-300) u = 1e-300;
+    const v = this.uniform();
+    const r = Math.sqrt(-2.0 * Math.log(u));
+    this.spare = r * Math.sin(2.0 * Math.PI * v);
+    this.hasSpare = true;
+    return r * Math.cos(2.0 * Math.PI * v);
+  }
+}
+@inline function rotl(x: u64, k: i32): u64 { return (x << k) | (x >> (64 - k)); }
+
+// ------------------------------------------------------------------------------ world --
+// Shared by every animal in the dish: they eat the same lawn and feel the same walls.
+
+class World {
+  g: i32 = G.WORLD_GRID;
+  extent: f64 = G.WORLD_EXTENT;
+  h: f64 = 2.0 * G.WORLD_EXTENT / <f64>G.WORLD_GRID;
+  // Allocated before anything reads `this`: AssemblyScript will not let a constructor
+  // touch the instance until every field is initialised.
+  food: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  attractant: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  repellent: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  o2: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  sample(f: StaticArray<f64>, x: f64, y: f64): f64 {
+    const fx = (x + this.extent) / this.h - 0.5;
+    const fy = (y + this.extent) / this.h - 0.5;
+    let x0 = <i32>Math.floor(fx); let y0 = <i32>Math.floor(fy);
+    x0 = x0 < 0 ? 0 : (x0 > this.g - 2 ? this.g - 2 : x0);
+    y0 = y0 < 0 ? 0 : (y0 > this.g - 2 ? this.g - 2 : y0);
+    const tx = clamp(fx - <f64>x0, 0.0, 1.0);
+    const ty = clamp(fy - <f64>y0, 0.0, 1.0);
+    const i00 = y0 * this.g + x0;
+    const f00 = unchecked(f[i00]), f10 = unchecked(f[i00 + 1]);
+    const f01 = unchecked(f[i00 + this.g]), f11 = unchecked(f[i00 + this.g + 1]);
+    return (f00 * (1.0 - tx) + f10 * tx) * (1.0 - ty)
+         + (f01 * (1.0 - tx) + f11 * tx) * ty;
+  }
+  temperature(x: f64): f64 {
+    const f = clamp((x + this.extent) / (2.0 * this.extent), 0.0, 1.0);
+    return G.WORLD_TEMP_COLD + (G.WORLD_TEMP_WARM - G.WORLD_TEMP_COLD) * f;
+  }
+  oxygen(x: f64, y: f64): f64 {
+    const d = clamp(this.sample(this.o2, x, y), 0.0, G.WORLD_O2_AMBIENT - 0.01);
+    return G.WORLD_O2_AMBIENT - d;
+  }
+  eat(x: f64, y: f64, amount: f64): f64 {
+    // Proportional withdrawal from the 3x3 neighbourhood, matching World.eat: taking the
+    // full amount from every cell would remove up to nine times what was asked for.
+    let j = <i32>Math.floor((x + this.extent) / this.h);
+    let i = <i32>Math.floor((y + this.extent) / this.h);
+    i = i < 0 ? 0 : (i > this.g - 1 ? this.g - 1 : i);
+    j = j < 0 ? 0 : (j > this.g - 1 ? this.g - 1 : j);
+    const lo_i = i > 0 ? i - 1 : 0, hi_i = i < this.g - 1 ? i + 1 : this.g - 1;
+    const lo_j = j > 0 ? j - 1 : 0, hi_j = j < this.g - 1 ? j + 1 : this.g - 1;
+    let avail: f64 = 0.0;
+    for (let a = lo_i; a <= hi_i; a++)
+      for (let b2 = lo_j; b2 <= hi_j; b2++) avail += unchecked(this.food[a * this.g + b2]);
+    if (avail <= 0.0) return 0.0;
+    const take = amount < avail ? amount : avail;
+    const k = 1.0 - take / avail;
+    for (let a = lo_i; a <= hi_i; a++)
+      for (let b2 = lo_j; b2 <= hi_j; b2++) unchecked(this.food[a * this.g + b2] *= k);
+    return take;
+  }
+  addPatch(cx: f64, cy: f64, r: f64, density: f64, att: f64, ls: f64): void {
+    for (let i = 0; i < this.g; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = 0; j < this.g; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        const dx = x - cx, dy = y - cy;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const inside = d <= r ? 1.0 : Math.exp(-(d - r) / ls);
+        const k = i * this.g + j;
+        if (density > 0.0) {
+          const v = density * inside;
+          if (v > unchecked(this.food[k])) unchecked(this.food[k] = v);
+          // A lawn respires, and the deficit has a longer skirt than the bacteria because
+          // oxygen is resupplied from the air above the agar as well as laterally.
+          const o = G.WORLD_O2_DEPTH * (d <= r ? 1.0
+                    : Math.exp(-(d - r) / G.WORLD_O2_LENGTH_SCALE));
+          if (o > unchecked(this.o2[k])) unchecked(this.o2[k] = o);
+        }
+        if (att > 0.0) {
+          const v = att * inside;
+          if (v > unchecked(this.attractant[k])) unchecked(this.attractant[k] = v);
+        }
+      }
+    }
+  }
+  addRepellent(cx: f64, cy: f64, strength: f64, ls: f64): void {
+    for (let i = 0; i < this.g; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = 0; j < this.g; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        const dx = x - cx, dy = y - cy;
+        const v = strength * Math.exp(-Math.sqrt(dx * dx + dy * dy) / ls);
+        const k = i * this.g + j;
+        if (v > unchecked(this.repellent[k])) unchecked(this.repellent[k] = v);
+      }
+    }
+  }
+}
+
+let world: World = new World();
+
+// ------------------------------------------------------------------------------- worm --
+
+class Worm {
+  rng: Rng = new Rng(0);
+  bx: f64 = 0.0; by: f64 = 0.0;
+  theta: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+  qdot: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
+  ux: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+  uy: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+  nxv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+  nyv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+  Dm: StaticArray<f64> = new StaticArray<f64>((G.N_LINKS + 2) * (G.N_LINKS + 2));
+  Qv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
+  Pm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+  Qm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+  As: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+  Bs: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+  nodesX: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
+  nodesY: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
+  contactX: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
+  contactY: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
+  kappa: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+  moment: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+  // nervous
+  V: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  sv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  av: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Dv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Inoise: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  act: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Iext: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  gs: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Es: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  gtot: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  fx: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  dec: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Vn: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  Vold: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  gapv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  // muscle
+  mV: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mCa: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mTen: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mVn: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mg: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  me: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mgt: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mfx: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mdec: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  mgap: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+  rowD: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
+  rowV: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
+  // senses
+  kn: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+  headSignal: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  propAdapt: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  headHist: StaticArray<f64> = new StaticArray<f64>((G.HEAD_DELAY_N + 1) * G.N_JOINTS);
+  headHistI: i32 = 0;
+  cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
+  adaptReady: bool = false;
+  touchA: f64 = 0.0; touchP: f64 = 0.0;
+  availA: f64 = 1.0; availP: f64 = 1.0;
+  pokeA: f64 = 0.0; pokeP: f64 = 0.0;
+  goingForward: bool = true;
+  omega: f64 = 0.0; omegaSign: f64 = 1.0; revSteps: i32 = 0;
+  // modulators, in the order used by model_gen: dopamine, serotonin, octopamine, pdf
+  modDA: f64 = 0.0; modSER: f64 = 0.0; modOA: f64 = 0.0; modPDF: f64 = 0.0;
+  // pharynx
+  phPhase: f64 = 0.0; phOpen: f64 = 0.0; phPumping: bool = false;
+  phRate: f64 = 0.0; phDur: f64 = 0.0; phPumps: i32 = 0;
+  lumen: f64 = 0.0; ingested: f64 = 0.0; eaten: f64 = 0.0;
+  sensedFood: f64 = 0.0; sensedAtt: f64 = 0.0; sensedRep: f64 = 0.0;
+  sensedO2: f64 = 0.0; sensedT: f64 = 0.0;
+
+  cT: f64 = G.MED_AGAR_CT; cN: f64 = G.MED_AGAR_CN;
+  t: f64 = 0.0;
+
+  constructor(seed: u64, x: f64, y: f64, heading: f64) {
+    this.rng = new Rng(seed);
+    this.bx = x; this.by = y;
+    for (let i = 0; i < G.N_LINKS; i++) unchecked(this.theta[i] = heading);
+    for (let i = 0; i < G.N_NEURONS; i++) {
+      unchecked(this.V[i] = m(G.OFF_V_init, i));
+      unchecked(this.sv[i] = m(G.OFF_s_init, i));
+      unchecked(this.av[i] = m(G.OFF_a_init, i));
+      unchecked(this.Dv[i] = m(G.OFF_d_rest, i));
+    }
+    for (let i = 0; i < G.N_MUSCLES; i++) unchecked(this.mV[i] = G.MUS_E_LEAK);
+    this.updateNodes();
+  }
+
+  /* ------------------------------------------------------------------ nervous system --
+   * Exponential Euler on the diagonal, with the gap-junction coupling refined by a few
+   * fixed-point passes -- which converge because the conductance matrix is diagonally
+   * dominant. That buys implicit-solver accuracy for two extra matrix-vector products
+   * instead of an N^3 solve per step. */
+  stepNervous(): void {
+    const n = G.N_NEURONS, dt = G.DT;
+    const gLeak = m(G.OFF_g_leak, 0), eLeak = m(G.OFF_E_leak, 0);
+
+    const nd = Math.exp(-dt / G.NEURAL_NOISE_TAU);
+    const kick = G.NEURAL_NOISE_SIGMA * Math.sqrt(1.0 - nd * nd);
+    for (let i = 0; i < n; i++) {
+      let noise = unchecked(this.Inoise[i]) * nd;
+      if (noiseOn) noise += kick * this.rng.normal();
+      unchecked(this.Inoise[i] = noise);
+      unchecked(this.Vold[i] = unchecked(this.V[i]));
+    }
+
+    // release = s * D when depression is on; G_syn and GE_syn are (N,N) row-major.
+    for (let r = 0; r < n; r++) {
+      let a1: f64 = 0.0, a2: f64 = 0.0;
+      const rowS = B + G.OFF_G_syn + (<usize>(r * n) << 3);
+      const rowE = B + G.OFF_GE_syn + (<usize>(r * n) << 3);
+      for (let c = 0; c < n; c++) {
+        let rel = unchecked(this.sv[c]);
+        if (G.ANY_DEPRESS) rel *= unchecked(this.Dv[c]);
+        const o = <usize>c << 3;
+        a1 += load<f64>(rowS + o) * rel;
+        a2 += load<f64>(rowE + o) * rel;
+      }
+      unchecked(this.gs[r] = a1); unchecked(this.Es[r] = a2);
+    }
+
+    for (let i = 0; i < n; i++) {
+      const V = unchecked(this.Vold[i]);
+      const gAd = m(G.OFF_g_adapt, i) * unchecked(this.av[i]);
+      const gC = m(G.OFF_g_ca, i) * 0.5 *
+                 (1.0 + Math.tanh((V - m(G.OFF_ca_vhalf, i)) / G.NEURAL_CA_SLOPE));
+      const gt = gLeak + m(G.OFF_gap_total, i) + unchecked(this.gs[i]) + gAd + gC;
+      unchecked(this.gtot[i] = gt);
+      unchecked(this.fx[i] = gLeak * eLeak + unchecked(this.Es[i])
+                + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
+                + unchecked(this.Inoise[i]) + unchecked(this.Iext[i]));
+      unchecked(this.dec[i] = Math.exp(-gt * dt / (G.NEURAL_C_M * 1e-3)));
+      unchecked(this.Vn[i] = V);
+    }
+    for (let it = 0; it < G.GAP_ITERS; it++) {
+      for (let r = 0; r < n; r++) {
+        let acc: f64 = 0.0;
+        const row = B + G.OFF_G_gap + (<usize>(r * n) << 3);
+        for (let c = 0; c < n; c++) acc += load<f64>(row + (<usize>c << 3)) * unchecked(this.Vn[c]);
+        const vInf = (unchecked(this.fx[r]) + acc) / unchecked(this.gtot[r]);
+        unchecked(this.gapv[r] = vInf + (unchecked(this.Vold[r]) - vInf) * unchecked(this.dec[r]));
+      }
+      for (let r = 0; r < n; r++) unchecked(this.Vn[r] = unchecked(this.gapv[r]));
+    }
+
+    for (let i = 0; i < n; i++) {
+      unchecked(this.V[i] = clamp(unchecked(this.Vn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
+      // Release is driven by the *pre-update* voltage, so the network has one consistent
+      // step of delay everywhere rather than an index-order dependence.
+      const V = unchecked(this.Vold[i]);
+      const phi = sigmoid(G.NEURAL_BETA * (V - m(G.OFF_V_th, i)));
+      const nInf = 0.5 * (1.0 + Math.tanh((V - m(G.OFF_k_vhalf, i)) / G.NEURAL_K_SLOPE));
+      unchecked(this.av[i] = nInf + (unchecked(this.av[i]) - nInf) * m(G.OFF_adapt_decay, i));
+      const rise = G.NEURAL_A_RISE * phi;
+      const rate = rise + G.NEURAL_A_DECAY;
+      const sInf = rise / rate;
+      unchecked(this.sv[i] = sInf + (unchecked(this.sv[i]) - sInf) * Math.exp(-rate * dt));
+      if (G.ANY_DEPRESS) {
+        const rec = 1.0 / G.NEURAL_DEPRESSION_TAU;
+        const dr = rec + m(G.OFF_depress_use, i) * phi;
+        const dInf = rec / dr;
+        unchecked(this.Dv[i] = dInf + (unchecked(this.Dv[i]) - dInf) * Math.exp(-dr * dt));
+      }
+    }
+  }
+
+  activation(): void {
+    for (let i = 0; i < G.N_NEURONS; i++) {
+      unchecked(this.act[i] =
+        sigmoid(G.NEURAL_BETA * (unchecked(this.V[i]) - m(G.OFF_V_th, i))));
+    }
+  }
+
+  /* ---------------------------------------------------------------------- muscle ----- */
+  stepMuscle(): void {
+    const mm = G.N_MUSCLES, n = G.N_NEURONS, dt = G.DT;
+    for (let r = 0; r < mm; r++) {
+      let a1: f64 = 0.0, a2: f64 = 0.0;
+      const row = B + G.OFF_mus_G + (<usize>(r * n) << 3);
+      for (let c = 0; c < n; c++) {
+        let sp = unchecked(this.sv[c]);
+        if (G.ANY_PHASIC) {
+          sp = clamp(G.MUS_S_EQ + m(G.OFF_mus_phasic_gain, c) * (sp - G.MUS_S_EQ), 0.0, 1.0);
+        }
+        const g = load<f64>(row + (<usize>c << 3));
+        a1 += g * sp;
+        a2 += g * sp * m(G.OFF_mus_E_pre, c);
+      }
+      unchecked(this.mg[r] = a1); unchecked(this.me[r] = a2);
+    }
+    for (let i = 0; i < mm; i++) {
+      const gt = G.MUS_G_LEAK + unchecked(this.mg[i]) + m(G.OFF_mus_gap_total, i);
+      unchecked(this.mgt[i] = gt);
+      unchecked(this.mfx[i] = G.MUS_G_LEAK * G.MUS_E_LEAK + unchecked(this.me[i]));
+      unchecked(this.mdec[i] = Math.exp(-gt * dt / G.MUS_C_NF));
+      unchecked(this.mVn[i] = unchecked(this.mV[i]));
+    }
+    for (let it = 0; it < 2; it++) {
+      for (let r = 0; r < mm; r++) {
+        let acc: f64 = 0.0;
+        const row = B + G.OFF_mus_G_gap + (<usize>(r * mm) << 3);
+        for (let c = 0; c < mm; c++) acc += load<f64>(row + (<usize>c << 3)) * unchecked(this.mVn[c]);
+        const vInf = (unchecked(this.mfx[r]) + acc) / unchecked(this.mgt[r]);
+        unchecked(this.mgap[r] = vInf + (unchecked(this.mV[r]) - vInf) * unchecked(this.mdec[r]));
+      }
+      for (let r = 0; r < mm; r++) unchecked(this.mVn[r] = unchecked(this.mgap[r]));
+    }
+    for (let i = 0; i < mm; i++) {
+      unchecked(this.mV[i] = unchecked(this.mVn[i]));
+      const target = sigmoid(G.MUS_BETA * (unchecked(this.mV[i]) - G.MUS_V_HALF));
+      unchecked(this.mCa[i] = target + (unchecked(this.mCa[i]) - target) * G.MUS_DECAY_CA);
+      unchecked(this.mTen[i] = unchecked(this.mCa[i])
+                + (unchecked(this.mTen[i]) - unchecked(this.mCa[i])) * G.MUS_DECAY_TE);
+    }
+  }
+
+  /* Active bending moment per joint. Muscle can only pull, so the moment is the
+   * *difference* of two one-sided tensions -- both sides fully contracted is rigid and
+   * straight, not bent. */
+  jointMoment(): void {
+    const rows = G.MUS_N_ROWS, mm = G.N_MUSCLES;
+    for (let r = 0; r < rows; r++) {
+      let sd: f64 = 0.0, sv: f64 = 0.0;
+      const rd = B + G.OFF_mus_row_mask_d + <usize>(r * mm);
+      const rv = B + G.OFF_mus_row_mask_v + <usize>(r * mm);
+      for (let c = 0; c < mm; c++) {
+        if (load<u8>(rd + <usize>c)) sd += unchecked(this.mTen[c]);
+        if (load<u8>(rv + <usize>c)) sv += unchecked(this.mTen[c]);
+      }
+      unchecked(this.rowD[r] = sd / m(G.OFF_mus_row_n_d, r));
+      unchecked(this.rowV[r] = sv / m(G.OFF_mus_row_n_v, r));
+    }
+    // Linear interpolation of the row tensions onto the mechanical joints, matching
+    // np.interp: clamped at both ends, rows are sorted by body position.
+    for (let j = 0; j < G.N_JOINTS; j++) {
+      const s = m(G.OFF_mus_joint_s, j);
+      let k = 0;
+      while (k < rows - 2 && m(G.OFF_mus_row_pos, k + 1) < s) k++;
+      const p0 = m(G.OFF_mus_row_pos, k), p1 = m(G.OFF_mus_row_pos, k + 1);
+      let f = p1 > p0 ? (s - p0) / (p1 - p0) : 0.0;
+      f = clamp(f, 0.0, 1.0);
+      if (s <= m(G.OFF_mus_row_pos, 0)) f = 0.0;
+      if (s >= m(G.OFF_mus_row_pos, rows - 1)) { k = rows - 2; f = 1.0; }
+      const dj = unchecked(this.rowD[k]) + f * (unchecked(this.rowD[k + 1]) - unchecked(this.rowD[k]));
+      const vj = unchecked(this.rowV[k]) + f * (unchecked(this.rowV[k + 1]) - unchecked(this.rowV[k]));
+      unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj));
+    }
+  }
+
+  updateNodes(): void {
+    const L = G.N_LINKS, l = G.BODY_L;
+    let cx = this.bx, cy = this.by;
+    unchecked(this.nodesX[0] = cx); unchecked(this.nodesY[0] = cy);
+    for (let i = 0; i < L; i++) {
+      cx += l * Math.cos(unchecked(this.theta[i]));
+      cy += l * Math.sin(unchecked(this.theta[i]));
+      unchecked(this.nodesX[i + 1] = cx); unchecked(this.nodesY[i + 1] = cy);
+    }
+    for (let i = 0; i < G.N_JOINTS; i++) {
+      unchecked(this.kappa[i] =
+        (unchecked(this.theta[i + 1]) - unchecked(this.theta[i])) / l);
+    }
+  }
+
+  /* The (n+2)x(n+2) viscous drag metric, assembled exactly as Body._drag_matrix does.
+   * The triple sum over segments collapses into three n x n products once P and Q are
+   * masked by "strictly behind", which is what makes this affordable at 2 kHz. */
+  dragMatrix(): void {
+    const n = G.N_LINKS, l = G.BODY_L, N = n + 2;
+    const cT = this.cT, cN = this.cN;
+    const D = this.Dm;
+    for (let i = 0; i < N * N; i++) unchecked(D[i] = 0.0);
+
+    for (let i = 0; i < n; i++) {
+      const th = unchecked(this.theta[i]);
+      const c = Math.cos(th), s = Math.sin(th);
+      unchecked(this.ux[i] = c); unchecked(this.uy[i] = s);
+      unchecked(this.nxv[i] = -s); unchecked(this.nyv[i] = c);
+    }
+    // P[m,k] = n_m . u_k,  Q[m,k] = n_m . n_k, and the two masked copies.
+    for (let mm = 0; mm < n; mm++) {
+      const nx = unchecked(this.nxv[mm]), ny = unchecked(this.nyv[mm]);
+      for (let k = 0; k < n; k++) {
+        const p = nx * unchecked(this.ux[k]) + ny * unchecked(this.uy[k]);
+        const q = nx * unchecked(this.nxv[k]) + ny * unchecked(this.nyv[k]);
+        const idx = mm * n + k;
+        unchecked(this.Pm[idx] = p); unchecked(this.Qm[idx] = q);
+        // The rotational block multiplies two lever arms that must *share* one factor of
+        // rho_k between them, so it uses the square-root mask -- (A A^T)[m,p] then sums
+        // rho_k rather than rho_k^2.
+        unchecked(this.As[idx] = p * m(G.OFF_body_mask_sqrt, idx));
+        unchecked(this.Bs[idx] = q * m(G.OFF_body_mask_sqrt, idx));
+      }
+    }
+
+    // translation / translation
+    let txx: f64 = 0.0, txy: f64 = 0.0, tyy: f64 = 0.0;
+    for (let k = 0; k < n; k++) {
+      const rho = m(G.OFF_body_rho, k);
+      const ux = unchecked(this.ux[k]), uy = unchecked(this.uy[k]);
+      const nx = unchecked(this.nxv[k]), ny = unchecked(this.nyv[k]);
+      txx += cT * rho * ux * ux + cN * rho * nx * nx;
+      txy += cT * rho * ux * uy + cN * rho * nx * ny;
+      tyy += cT * rho * uy * uy + cN * rho * ny * ny;
+    }
+    unchecked(D[0] = l * txx); unchecked(D[1] = l * txy);
+    unchecked(D[N] = l * txy); unchecked(D[N + 1] = l * tyy);
+
+    // translation / rotation
+    const l2 = l * l;
+    for (let mm = 0; mm < n; mm++) {
+      let cx: f64 = 0.0, cy: f64 = 0.0;
+      for (let k = 0; k < n; k++) {
+        const idx = mm * n + k;
+        const mr = m(G.OFF_body_mask_rho, idx);
+        const a = unchecked(this.Pm[idx]) * mr;
+        const b2 = unchecked(this.Qm[idx]) * mr;
+        cx += cT * a * unchecked(this.ux[k]) + cN * b2 * unchecked(this.nxv[k]);
+        cy += cT * a * unchecked(this.uy[k]) + cN * b2 * unchecked(this.nyv[k]);
+      }
+      const rho = m(G.OFF_body_rho, mm);
+      cx = l2 * (cx + 0.5 * cN * rho * unchecked(this.nxv[mm]));
+      cy = l2 * (cy + 0.5 * cN * rho * unchecked(this.nyv[mm]));
+      unchecked(D[(2 + mm) * N + 0] = cx);
+      unchecked(D[(2 + mm) * N + 1] = cy);
+      unchecked(D[0 * N + (2 + mm)] = cx);
+      unchecked(D[1 * N + (2 + mm)] = cy);
+    }
+
+    // rotation / rotation
+    const l3 = l * l * l;
+    for (let a = 0; a < n; a++) {
+      for (let b2 = a; b2 < n; b2++) {
+        let acc: f64 = 0.0;
+        for (let k = 0; k < n; k++) {
+          acc += cT * unchecked(this.As[a * n + k]) * unchecked(this.As[b2 * n + k])
+               + cN * unchecked(this.Bs[a * n + k]) * unchecked(this.Bs[b2 * n + k]);
+        }
+        acc += cN * 0.5 * unchecked(this.Qm[a * n + b2]) * m(G.OFF_body_rho_max_off, a * n + b2);
+        if (a == b2) acc += cN * m(G.OFF_body_rho, a) / 3.0;
+        const v = l3 * acc;
+        unchecked(D[(2 + a) * N + (2 + b2)] = v);
+        unchecked(D[(2 + b2) * N + (2 + a)] = v);
+      }
+    }
+  }
+
+  /* One mechanical step. `moment` is the active bending moment per joint; contact forces
+   * are whatever the wall and obstacles are pushing with. Backward Euler on the elastic
+   * and internal-damping terms, which are constant matrices and so cost nothing here but
+   * remove the stiffest timescale from the stability condition entirely. */
+  stepBody(dt: f64): void {
+    const n = G.N_LINKS, N = n + 2, l = G.BODY_L, J = G.N_JOINTS;
+    this.dragMatrix();
+    const Q = this.Qv;
+    for (let i = 0; i < N; i++) unchecked(Q[i] = 0.0);
+
+    // Elastic restoring torque plus the active moment, mapped through Dif^T.
+    for (let j = 0; j < J; j++) {
+      const joint = unchecked(this.theta[j + 1]) - unchecked(this.theta[j]);
+      const tq = -m(G.OFF_body_K, j) * joint + unchecked(this.moment[j]);
+      unchecked(Q[2 + j] -= tq);
+      unchecked(Q[2 + j + 1] += tq);
+    }
+    // A force at node j moves the head coordinate and rotates every joint anterior to it.
+    let sx: f64 = 0.0, sy: f64 = 0.0;
+    for (let i = 0; i <= n; i++) {
+      unchecked(Q[0] += unchecked(this.contactX[i]));
+      unchecked(Q[1] += unchecked(this.contactY[i]));
+    }
+    for (let mm = n - 1; mm >= 0; mm--) {
+      sx += unchecked(this.contactX[mm + 1]);
+      sy += unchecked(this.contactY[mm + 1]);
+      unchecked(Q[2 + mm] += l * (unchecked(this.nxv[mm]) * sx + unchecked(this.nyv[mm]) * sy));
+    }
+
+    for (let a = 0; a < n; a++) {
+      for (let b2 = 0; b2 < n; b2++) {
+        const idx = a * n + b2;
+        unchecked(this.Dm[(2 + a) * N + (2 + b2)] +=
+          m(G.OFF_body_B_mat, idx) + dt * m(G.OFF_body_K_mat, idx));
+      }
+    }
+    if (!solveInPlace(this.Dm, Q, N)) return;
+    for (let i = 0; i < N; i++) unchecked(this.qdot[i] = unchecked(Q[i]));
+    this.bx += unchecked(Q[0]) * dt;
+    this.by += unchecked(Q[1]) * dt;
+    for (let i = 0; i < n; i++) unchecked(this.theta[i] += unchecked(Q[2 + i]) * dt);
+    this.updateNodes();
+  }
+
+  /* --------------------------------------------------------------------- modulators --
+   * One slow scalar each, produced by named source neurons in proportion to their
+   * activity. An ablated source is masked out elsewhere; here every cell is alive. */
+  stepModulators(): void {
+    this.modDA  = this.modLevel(this.modDA,  G.OFF_idx_mod_dopamine,  G.LEN_idx_mod_dopamine,  G.MOD_RATE_DOPAMINE);
+    this.modSER = this.modLevel(this.modSER, G.OFF_idx_mod_serotonin, G.LEN_idx_mod_serotonin, G.MOD_RATE_SEROTONIN);
+    this.modOA  = this.modLevel(this.modOA,  G.OFF_idx_mod_octopamine,G.LEN_idx_mod_octopamine,G.MOD_RATE_OCTOPAMINE);
+    this.modPDF = this.modLevel(this.modPDF, G.OFF_idx_mod_pdf,       G.LEN_idx_mod_pdf,       G.MOD_RATE_PDF);
+  }
+  modLevel(level: f64, off: usize, len: i32, rate: f64): f64 {
+    if (len == 0) return level;
+    let acc: f64 = 0.0;
+    for (let i = 0; i < len; i++) acc += unchecked(this.act[mi(off, i)]);
+    // Levels are deviations from a resting release of exactly 0.5: every sigmoid midpoint
+    // sits at its own resting potential by construction, so phi(V_rest) = 1/2.
+    const target = acc / <f64>len - 0.5;
+    return level + (target - level) * rate;
+  }
+  turnBias(): f64 { return G.MOD_SEROTONIN_TURNING * this.modSER - G.MOD_PDF_ROAMING * this.modPDF; }
+  locomotorScale(): f64 {
+    return clamp(1.0 - G.MOD_DOPAMINE_SLOWING * this.modDA
+                     - G.MOD_SEROTONIN_SLOWING * this.modSER
+                     + G.MOD_OCTOPAMINE_SPEEDING * this.modOA, 0.25, 1.6);
+  }
+  wavelengthShortening(): f64 { return clamp(G.MOD_DOPAMINE_WAVELENGTH * this.modDA, 0.0, 1.0); }
+
+  /* ------------------------------------------------------------------------ senses --- */
+  @inline addTo(off: usize, len: i32, v: f64): void {
+    for (let i = 0; i < len; i++) unchecked(this.Iext[mi(off, i)] += v);
+  }
+  sense(): void {
+    const n = G.N_NEURONS, dt = G.DT;
+    for (let i = 0; i < n; i++) unchecked(this.Iext[i] = 0.0);
+    const nx = unchecked(this.nodesX[0]), ny = unchecked(this.nodesY[0]);
+
+    // -- chemosensation. Sensation is differential: each channel keeps an adapting
+    //    baseline and reports the deviation, so a worm in a uniform concentration --
+    //    however high -- stops responding to it within seconds.
+    const c = world.sample(world.attractant, nx, ny);
+    const rep = world.sample(world.repellent, nx, ny);
+    const T = world.temperature(nx);
+    const o2 = world.oxygen(nx, ny);
+    const food = world.sample(world.food, nx, ny);
+    if (!this.adaptReady) {
+      this.cAdapt = c; this.odourAdapt = c; this.tAdapt = G.SEN_CULTIVATION_TEMP;
+      this.o2Adapt = o2; this.adaptReady = true;
+    }
+    this.sensedAtt = c; this.sensedRep = rep; this.sensedT = T;
+    this.sensedO2 = o2; this.sensedFood = food;
+
+    const dc = c - this.cAdapt;
+    this.cAdapt += (c - this.cAdapt) * (1.0 - G.CHEM_DECAY);
+    this.addTo(G.OFF_idx_ase_on, G.LEN_idx_ase_on, G.SEN_CHEMO_GAIN * dc);
+    this.addTo(G.OFF_idx_ase_off, G.LEN_idx_ase_off, -G.SEN_CHEMO_GAIN * dc);
+
+    const dodour = c - this.odourAdapt;
+    this.odourAdapt += (c - this.odourAdapt) * G.ODOUR_RATE;
+    this.addTo(G.OFF_idx_awa, G.LEN_idx_awa, G.SEN_CHEMO_GAIN * 0.6 * dodour);
+    this.addTo(G.OFF_idx_awc, G.LEN_idx_awc, -G.SEN_CHEMO_GAIN * 0.6 * dodour);
+
+    this.addTo(G.OFF_idx_ash, G.LEN_idx_ash, G.SEN_CHEMO_GAIN * 1.6 * rep);
+    this.addTo(G.OFF_idx_adl, G.LEN_idx_adl, G.SEN_CHEMO_GAIN * 0.8 * rep);
+    this.addTo(G.OFF_idx_ask, G.LEN_idx_ask, -G.SEN_CHEMO_GAIN * 0.3 * rep);
+
+    // -- thermosensation. AFD is a warm receptor above the cultivation temperature and
+    //    silent below it.
+    const dT = T - this.tAdapt;
+    this.tAdapt += (T - this.tAdapt) * (1.0 - G.THERM_DECAY);
+    this.addTo(G.OFF_idx_afd, G.LEN_idx_afd, G.SEN_THERMO_GAIN * (dT < -0.5 ? -0.5 : dT));
+
+    // -- oxygen. Tonic and differential, and the differential is what makes the taxis
+    //    point the right way.
+    const do2 = o2 - this.o2Adapt;
+    this.o2Adapt += (o2 - this.o2Adapt) * G.O2_RATE;
+    this.addTo(G.OFF_idx_urx, G.LEN_idx_urx,
+               G.SEN_OXYGEN_GAIN * (o2 - G.SEN_OXYGEN_PREFERRED) + G.SEN_OXYGEN_D_GAIN * do2);
+
+    // -- mechanosensation. Smoothed contact, not accumulated: as an exponential moving
+    //    average the steady state is the force itself, and does not scale with 1/dt.
+    const half = (G.N_LINKS + 1) / 2;
+    let ant: f64 = this.pokeA, post: f64 = this.pokeP;
+    let mag0: f64 = 0.0, mag1: f64 = 0.0;
+    for (let i = 0; i <= G.N_LINKS; i++) {
+      const fxv = unchecked(this.contactX[i]), fyv = unchecked(this.contactY[i]);
+      const mg = Math.sqrt(fxv * fxv + fyv * fyv);
+      if (i == 0) mag0 = mg; else if (i == 1) mag1 = mg;
+      if (i < half) ant += mg; else post += mg;
+    }
+    this.touchA += (ant - this.touchA) * G.TOUCH_RATE;
+    this.touchP += (post - this.touchP) * G.TOUCH_RATE;
+    this.pokeA = 0.0; this.pokeP = 0.0;
+    if (G.HABITUATES) {
+      const rA = G.HAB_RECOVER + G.HAB_USE * this.touchA;
+      const rP = G.HAB_RECOVER + G.HAB_USE * this.touchP;
+      const iA = G.HAB_RECOVER / rA, iP = G.HAB_RECOVER / rP;
+      this.availA = iA + (this.availA - iA) * Math.exp(-rA * dt);
+      this.availP = iP + (this.availP - iP) * Math.exp(-rP * dt);
+    }
+    this.addTo(G.OFF_idx_touch_ant, G.LEN_idx_touch_ant, G.SEN_TOUCH_GAIN * this.touchA * this.availA);
+    this.addTo(G.OFF_idx_touch_post, G.LEN_idx_touch_post, G.SEN_TOUCH_GAIN * this.touchP * this.availP);
+    this.addTo(G.OFF_idx_nose_touch, G.LEN_idx_nose_touch, G.SEN_TOUCH_GAIN * 0.5 * (mag0 + mag1));
+
+    // -- food, sensed by the dopaminergic mechanoreceptors and tasted by NSM
+    this.addTo(G.OFF_idx_dopaminergic, G.LEN_idx_dopaminergic, G.SEN_FOOD_GAIN * food);
+    this.addTo(G.OFF_idx_nsm, G.LEN_idx_nsm, G.SEN_FOOD_GAIN * food);
+
+    // -- locomotory command bias: a bias, not a clamp
+    this.addTo(G.OFF_idx_avb, G.LEN_idx_avb, G.SEN_TONIC_FORWARD);
+    this.addTo(G.OFF_idx_ava, G.LEN_idx_ava, G.SEN_TONIC_BACKWARD);
+
+    // -- the direction decision. Read the *difference* between the pools: absolute
+    //    activity has no dynamic range (AVB saturates and stays saturated), but the
+    //    difference moves whenever either pool is driven.
+    let fa: f64 = 0.0, ba: f64 = 0.0;
+    for (let i = 0; i < G.LEN_idx_avb; i++) fa += unchecked(this.act[mi(G.OFF_idx_avb, i)]);
+    for (let i = 0; i < G.LEN_idx_ava; i++) ba += unchecked(this.act[mi(G.OFF_idx_ava, i)]);
+    fa /= <f64>G.LEN_idx_avb; ba /= <f64>G.LEN_idx_ava;
+    // Bounded, so no modulator can shift the latch window clear of the operating point
+    // and turn the Schmitt trigger into a one-way latch.
+    const lim = G.SEN_TURN_BIAS_LIMIT * G.SEN_GATE_HYSTERESIS;
+    const bias = G.SEN_GATE_BIAS + clamp(this.turnBias(), -lim, lim);
+    const diff = fa - ba;
+    let fwd: f64;
+    if (G.GATE_LATCHED) {
+      if (this.goingForward) {
+        if (diff < bias - G.SEN_GATE_HYSTERESIS) this.goingForward = false;
+      } else if (diff > bias + G.SEN_GATE_HYSTERESIS) this.goingForward = true;
+      fwd = this.goingForward ? 1.0 : 0.0;
+    } else {
+      fwd = 1.0 / (1.0 + Math.exp(-G.SEN_GATE_SLOPE * (diff - bias)));
+    }
+    const bwd = 1.0 - fwd;
+
+    // -- the omega turn: a transient locked to the reversal-to-forward *edge*
+    const forwardNow = fwd >= 0.5;
+    if (forwardNow) {
+      if (this.revSteps > 0) {
+        this.omega = Math.min(1.0, <f64>this.revSteps / G.OMEGA_REF_N);
+        this.omegaSign = this.rng.uniform() < G.SEN_OMEGA_VENTRAL_FRACTION ? 1.0 : -1.0;
+        this.revSteps = 0;
+      }
+    } else {
+      this.revSteps++;
+      this.omega = 0.0;
+    }
+    this.omega *= G.OMEGA_DECAY;
+    if (G.SEN_OMEGA_CURRENT > 0.0 && this.omega > 1e-4) {
+      // A differential, not a push: releasing the dorsal antagonist is worth an order of
+      // magnitude more than driving the ventral side harder, which saturates.
+      const dOm = G.SEN_OMEGA_CURRENT * this.omega * this.omegaSign;
+      this.addTo(G.OFF_idx_omega_v, G.LEN_idx_omega_v, dOm);
+      this.addTo(G.OFF_idx_omega_d, G.LEN_idx_omega_d, -dOm);
+    }
+
+    // -- descending drive to the selected cord. The B and A motor neurons only oscillate
+    //    when their command interneuron is engaged, so the drive follows the gate.
+    const drive = G.SEN_CORD_DRIVE * this.locomotorScale();
+    this.addTo(G.OFF_idx_db, G.LEN_idx_db, drive * fwd);
+    this.addTo(G.OFF_idx_vb, G.LEN_idx_vb, drive * fwd);
+    this.addTo(G.OFF_idx_da, G.LEN_idx_da, drive * bwd);
+    this.addTo(G.OFF_idx_va, G.LEN_idx_va, drive * bwd);
+
+    // -- proprioception. Normalised curvature; 5 /mm is roughly the peak a crawling worm
+    //    reaches. Adapt out the static component before the receptor saturates on it.
+    const J = G.N_JOINTS;
+    for (let j = 0; j < J; j++) unchecked(this.kn[j] = clamp(unchecked(this.kappa[j]) / 5.0, -2.0, 2.0));
+    const short = this.wavelengthShortening();
+    for (let r = 0; r < n; r++) {
+      let wb: f64 = 0.0, wa: f64 = 0.0;
+      const rb = B + G.OFF_W_b + (<usize>(r * J) << 3);
+      const ra = B + G.OFF_W_a + (<usize>(r * J) << 3);
+      for (let j = 0; j < J; j++) {
+        const kv = unchecked(this.kn[j]); const o = <usize>j << 3;
+        wb += load<f64>(rb + o) * kv;
+        wa += load<f64>(ra + o) * kv;
+      }
+      if (short > 1e-6) {
+        // Basal slowing: shorten the wave rather than weaken the drive, because the
+        // frequency is mechanics-set and will not move.
+        let wbf: f64 = 0.0, waf: f64 = 0.0;
+        const rbf = B + G.OFF_W_b_food + (<usize>(r * J) << 3);
+        const raf = B + G.OFF_W_a_food + (<usize>(r * J) << 3);
+        for (let j = 0; j < J; j++) {
+          const kv = unchecked(this.kn[j]); const o = <usize>j << 3;
+          wbf += load<f64>(rbf + o) * kv;
+          waf += load<f64>(raf + o) * kv;
+        }
+        wb = (1.0 - short) * wb + short * wbf;
+        wa = (1.0 - short) * wa + short * waf;
+      }
+      const raw = wb * fwd + wa * bwd;
+      unchecked(this.propAdapt[r] += (raw - unchecked(this.propAdapt[r])) * G.PROP_ADAPT_RATE);
+      unchecked(this.Iext[r] += Math.tanh(raw - unchecked(this.propAdapt[r]))
+                * G.SEN_PROPRIO_GAIN * m(G.OFF_g_scale_prop, r));
+    }
+
+    // -- the head reflex. It runs whichever way the animal is going: it is what keeps the
+    //    nose sweeping, and the sweep is what steering acts on.
+    let headOff: i32 = 0;
+    if (G.HEAD_DELAY_N > 0) {
+      // Buffer the curvature, not the reduced signal, so the delay sits where a
+      // transduction delay physically would -- between strain and receptor.
+      const wslot = this.headHistI * J;
+      for (let j = 0; j < J; j++) unchecked(this.headHist[wslot + j] = unchecked(this.kn[j]));
+      this.headHistI = (this.headHistI + 1) % (G.HEAD_DELAY_N + 1);
+      headOff = this.headHistI * J;
+    }
+    let headGain = G.SEN_HEAD_PROPRIO_GAIN;
+    if (G.SEN_OMEGA_REFLEX_SUPPRESSION > 0.0 && Math.abs(this.omega) > 1e-4) {
+      const f = 1.0 - G.SEN_OMEGA_REFLEX_SUPPRESSION * Math.abs(this.omega);
+      headGain *= f > 0.0 ? f : 0.0;
+    }
+    if (G.HEAD_DISTRIBUTED) {
+      for (let r = 0; r < n; r++) {
+        let raw: f64 = 0.0;
+        const row = B + G.OFF_W_head + (<usize>(r * J) << 3);
+        for (let j = 0; j < J; j++) {
+          const kv = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j]) : unchecked(this.kn[j]);
+          raw += load<f64>(row + (<usize>j << 3)) * kv;
+        }
+        unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
+        unchecked(this.Iext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+                  * m(G.OFF_g_scale_head, r));
+      }
+    } else {
+      let raw: f64 = 0.0;
+      for (let j = 0; j < J; j++) {
+        const kv = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j]) : unchecked(this.kn[j]);
+        raw += m(G.OFF_head_window, j) * kv;
+      }
+      unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
+      const v = Math.tanh(unchecked(this.headSignal[0])) * headGain;
+      for (let r = 0; r < n; r++) {
+        unchecked(this.Iext[r] += m(G.OFF_W_head_sign, r) * m(G.OFF_g_scale_head, r) * v);
+      }
+    }
+  }
+
+  /* ----------------------------------------------------------------------- pharynx --- */
+  @inline meanDev(off: usize, len: i32): f64 {
+    if (len == 0) return 0.0;
+    let acc: f64 = 0.0;
+    for (let i = 0; i < len; i++) acc += unchecked(this.act[mi(off, i)]);
+    return acc / <f64>len - 0.5;
+  }
+  stepPharynx(foodAtMouth: f64): f64 {
+    const dt = G.DT;
+    // Serotonin acts *through* the pacemaker rather than beside it: SER-7 sits in MC, so
+    // an animal without MC does not pump fast however much serotonin it has.
+    let mc = this.meanDev(G.OFF_idx_mc, G.LEN_idx_mc);
+    mc += G.PH_SEROTONIN_TO_MC * this.modSER - G.PH_OCTOPAMINE_TO_MC * this.modOA;
+    const i2 = this.meanDev(G.OFF_idx_i2, G.LEN_idx_i2);
+    this.phRate = clamp(G.PH_MYOGENIC_RATE + G.PH_MC_RATE_GAIN * mc - G.PH_I2_RATE_GAIN * i2,
+                        0.0, G.PH_MAX_RATE);
+
+    // The cycle runs during the pump as well as between pumps, so the rate is the one the
+    // animal achieves; what remains is a refractory period, capping it at 1/duration.
+    this.phPhase += this.phRate * dt;
+    if (this.phPumping) {
+      this.phOpen -= dt;
+      if (this.phOpen <= 0.0) this.phPumping = false;
+    }
+    if (!this.phPumping && this.phPhase >= 1.0) {
+      this.phPhase = 0.0;
+      const m3 = this.meanDev(G.OFF_idx_m3, G.LEN_idx_m3);
+      this.phDur = G.PH_PUMP_DURATION / (1.0 + G.PH_M3_DURATION_GAIN * (m3 > 0.0 ? m3 : 0.0));
+      this.phOpen = this.phDur;
+      this.phPumping = true;
+      this.phPumps++;
+      const room = 1.0 - this.lumen / G.PH_LUMEN_CAPACITY;
+      this.lumen += G.PH_VOLUME_PER_PUMP * (foodAtMouth > 0.0 ? foodAtMouth : 0.0)
+                    * (this.phDur / G.PH_PUMP_DURATION) * (room > 0.0 ? room : 0.0);
+    }
+    // Isthmus peristalsis. M4 is what moves the lumen's contents on; without it the
+    // animal pumps normally and starves, so transport is its own step.
+    const m4 = this.meanDev(G.OFF_idx_m4, G.LEN_idx_m4);
+    const drv = G.PH_M4_TRANSPORT + G.PH_M4_GAIN * (m4 > 0.0 ? m4 : 0.0);
+    let moved = this.lumen * (drv > 0.0 ? drv : 0.0) * dt;
+    if (moved > this.lumen) moved = this.lumen;
+    this.lumen -= moved;
+    this.ingested += moved;
+    return moved;
+  }
+
+  /* ------------------------------------------------------------------- a whole step -- */
+  step(): void {
+    this.activation();
+    // The modulators read the same activation the senses do and are updated first, so the
+    // wireless layer is one step behind the wired one -- the same consistent unit delay
+    // used everywhere else in this model.
+    this.stepModulators();
+    this.sense();
+    this.stepNervous();
+    this.stepMuscle();
+    this.contact();
+    this.jointMoment();
+    const sub = G.BODY_SUBSTEPS;
+    if (sub > 1) {
+      const d = G.DT / <f64>sub;
+      for (let i = 0; i < sub; i++) this.stepBody(d);
+    } else {
+      this.stepBody(G.DT);
+    }
+    const food = world.sample(world.food, unchecked(this.nodesX[0]), unchecked(this.nodesY[0]));
+    const moved = this.stepPharynx(food);
+    if (moved > 0.0) this.eaten += world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), moved);
+    this.t += G.DT;
+  }
+
+  contact(): void {
+    const n = G.N_LINKS;
+    const stiff: f64 = 40.0, R = world.extent - 0.05;
+    for (let i = 0; i <= n; i++) {
+      const x = unchecked(this.nodesX[i]), y = unchecked(this.nodesY[i]);
+      const r = Math.sqrt(x * x + y * y);
+      const over = r - R;
+      if (over > 0.0) {
+        const inv = 1.0 / (r > 1e-9 ? r : 1e-9);
+        unchecked(this.contactX[i] = -stiff * over * x * inv);
+        unchecked(this.contactY[i] = -stiff * over * y * inv);
+      } else {
+        unchecked(this.contactX[i] = 0.0);
+        unchecked(this.contactY[i] = 0.0);
+      }
+    }
+  }
+}
+
+// Noise can be switched off, which is what makes the two implementations comparable at
+// all: see the note at the top of this file.
+let noiseOn: bool = true;
+
+let worms: Worm[] = [];
+
+// -------------------------------------------------------------------------- exported --
+
+export function initWorld(): void { world = new World(); }
+export function addFood(x: f64, y: f64, r: f64, d: f64, att: f64, ls: f64): void {
+  world.addPatch(x, y, r, d, att, ls);
+}
+export function addRepellent(x: f64, y: f64, s: f64, ls: f64): void {
+  world.addRepellent(x, y, s, ls);
+}
+export function createWorm(seed: i32, x: f64, y: f64, heading: f64): i32 {
+  worms.push(new Worm(<u64>seed, x, y, heading));
+  return worms.length - 1;
+}
+export function wormCount(): i32 { return worms.length; }
+export function setMedium(ct: f64, cn: f64): void {
+  for (let i = 0; i < worms.length; i++) { worms[i].cT = ct; worms[i].cN = cn; }
+}
+
+// Drive the body directly, which is what the conformance test for the mechanics needs:
+// a prescribed moment, no biology, the same numbers on both sides.
+export function setMoment(w: i32, j: i32, v: f64): void { unchecked(worms[w].moment[j] = v); }
+export function stepBodyOnly(w: i32, dt: f64, steps: i32): void {
+  const wm = worms[w];
+  for (let i = 0; i < steps; i++) { wm.contact(); wm.stepBody(dt); wm.t += dt; }
+}
+
+export function setNoise(on: i32): void { noiseOn = on != 0; }
+export function step(w: i32, n: i32): void {
+  const wm = worms[w];
+  for (let i = 0; i < n; i++) wm.step();
+}
+export function stepAll(n: i32): void {
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < worms.length; k++) worms[k].step();
+  }
+}
+export function ptrAct(w: i32): usize { return changetype<usize>(worms[w].act); }
+export function ptrV(w: i32): usize { return changetype<usize>(worms[w].V); }
+export function ptrTension(w: i32): usize { return changetype<usize>(worms[w].mTen); }
+export function getPumpRate(w: i32): f64 { return worms[w].phRate; }
+export function getPumping(w: i32): f64 { return worms[w].phPumping ? 1.0 : 0.0; }
+export function getLumen(w: i32): f64 { return worms[w].lumen; }
+export function getEaten(w: i32): f64 { return worms[w].eaten; }
+export function getGateForward(w: i32): f64 { return worms[w].goingForward ? 1.0 : 0.0; }
+export function getOmega(w: i32): f64 { return worms[w].omega * worms[w].omegaSign; }
+export function getSensed(w: i32, which: i32): f64 {
+  const wm = worms[w];
+  if (which == 0) return wm.sensedAtt;
+  if (which == 1) return wm.sensedT;
+  if (which == 2) return wm.sensedO2;
+  if (which == 3) return wm.sensedFood;
+  if (which == 4) return wm.touchA + wm.touchP;
+  if (which == 5) return wm.sensedRep;
+  if (which == 6) return 0.5 * (wm.availA + wm.availP);
+  if (which == 7) return wm.modSER;
+  if (which == 8) return wm.modDA;
+  return 0.0;
+}
+export function pokeWorm(w: i32, anterior: i32, strength: f64): void {
+  const wm = worms[w];
+  if (anterior != 0) wm.pokeA += strength; else wm.pokeP += strength;
+}
+export function ptrNodesX(w: i32): usize { return changetype<usize>(worms[w].nodesX); }
+export function ptrNodesY(w: i32): usize { return changetype<usize>(worms[w].nodesY); }
+export function ptrKappa(w: i32): usize { return changetype<usize>(worms[w].kappa); }
+export function ptrTheta(w: i32): usize { return changetype<usize>(worms[w].theta); }
+export function ptrFood(): usize { return changetype<usize>(world.food); }
+export function ptrAttractant(): usize { return changetype<usize>(world.attractant); }
+export function ptrRepellent(): usize { return changetype<usize>(world.repellent); }
+export function ptrO2(): usize { return changetype<usize>(world.o2); }
+
+export function getX(w: i32): f64 { return worms[w].bx; }
+export function getY(w: i32): f64 { return worms[w].by; }
+export function getTime(w: i32): f64 { return worms[w].t; }
+export function sampleFood(x: f64, y: f64): f64 { return world.sample(world.food, x, y); }
+export function sampleO2(x: f64, y: f64): f64 { return world.oxygen(x, y); }
