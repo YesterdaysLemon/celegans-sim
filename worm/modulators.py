@@ -89,9 +89,22 @@ class Modulators:
             self._mod1_peak[idx] = p.serotonin_mod1 * g
         self._any_mod1 = bool(np.any(self._mod1_peak != 0.0))
 
-    def step(self, activation: np.ndarray) -> None:
+    def step(self, activation: np.ndarray, alive: np.ndarray | None = None) -> None:
+        """Advance every level. `alive` masks out ablated source cells.
+
+        Without that mask an ablated source does not fall silent -- it signals the
+        *opposite*. Levels are deviations from a resting release of 0.5, and an ablated
+        neuron reads 0.0, so killing NSM used to drive serotonin to -0.133 where it should
+        have gone to zero, and flipped the serotonergic turn bias from +0.090 to -0.080.
+        Every ablation experiment touching a modulator source was reading a sign error.
+        """
         for name in self.NAMES:
-            target = float(np.mean(activation[self.sources[name]])) - self.baseline
+            idx = self.sources[name]
+            if alive is not None:
+                idx = idx[alive[idx]]
+            # No source left means no signal, which is not the same as a signal of zero.
+            target = (float(np.mean(activation[idx])) - self.baseline
+                      if len(idx) else 0.0)
             self.level[name] += (target - self.level[name]) * self._rate[name]
 
     # ------------------------------------------------------------------------- effects

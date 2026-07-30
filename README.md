@@ -576,6 +576,7 @@ worm/body.py        the elastica and resistive force theory
 worm/world.py       dish, food, chemical fields, obstacles
 worm/senses.py      sensory transduction and proprioception
 worm/engine.py      the closed loop
+worm/pharynx.py     feeding: a myogenic pump the pharyngeal neurons modulate
 worm/server.py      WebSocket telemetry and static file serving
 tools/build_dataset.py  raw anatomy -> validated dataset, assertion-heavy
 tools/kymo.py           ASCII kymograph — the fastest way to see what the body is doing
@@ -595,6 +596,7 @@ tools/head_circuit.py   lumped against distributed head reflex, scored on the wa
 tools/thrust.py         what speed the mechanics allow, and what the circuit collects
 tools/ase_opponency.py  which way round the ON and OFF chemosensors should push
 tools/omega.py          can the omega turn be bought by amplifying RIV? (no, and why)
+tools/pharynx.py        pump rate on and off food, and five ablation phenotypes
 tools/stats.py          bootstrap intervals, and the paired comparison behind compare.py
 tools/compare.py        A/B two configurations on identical seeds, with paired intervals
 tools/scorecard.py      every headline number at once, across seeds, in three media
