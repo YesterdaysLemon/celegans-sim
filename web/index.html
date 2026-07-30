@@ -19,46 +19,75 @@
       <div class="stat"><div class="label">Speed</div><div class="value" id="s-speed">0<small>&micro;m/s</small></div></div>
       <div class="stat"><div class="label">Undulation</div><div class="value" id="s-freq">&mdash;<small>Hz</small></div></div>
       <div class="stat"><div class="label">Heading</div><div class="value" id="s-dir">&mdash;</div></div>
+      <div class="stat pump"><div class="label">Pumping <i id="pump-dot"></i></div><div class="value" id="s-pump">0<small>/min</small></div></div>
       <div class="stat"><div class="label">Eaten</div><div class="value" id="s-food">0</div></div>
       <div class="stat"><div class="label">Sim rate</div><div class="value" id="s-rate">0<small>&times;</small></div></div>
     </div>
   </header>
 
-  <section class="panel" id="dish">
-    <h2>Dish</h2>
-    <span class="hint" id="dish-hint">click to drop a bacterial lawn</span>
+  <section id="dish">
     <canvas id="c-dish"></canvas>
+
+    <!-- Floating over the dish rather than in the footer: these change what you are
+         looking at, so they belong on the thing being looked at. -->
+    <div class="floating tl">
+      <div class="seg" role="group" aria-label="View style">
+        <button data-view="digital" aria-pressed="true">Digital</button>
+        <button data-view="cartoon" aria-pressed="false">Cartoon</button>
+        <button data-view="realistic" aria-pressed="false">Realistic</button>
+      </div>
+    </div>
+
+    <div class="floating tr">
+      <div class="chips" role="group" aria-label="Layers">
+        <button class="chip" data-layer="food" aria-pressed="true"><i class="sw food"></i>Food</button>
+        <button class="chip" data-layer="attractant" aria-pressed="true"><i class="sw att"></i>Attractant</button>
+        <button class="chip" data-layer="repellent" aria-pressed="true"><i class="sw rep"></i>Repellent</button>
+        <button class="chip" data-layer="grid" aria-pressed="true"><i class="sw grid"></i>Grid</button>
+        <button class="chip" data-layer="trail" aria-pressed="true"><i class="sw trail"></i>Trail</button>
+      </div>
+    </div>
+
+    <div class="floating bl">
+      <div class="seg" role="group" aria-label="Camera">
+        <button data-cam="follow" aria-pressed="true" title="Keep the animal in frame">Follow</button>
+        <button data-cam="free" aria-pressed="false" title="Stay put; drag to pan">Free</button>
+        <button id="b-centre" class="ghost" title="Centre on the animal">Centre</button>
+      </div>
+      <div class="zoomrow">
+        <button id="b-zout" class="ghost sq" title="Zoom out">&minus;</button>
+        <button id="b-zin" class="ghost sq" title="Zoom in">+</button>
+        <span class="readout" id="o-zoom">6.5 mm</span>
+      </div>
+    </div>
+
+    <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn</span>
   </section>
 
-  <aside>
-    <section class="panel">
-      <h2>Nervous system</h2>
-      <span class="hint" id="neuron-hint">hover a neuron</span>
-      <canvas id="c-neurons"></canvas>
+  <aside id="rail">
+    <section class="panel" data-panel="neurons">
+      <button class="phead"><span class="chev"></span><h2>Nervous system</h2><span class="hint" id="neuron-hint">hover a neuron</span></button>
+      <div class="pbody"><canvas id="c-neurons"></canvas></div>
     </section>
 
-    <section class="panel" style="height:118px">
-      <h2>Body-wall muscle</h2>
-      <span class="hint">4 quadrants &times; 24</span>
-      <canvas id="c-muscle"></canvas>
+    <section class="panel" data-panel="muscle" style="--basis:104px">
+      <button class="phead"><span class="chev"></span><h2>Body-wall muscle</h2><span class="hint">4 quadrants &times; 24</span></button>
+      <div class="pbody"><canvas id="c-muscle"></canvas></div>
     </section>
 
-    <section class="panel">
-      <h2>Curvature kymograph</h2>
-      <span class="hint">head &rarr; tail, 20 s</span>
-      <canvas id="c-kymo"></canvas>
+    <section class="panel" data-panel="kymo">
+      <button class="phead"><span class="chev"></span><h2>Curvature kymograph</h2><span class="hint">head &rarr; tail, 20 s</span></button>
+      <div class="pbody"><canvas id="c-kymo"></canvas></div>
     </section>
 
-    <section class="panel">
-      <h2>Membrane potential</h2>
-      <span class="hint" id="trace-hint">&mdash;</span>
-      <canvas id="c-trace"></canvas>
+    <section class="panel" data-panel="trace">
+      <button class="phead"><span class="chev"></span><h2>Membrane potential</h2><span class="hint" id="trace-hint">&mdash;</span></button>
+      <div class="pbody"><canvas id="c-trace"></canvas></div>
     </section>
 
-    <section class="panel">
-      <h2>What it senses</h2>
-      <span class="hint" id="sense-hint">receptors are live</span>
-      <div id="senses"></div>
+    <section class="panel" data-panel="senses" style="--basis:158px">
+      <button class="phead"><span class="chev"></span><h2>What it senses</h2><span class="hint">receptors are live</span></button>
+      <div class="pbody"><div id="senses"></div></div>
     </section>
   </aside>
 
@@ -94,24 +123,11 @@
     </div>
 
     <div class="group">
-      <span class="cap">Camera</span>
-      <button id="b-follow" aria-pressed="true">Follow</button>
+      <span class="cap">Panels</span>
+      <button id="b-rail" aria-pressed="true">Shown</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Overlay</span>
-      <button data-field="attractant" aria-pressed="true">Attractant</button>
-      <button data-field="food">Food</button>
-      <button data-field="repellent">Repellent</button>
-      <button data-field="none">None</button>
-    </div>
-
-    <div class="legend">
-      <span><i style="background:var(--dorsal)"></i>dorsal</span>
-      <span><i style="background:var(--ventral)"></i>ventral</span>
-      <span><i style="background:var(--series-3)"></i>sensory</span>
-      <span><i style="background:var(--series-4)"></i>motor</span>
-    </div>
+    <div class="legend" id="legend"></div>
   </footer>
 
 </div>

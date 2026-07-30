@@ -180,8 +180,9 @@ class Runner:
             kappa = sim.body.curvature().astype(np.float32)
             r = sim.senses.readout
             direction = {"forward": 1.0, "backward": -1.0, "still": 0.0}[sim.direction()]
+            ph = sim.pharynx.readout()
             header = struct.pack(
-                "<6I14f",
+                "<6I17f",
                 MAGIC, len(nodes) // 2, len(act), len(tension), len(kappa),
                 1 if self.running else 0,
                 sim.t, sim.speed, sim.food_eaten, direction, self.achieved,
@@ -190,6 +191,8 @@ class Runner:
                 r.get("gate_forward", 0.0), r.get("gate_backward", 0.0),
                 r.get("repellent", 0.0),
                 r.get("habituation", 1.0),
+                # Feeding, for the viewer's pump indicator. See worm/pharynx.py.
+                ph["pump_rate"], ph["pumping"], ph["lumen"],
             )
         return b"".join([header, nodes.tobytes(), act.tobytes(), volt.tobytes(),
                          tension.tobytes(), kappa.tobytes()])

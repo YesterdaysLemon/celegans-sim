@@ -552,18 +552,42 @@ responding to it within seconds.
 
 `web/` is a single page with no build step and no dependencies. Telemetry is packed
 float32 over a WebSocket at 30 Hz — 302 voltages, 302 activations, 95 muscle tensions, the
-body outline and the curvature profile, about 3 kB a frame. The chemical fields are larger
-and change slowly, so they go separately as downsampled 8-bit images every two seconds.
+body outline, the curvature profile and the pharyngeal pump, about 3 kB a frame. The
+chemical fields are larger and change slowly, so they go separately as downsampled 8-bit
+images every two seconds.
 
-Four views: the dish, with the worm coloured by local curvature and a minimap; all 302
-neurons ordered head to tail and coloured by activation, hover for identity and click to
-plot; the four muscle quadrants; and a scrolling curvature kymograph. Transport controls
-change the medium under the animal live, poke it at either end, and drop new food where you
-click.
+**The dish has three looks**, and they are more than a palette swap — each is a different
+claim about what you are looking at:
 
-Colour follows a validated data-visualisation palette: one sequential hue for magnitudes
-(activation, tension), and the diverging blue-red pair with a neutral grey midpoint for
-signed curvature, so "straight" reads as nothing rather than as a colour.
+- **Digital** — this is data. Near-black plate, a fixed grid, the body tinted by signed
+  curvature so the travelling wave reads as a wave rather than a wiggle.
+- **Cartoon** — this is a diagram. Flat fills, a heavy ink outline, segment ticks and one
+  obvious eye. Nothing is shaded, so nothing implies depth the model does not have.
+- **Realistic** — this is an animal on a plate. Grainy warm agar with a vignette, a
+  translucent amber body with a gut line, a specular flank, a contact shadow, and the
+  pharynx visible as a paler bulb behind the nose.
+
+Only the dish changes. The panels stay in the data palette in all three, because they are
+measurements and should not be dressed up.
+
+All three chemical fields draw **in the dish** and composite by weight rather than
+painting over one another, so a lawn sitting inside an attractant gradient shows as both —
+and the two things the animal is actually choosing between, somewhere to sit and something
+to avoid, can finally be seen at the same time. Each layer is a chip that carries its own
+swatch, so the legend is the control.
+
+The camera **follows** the animal with a deadzone, or you can **drag to pan** and it
+detaches by itself; scroll or the zoom buttons change the window, and the minimap shows
+where that window sits in the dish. Every side panel collapses from its header, and the
+whole rail folds away for a full-width view of the animal. `f` toggles follow, `h` hides
+the rail, `1`/`2`/`3` switch the look.
+
+Four measurement views: all 302 neurons ordered head to tail and coloured by activation,
+hover for identity and click to plot; the four muscle quadrants; a scrolling curvature
+kymograph; live membrane traces. Transport controls change the medium under the animal
+live, poke it at either end, ablate neurons by clicking them, and drop new food where you
+double-click. A lamp in the header flashes once per pharyngeal pump — at 250 a minute on
+food that is a flicker, and off food an occasional blink.
 
 ## Layout
 

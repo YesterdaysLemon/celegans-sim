@@ -1,7 +1,14 @@
 /* celegans-sim viewer.
+
    Colour roles follow the data-viz reference palette: sequential blue for magnitude
    (neuron activation, muscle tension), diverging blue-red with a neutral grey midpoint
-   for signed curvature, and the fixed categorical order for identity. */
+   for signed curvature, and the fixed categorical order for identity.
+
+   The dish has three looks -- digital, cartoon, realistic -- and they are more than a
+   palette swap: each is a different claim about what you are looking at. Digital says
+   "this is data", cartoon says "this is a diagram", realistic says "this is an animal on
+   a plate". The chrome around the dish stays the same in all three, because the controls
+   are not part of the illusion. */
 
 :root {
   color-scheme: dark;
@@ -47,7 +54,7 @@ html, body {
 
 #app {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 30vw);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 26vw);
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     "head  head"
@@ -56,7 +63,11 @@ html, body {
   gap: var(--gap);
   padding: var(--gap);
   height: 100%;
+  transition: grid-template-columns 220ms ease;
 }
+/* Showcase: the rail folds away and the dish takes the whole width. */
+#app.norail { grid-template-columns: minmax(0, 1fr) 0px; }
+#app.norail aside { opacity: 0; pointer-events: none; }
 
 /* ---------------------------------------------------------------- header ------ */
 header {
@@ -68,9 +79,7 @@ header {
 }
 
 .brand { display: flex; align-items: baseline; gap: 10px; }
-.brand h1 {
-  font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em;
-}
+.brand h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
 .brand .sub { font-size: 12px; color: var(--text-muted); }
 
 .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
@@ -85,6 +94,7 @@ header {
 .stat .label {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-muted);
+  display: flex; align-items: center; gap: 5px;
 }
 .stat .value {
   font-size: 16px; font-weight: 600; line-height: 1.15;
@@ -92,40 +102,171 @@ header {
 }
 .stat .value small { font-size: 10px; font-weight: 500; color: var(--text-muted); }
 
+/* The pump lamp. It flashes once per pharyngeal pump, which at 250 a minute on food is
+   a visible flicker and off food is an occasional blink -- the feeding rate as a thing
+   you watch rather than a number you read. */
+#pump-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gridline);
+  box-shadow: none;
+  transition: background 60ms linear, box-shadow 60ms linear;
+}
+#pump-dot.on {
+  background: var(--series-3);
+  box-shadow: 0 0 7px var(--series-3);
+}
+
+/* ------------------------------------------------------------------ dish ------ */
+#dish {
+  grid-area: dish;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--plane);
+}
+#dish canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#dish canvas.dragging { cursor: grabbing; }
+
+.floating {
+  position: absolute; z-index: 3;
+  display: flex; flex-direction: column; gap: 7px;
+  align-items: flex-start;
+}
+.floating.tl { top: 10px; left: 10px; }
+.floating.tr { top: 10px; right: 10px; align-items: flex-end; }
+.floating.bl { bottom: 10px; left: 10px; }
+
+.dish-hint {
+  position: absolute; bottom: 12px; right: 12px; z-index: 3;
+  font-size: 10px; color: var(--text-muted); pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+/* The controls float on the plate, so on the two light plates they have to invert or
+   they read as smudges. The chrome is not part of the illusion -- it should stay legible
+   in every mode rather than joining in. */
+#dish[data-plate="light"] .seg,
+#dish[data-plate="light"] .zoomrow,
+#dish[data-plate="light"] .chip {
+  background: rgba(252,250,245,0.86);
+  border-color: rgba(30,26,20,0.18);
+  color: #2b2722;
+}
+#dish[data-plate="light"] .seg button,
+#dish[data-plate="light"] .zoomrow .sq,
+#dish[data-plate="light"] .readout { color: #4a443b; }
+#dish[data-plate="light"] .seg button[aria-pressed="true"] { color: #fff; }
+#dish[data-plate="light"] .seg button.ghost:hover,
+#dish[data-plate="light"] .zoomrow .sq:hover { background: rgba(30,26,20,0.10); color: #1c1913; }
+#dish[data-plate="light"] .chip { color: rgba(43,39,34,0.45); }
+#dish[data-plate="light"] .chip[aria-pressed="true"] { color: #2b2722; }
+#dish[data-plate="light"] .dish-hint {
+  color: rgba(43,39,34,0.62); text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+}
+
+/* Segmented control: one job, three mutually exclusive answers. */
+.seg {
+  display: inline-flex; align-items: center;
+  background: rgba(13,13,13,0.78);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  backdrop-filter: blur(7px);
+}
+.seg button {
+  border: 0; background: transparent; border-radius: 6px;
+  padding: 4px 10px; font-size: 11px; color: var(--text-secondary);
+}
+.seg button[aria-pressed="true"] { background: var(--series-1); color: #fff; }
+.seg button.ghost { color: var(--text-muted); }
+.seg button.ghost:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
+
+.zoomrow {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(13,13,13,0.78);
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: 2px 7px 2px 2px;
+  backdrop-filter: blur(7px);
+}
+.zoomrow .sq {
+  width: 22px; height: 22px; padding: 0; font-size: 13px; line-height: 1;
+  border: 0; background: transparent; color: var(--text-secondary); border-radius: 5px;
+}
+.zoomrow .sq:hover { background: rgba(255,255,255,0.09); color: #fff; }
+.zoomrow .readout { font-size: 10px; min-width: 46px; text-align: right; }
+
+/* Layer chips carry their own swatch, so the legend is the control. */
+.chips { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(13,13,13,0.78);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px 3px 7px;
+  font-size: 11px; color: var(--text-muted);
+  backdrop-filter: blur(7px);
+}
+.chip[aria-pressed="true"] { color: var(--text-primary); }
+.chip .sw {
+  width: 9px; height: 9px; border-radius: 3px; display: inline-block;
+  opacity: 0.28; transition: opacity 120ms;
+}
+.chip[aria-pressed="true"] .sw { opacity: 1; }
+.sw.food  { background: var(--series-3); }
+.sw.att   { background: var(--series-1); }
+.sw.rep   { background: var(--critical); }
+.sw.grid  { background: var(--baseline); }
+.sw.trail { background: var(--text-secondary); }
+
 /* ---------------------------------------------------------------- panels ------ */
+aside {
+  grid-area: side;
+  display: flex; flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+  transition: opacity 160ms ease;
+}
+
 .panel {
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   position: relative;
   overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1 1 var(--basis, 0);
+  min-height: 0;
 }
-.panel > h2 {
-  position: absolute; top: 8px; left: 11px; z-index: 2;
+/* Collapsed panels give their space back to the ones still open, rather than every
+   panel shrinking to fit. */
+.panel.collapsed { flex: 0 0 auto; }
+.panel.collapsed .pbody { display: none; }
+
+.phead {
+  all: unset;
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 11px 6px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.phead:hover .chev, .phead:hover h2 { color: var(--text-secondary); }
+.phead h2 {
   margin: 0; font-size: 10px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.07em;
   color: var(--text-muted);
-  pointer-events: none;
 }
-.panel > .hint {
-  position: absolute; top: 8px; right: 11px; z-index: 2;
-  font-size: 10px; color: var(--text-muted); pointer-events: none;
+.phead .hint { margin-left: auto; font-size: 10px; color: var(--text-muted); }
+.chev {
+  width: 0; height: 0; flex: 0 0 auto;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-muted);
+  transition: transform 150ms ease;
 }
-.panel canvas { display: block; width: 100%; height: 100%; }
+.panel.collapsed .chev { transform: rotate(-90deg); }
 
-#dish { grid-area: dish; }
-
-aside {
-  grid-area: side;
-  display: grid;
-  /* nervous system, muscle, kymograph, membrane trace, senses. The last is sized to
-     its content rather than sharing a fraction, so adding a receptor row grows the
-     panel instead of clipping it. */
-  grid-template-rows: minmax(110px, 1fr) auto minmax(66px, 0.5fr)
-                      minmax(66px, 0.5fr) minmax(152px, auto);
-  gap: var(--gap);
-  min-height: 0;
-}
+.pbody { position: relative; flex: 1 1 auto; min-height: 0; }
+.pbody canvas { display: block; width: 100%; height: 100%; }
 
 /* ---------------------------------------------------------------- footer ------ */
 footer {
@@ -158,7 +299,9 @@ button:hover { background: #2a2a28; color: var(--text-primary); }
 button[aria-pressed="true"] {
   background: var(--series-1); border-color: var(--series-1); color: #fff;
 }
+button:disabled { opacity: 0.45; cursor: default; }
 button.play { min-width: 74px; font-weight: 600; color: var(--text-primary); }
+.seg button, .chip { cursor: pointer; }
 
 input[type="range"] { width: 116px; accent-color: var(--series-1); }
 
@@ -172,9 +315,7 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
   font-size: 11px; color: var(--text-secondary);
 }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
-.legend i {
-  width: 9px; height: 9px; border-radius: 2px; display: inline-block;
-}
+.legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
 #tooltip {
   position: fixed; z-index: 50; pointer-events: none;
@@ -203,20 +344,29 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
 @media (max-width: 1080px) {
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(220px, 40vh) minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(260px, 46vh) auto auto;
     grid-template-areas: "head" "dish" "side" "foot";
-    overflow: auto;
+    height: auto; min-height: 100%;
   }
+  #app.norail { grid-template-columns: minmax(0, 1fr); }
+  #app.norail aside { display: none; }
   html, body { overflow: auto; }
+  .floating.tr { display: none; }
+  /* Stacked, the rail has no fixed height to share out, so panels take their natural
+     size and the page scrolls. Sharing a fraction of nothing collapsed all five to a
+     hairline. */
+  aside { min-height: 0; }
+  .panel { flex: 0 0 auto; height: var(--mobile, 190px); }
+  .panel[data-panel="muscle"] { --mobile: 130px; }
+  .panel[data-panel="senses"] { --mobile: 176px; }
+  .panel.collapsed { height: auto; }
 }
 
 /* --- what it senses -------------------------------------------------------------- */
-/* Seven scalars the server has always sent and the viewer used to discard. Each row is
-   a labelled bar so a receptor responding is visible at a glance, which is the whole
-   point: the assays say these do not drive behaviour yet, and watching them move while
-   the animal ignores them is the clearest statement of where the model stands. */
+/* Scalars the server has always sent. Each row is a labelled bar so a receptor
+   responding is visible at a glance. */
 #senses {
-  position: absolute; inset: 22px 11px 8px;
+  position: absolute; inset: 2px 11px 8px;
   display: grid;
   grid-template-columns: auto minmax(28px, 1fr) auto;
   grid-auto-rows: 1fr;
@@ -228,8 +378,7 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
                   overflow: hidden; text-overflow: ellipsis; }
 #senses .s-val  { color: var(--text-secondary); font-variant-numeric: tabular-nums;
                   text-align: right; white-space: nowrap; }
-/* display:block on both -- these are spans, and width is ignored on inline boxes, so
-   the fills rendered at zero pixels wide while reporting the right percentages. */
+/* display:block on both -- these are spans, and width is ignored on inline boxes. */
 #senses .s-bar  { display: block; height: 4px; background: var(--gridline);
                   border-radius: 2px; overflow: hidden; }
 #senses .s-fill { display: block; height: 100%; border-radius: 2px;
