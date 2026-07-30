@@ -69,6 +69,13 @@ class Senses:
         joint_s = np.arange(1, body_n_links) / body_n_links
         self.W_b = _receptive_fields(conn, self.db, self.vb, joint_s, proprio_reach, +1)
         self.W_a = _receptive_fields(conn, self.da, self.va, joint_s, proprio_reach, -1)
+        # A second pair at the shorter on-food reach. The animal is blended between the
+        # two rather than having its fields rebuilt each step, which is an approximation
+        # to a continuously varying reach and is smooth in the same direction.
+        self.W_b_food = _receptive_fields(conn, self.db, self.vb, joint_s,
+                                          p.proprio_reach_food, +1)
+        self.W_a_food = _receptive_fields(conn, self.da, self.va, joint_s,
+                                          p.proprio_reach_food, -1)
 
         # The head oscillator. Dorsal and ventral head motor neurons, wired as a
         # resistance reflex against the curvature of the head itself.
@@ -277,7 +284,12 @@ class Senses:
         # Serotonin shifts the 50/50 point towards reversal and PDF shifts it back: this
         # one number is the roaming/dwelling competition, and it is the slow term the
         # command layer previously had no way of receiving.
-        bias = p.gate_bias + (mods.turn_bias() if mods is not None else 0.0)
+        # Bounded, so that no modulator can shift the latch window clear of the operating
+        # point and turn the Schmitt trigger into a one-way latch. See
+        # SensoryParams.turn_bias_limit for what happened without this.
+        lim = p.turn_bias_limit * p.gate_hysteresis
+        shift = float(np.clip(mods.turn_bias(), -lim, lim)) if mods is not None else 0.0
+        bias = p.gate_bias + shift
         diff = fwd_act - bwd_act
         if p.gate_latched:
             # Which cord, decided separately from how much. See SensoryParams.gate_latched.
@@ -340,7 +352,15 @@ class Senses:
         # of its physiological range and pin it there.
         # Adapt out the static component before the receptor saturates on it, so the whole
         # dynamic range is spent on the part of the bend that is actually changing.
-        raw = (self.W_b @ k) * gate_fwd + (self.W_a @ k) * gate_bwd
+        short = mods.wavelength_shortening() if mods is not None else 0.0
+        if short > 1e-6:
+            # Basal slowing: shorten the wave rather than weaken the drive, because the
+            # frequency is mechanics-set and will not move. See ModulatorParams.
+            wb = (1.0 - short) * (self.W_b @ k) + short * (self.W_b_food @ k)
+            wa = (1.0 - short) * (self.W_a @ k) + short * (self.W_a_food @ k)
+        else:
+            wb, wa = self.W_b @ k, self.W_a @ k
+        raw = wb * gate_fwd + wa * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         I += np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
         # The head reflex runs whichever way the animal is going -- it is what keeps the

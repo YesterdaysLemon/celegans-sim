@@ -94,6 +94,17 @@ class Modulators:
              + p.octopamine_speeding * self.level["octopamine"])
         return float(np.clip(s, 0.25, 1.6))
 
+    def wavelength_shortening(self) -> float:
+        """How far to shorten the proprioceptive reach: 0 = not at all, 1 = fully.
+
+        The basal slowing response, by the only route this model has. Its undulation
+        frequency is set by the body's mechanics and does not move under any neural
+        parameter tried, so a slower animal has to make a shorter wave. See
+        ModulatorParams.dopamine_wavelength and SensoryParams.proprio_reach_food.
+        """
+        return float(np.clip(self.p.dopamine_wavelength * self.level["dopamine"],
+                             0.0, 1.0))
+
     def turn_bias(self) -> float:
         """Added to the direction gate's 50/50 point.
 

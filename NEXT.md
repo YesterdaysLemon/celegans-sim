@@ -1,5 +1,75 @@
 # Where this is, and what to do next
 
+> ## Day sixteen. The on-food latch, and one number serving two masters.
+>
+> On a lawn the animal spent **57% of its time reversing** at 10 commanded reversals a
+> minute against the animal's 0.7–1.25, with net-to-path 0.05. It thrashed in place. No
+> gait metric showed it — the travelling-wave index was healthy throughout — because the
+> animal was reversing every couple of seconds and retracing its own track.
+>
+> ### The bug is a bound that was never there
+>
+> The direction gate is a Schmitt trigger: it flips forward-to-backward below
+> `gate_bias − gate_hysteresis` and back above `gate_bias + gate_hysteresis`. A modulator
+> adds to `gate_bias`, and nothing limited how much. On a dense lawn the serotonergic turn
+> bias reached **+0.103 against a hysteresis of 0.09**, which lifted *both* thresholds
+> above the resting command difference. The trigger became a one-way latch — the animal
+> fell into reversal and could not climb back out.
+>
+> Keeping the shift strictly inside the hysteresis is exactly the condition for the window
+> to keep straddling the operating point. That is a structural invariant rather than a
+> tuned number, and it is now asserted in a test, on the lawn that used to break it.
+>
+> ### One number serving two masters
+>
+> How tight to make the bound is not free, and the sweep showed something the model had not
+> revealed before:
+>
+> | limit | chemo CI | aerotaxis end | noci /min | on-food rev/min | on-food net/path |
+> |---|---|---|---|---|---|
+> | 0.05 | −0.021 | 20.6% wrong | 1.32 | 2.22 | 0.268 |
+> | **0.30** | **+0.070** | **14.5% right** | **5.15** | 7.79 | 0.149 |
+> | unbounded | +0.070 | 14.2% right | 5.46 | 10.21 | 0.052 |
+>
+> **The reversals the taxis assays run on are the same reversals that make the on-food
+> ethogram look wrong.** Tighten the bound and the animal stops thrashing on a lawn, but
+> chemotaxis inverts, aerotaxis climbs the gradient again and nociception nearly stops —
+> a biased random walk with no reversals has nothing to bias. Deleting the turning term
+> outright is worse still: chemotaxis +0.070 → −0.015, pirouette ratio 0.38, nociception
+> 5.46 → 0.14 reversals a minute while exposed.
+>
+> 0.3 is the corner: every taxis number identical to the unbounded model, and the latch
+> gone — 57% of time reversing down to 17%, net/path 0.052 → 0.149.
+>
+> ### The basal slowing response was never real
+>
+> `serotonin_turning` was adopted to reproduce it, and the parameter block already admitted
+> the route was wrong. It is worse than that: the "slowing" *was* the thrashing, measured
+> as lost net displacement.
+>
+> Looking for an honest lever found none. Descending cord drive, proprioceptive gain, head
+> reflex gain, the motor neurons' adaptation time constant and both Morris-Lecar ratios —
+> **the undulation frequency sits at 0.650 Hz in every one of them** and path speed varies
+> by at most 13%. That matches `tools/thrust.py` finding the animal already at 100% of its
+> mechanical ceiling: speed here is set by the body and the medium.
+>
+> Since speed is f × λ × (U/V) and f is pinned, the only route left is a shorter wave, and
+> that does work — `dopamine_wavelength` at 2.3 slows the animal to 79% of its off-food
+> path speed, the only genuine slowing this model has produced. But it costs the chemotaxis
+> index half (+0.070 → +0.034), because a slower animal covers less ground in a 200 s
+> assay. It is implemented, measured, and **left at zero**.
+>
+> ### What is still open
+>
+> On food the animal reverses 7.8 times a minute against 0.7–1.25. Fixing it needs food to
+> suppress reversals **by a route that does not also suppress them off food** — a sensory
+> pathway, not a global shift of the decision boundary that every behaviour shares. That is
+> the next thing, and it is now well posed.
+>
+> (Food depletion works, incidentally, and was checked while looking: the worm ingests
+> 0.02/s, and over 200 s on a 22 mm lawn eats 4.0 units, taking the centre from 1.000 to
+> 0.957 with a visible dent under the head that partly refills by diffusion.)
+
 > ## Day fifteen. The animal turns, and every assay woke up.
 >
 > The omega turn works. It is an **edge, not a level**: on the backward-to-forward
