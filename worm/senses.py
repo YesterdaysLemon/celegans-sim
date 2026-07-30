@@ -25,10 +25,11 @@ from .world import World
 class Senses:
     def __init__(self, conn: Connectome, p: SensoryParams, world_p: WorldParams,
                  body_n_links: int, proprio_reach: float, dt: float,
-                 g_rest: np.ndarray | None = None):
+                 g_rest: np.ndarray | None = None, rng: np.random.Generator | None = None):
         self.conn = conn
         self.p = p
         self.dt = dt
+        self.rng = np.random.default_rng(0) if rng is None else rng
 
         idx = conn.select
         # --- chemosensation -------------------------------------------------------------
@@ -137,6 +138,7 @@ class Senses:
         # of steps the reversal that earned it lasted, and the ventral head pool it goes
         # to. See SensoryParams.omega_current.
         self.omega = 0.0
+        self.omega_sign = 1.0        # +1 ventral, -1 dorsal; see omega_ventral_fraction
         self._rev_steps = 0
         self._omega_decay = np.exp(-dt / p.omega_tau)
         self._omega_v = conn.select(*p.omega_ventral)
@@ -317,6 +319,11 @@ class Senses:
                 # A reversal just ended. Its length sets the depth of the turn, which is
                 # the animal's own relationship rather than a second fitted constant.
                 self.omega = min(1.0, self._rev_steps / self._omega_ref_n)
+                # Which way this one goes. Ventrally biased, not exclusively ventral --
+                # turns that all bend the same way accumulate into a circle rather than
+                # cancelling. See SensoryParams.omega_ventral_fraction.
+                self.omega_sign = (
+                    1.0 if self.rng.random() < p.omega_ventral_fraction else -1.0)
                 self._rev_steps = 0
         else:
             self._rev_steps += 1
@@ -326,7 +333,7 @@ class Senses:
             # A differential, not a push: releasing the dorsal antagonist is worth an
             # order of magnitude more than driving the ventral side harder, which
             # saturates. See SensoryParams.omega_current for the measurement.
-            drive_om = p.omega_current * self.omega
+            drive_om = p.omega_current * self.omega * self.omega_sign
             I[self._omega_v] += drive_om
             I[self._omega_d] -= drive_om
 
@@ -392,7 +399,7 @@ class Senses:
             "touch": float(self.touch_state.sum()),
             "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
-            "omega": float(self.omega),
+            "omega": float(self.omega * self.omega_sign),
             **({} if mods is None else mods.readout()),
         }
         return I

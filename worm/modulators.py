@@ -46,9 +46,11 @@ class Modulators:
 
     NAMES = ("dopamine", "serotonin", "octopamine", "pdf")
 
-    def __init__(self, conn: Connectome, p: ModulatorParams, dt: float):
+    def __init__(self, conn: Connectome, p: ModulatorParams, dt: float,
+                 g_rest: np.ndarray | None = None):
         self.p = p
         self.dt = dt
+        self.n = conn.n
         self.sources = {
             "dopamine": conn.group(*p.dopamine_sources),
             "serotonin": conn.group(*p.serotonin_sources),
@@ -74,6 +76,19 @@ class Modulators:
         self.baseline = 0.5
         self.level = {n: 0.0 for n in self.NAMES}
 
+        # MOD-1, the serotonin-gated chloride channel on AIB. Peak conductance is a
+        # fraction of each target's own resting conductance, so the coefficient means the
+        # same thing whatever the cell's size. See ModulatorParams.serotonin_mod1.
+        idx = conn.group(*p.mod1_targets)
+        if p.serotonin_mod1 != 0.0 and len(idx) == 0:
+            raise RuntimeError("no neurons matched the MOD-1 targets %r"
+                               % (p.mod1_targets,))
+        self._mod1_peak = np.zeros(conn.n)
+        if len(idx):
+            g = np.ones(len(idx)) if g_rest is None else g_rest[idx]
+            self._mod1_peak[idx] = p.serotonin_mod1 * g
+        self._any_mod1 = bool(np.any(self._mod1_peak != 0.0))
+
     def step(self, activation: np.ndarray) -> None:
         for name in self.NAMES:
             target = float(np.mean(activation[self.sources[name]])) - self.baseline
@@ -93,6 +108,19 @@ class Modulators:
              - p.serotonin_slowing * self.level["serotonin"]
              + p.octopamine_speeding * self.level["octopamine"])
         return float(np.clip(s, 0.25, 1.6))
+
+    def gated_conductance(self) -> np.ndarray | None:
+        """Ligand-gated conductance the modulators are currently opening, per neuron.
+
+        Only MOD-1 so far: serotonin opening a chloride channel on AIB, which is how food
+        suppresses reversals. Returns None when nothing is switched on, so the wired model
+        is untouched. See ModulatorParams.serotonin_mod1.
+        """
+        if not self._any_mod1:
+            return None
+        # Only the depolarising half. Serotonin below its resting release means *less*
+        # food than baseline, which should not prise a channel open backwards.
+        return self._mod1_peak * max(self.level["serotonin"], 0.0)
 
     def wavelength_shortening(self) -> float:
         """How far to shorten the proprioceptive reach: 0 = not at all, 1 = fully.

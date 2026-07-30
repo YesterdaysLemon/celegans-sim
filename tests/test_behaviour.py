@@ -552,9 +552,9 @@ def test_omega_fires_after_the_reversal_and_never_during_it():
     for _ in range(int(120.0 / sim.dt)):
         sim.step()
         now = sim.senses.going_forward
-        if not now and sim.senses.omega > 1e-4:
+        if not now and abs(sim.senses.omega) > 1e-4:
             fired_while_reversing += 1
-        if now and not was and sim.senses.omega > 1e-4:
+        if now and not was and abs(sim.senses.omega) > 1e-4:
             fired_after += 1
         was = now
 
@@ -593,6 +593,7 @@ def test_omega_amplitude_follows_reversal_duration():
     # caps any correlation statistic around 0.5 while the relationship is exact.
     for dur, amp in pairs:
         want = min(1.0, dur / ref) * decay
+        amp = abs(amp)
         assert abs(amp - want) < 1e-6, (
             "a %.2f s reversal produced amplitude %.4f, not %.4f" % (dur, amp, want))
     assert max(a for _, a in pairs) <= 1.0 + 1e-9, "turn amplitude exceeded full scale"
@@ -630,6 +631,9 @@ def test_omega_drive_is_a_differential_not_a_push():
     # And the current itself: equal and opposite while the transient is live.
     sim.run(6.0)
     sim.senses.omega = 1.0
+    # Pin the direction: which way a given turn goes is drawn per event, and the claim
+    # under test is the symmetry of the drive, not its sign on this particular turn.
+    sim.senses.omega_sign = 1.0
     nodes = sim.body.nodes()
     contact = np.zeros((len(nodes), 2))
     I = sim.senses.sense(sim.world, nodes, contact,

@@ -61,8 +61,10 @@ class Simulation:
         self.body.dt = self.p.neural.dt
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
-                             self.p.neural.dt, g_rest=self.nervous.g_rest)
-        self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt)
+                             self.p.neural.dt, g_rest=self.nervous.g_rest,
+                             rng=self.rng)
+        self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt,
+                                     g_rest=self.nervous.g_rest)
 
         self.dt = self.p.neural.dt
         self.t = 0.0
@@ -109,7 +111,7 @@ class Simulation:
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
                                   self.modulators)
 
-        self.nervous.step(I_ext)
+        self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
         self.muscles.step(self.nervous.s)
 
         self._contact = self.world.contact_force(nodes)
