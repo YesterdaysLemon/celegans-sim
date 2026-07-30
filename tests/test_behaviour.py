@@ -11,6 +11,7 @@ import pytest
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
+from worm.world import World
 
 
 @pytest.fixture(scope="module")
@@ -687,3 +688,78 @@ def test_omega_turn_actually_turns_the_animal():
     assert driven > 5.0 * max(idle, 1.0), (
         "a held omega drive turned the animal at %.1f deg/s against %.1f idle; the bend "
         "is not being carried into a heading change" % (driven, idle))
+
+
+def test_a_modulator_cannot_latch_the_direction_gate():
+    """No modulator may shift the gate's latch window clear of the operating point.
+
+    The direction gate is a Schmitt trigger: it flips forward-to-backward below
+    `gate_bias - gate_hysteresis` and back above `gate_bias + gate_hysteresis`. A
+    modulator adds to `gate_bias`, and for a long time nothing bounded how much.
+
+    On a dense lawn the serotonergic turn bias reached +0.103 against a hysteresis of
+    0.09, which put *both* thresholds above the resting command difference. The trigger
+    became a one-way latch: the animal fell into reversal and could not climb out, and
+    spent 57% of its time reversing at 10 commanded reversals a minute against the
+    animal's 0.7-1.25, with net-to-path 0.05. It thrashed in place on food.
+
+    Keeping the shift strictly inside the hysteresis is exactly the condition for the
+    window to keep straddling the operating point. This is a structural invariant, not a
+    tuning choice, so it is asserted rather than measured -- including on the lawn that
+    used to break it.
+    """
+    p = Params().sensory
+    lim = p.turn_bias_limit * p.gate_hysteresis
+    assert lim < p.gate_hysteresis, (
+        "the bound (%.4f) does not sit inside the hysteresis (%.4f); a modulator could "
+        "still push both thresholds past the operating point" % (lim, p.gate_hysteresis))
+
+    world_p = Params().world
+    w = World(world_p, np.random.default_rng(0))
+    w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)
+    sim = Simulation(Params(), seed=0, world=w, placement=(0.0, 0.0, 0.0))
+
+    raw_peak, applied_peak = 0.0, 0.0
+    for _ in range(int(20.0 / sim.dt)):
+        sim.step()
+        raw = abs(float(sim.modulators.turn_bias()))
+        raw_peak = max(raw_peak, raw)
+        applied_peak = max(applied_peak, min(raw, lim))
+
+    assert applied_peak <= lim + 1e-12, (
+        "the applied shift %.4f exceeded its own bound %.4f" % (applied_peak, lim))
+    assert applied_peak < p.gate_hysteresis, (
+        "on a lawn the gate shift reached %.4f against a hysteresis of %.4f, which turns "
+        "the Schmitt trigger into a latch" % (applied_peak, p.gate_hysteresis))
+    # And the animal must still be going somewhere, which is what the latch destroyed.
+    assert sim.senses.going_forward or raw_peak > 0, "no modulator state at all on a lawn"
+
+
+def test_the_worm_still_travels_on_a_lawn():
+    """On food the animal must make progress, not thrash on the spot.
+
+    The failure this guards against does not show up in any gait metric -- the wave was
+    fine throughout -- only in where the animal ended up. Net-to-path was 0.05 on a lawn
+    while the travelling-wave index was still healthy, because the animal was reversing
+    every couple of seconds and retracing its own track.
+    """
+    w = World(Params().world, np.random.default_rng(0))
+    w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)
+    sim = Simulation(Params(), seed=0, world=w, placement=(0.0, 0.0, 0.0))
+    sim.run(8.0)
+
+    start = sim.body.centroid().copy()
+    prev, path = start.copy(), 0.0
+    every = max(1, int(round(0.05 / sim.dt)))
+    for i in range(int(90.0 / sim.dt)):
+        sim.step()
+        if i % every == 0:
+            c = sim.body.centroid()
+            path += float(np.linalg.norm(c - prev))
+            prev = c.copy()
+    net = float(np.linalg.norm(sim.body.centroid() - start))
+    net_path = net / max(path, 1e-9)
+    assert net_path > 0.10, (
+        "on a lawn the animal covered %.2f mm of track and got %.2f mm from where it "
+        "started (net/path %.3f): it is thrashing rather than travelling"
+        % (path, net, net_path))

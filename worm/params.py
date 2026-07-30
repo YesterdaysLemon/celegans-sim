@@ -1034,6 +1034,29 @@ class SensoryParams:
     # this project has managed before.
     proprio_reach: float = 0.16      # fraction of body length sampled anteriorly
 
+    # The reach the animal falls back to on food, for the basal slowing response.
+    #
+    # This model's undulation frequency does not move. Measured across every neural
+    # parameter that could plausibly carry a slowing signal -- descending cord drive,
+    # proprioceptive gain, head reflex gain, the motor neurons' own adaptation time
+    # constant and both Morris-Lecar ratios -- it sits at 0.650 Hz in all of them, and
+    # path speed varies by at most 13%. That is consistent with tools/thrust.py finding
+    # the animal already at 100% of the mechanical ceiling for its own kinematics: speed
+    # here is set by the body and the medium, not by how hard the circuit drives it.
+    #
+    # Since speed is frequency x wavelength x (U/V) and the frequency is pinned, the only
+    # route left is a shorter wave -- which is exactly the trade proprio_reach already
+    # controls (see the table above). Measured:
+    #
+    #   reach | wavelength   path mm/s   ratio    TWI    k_rms
+    #    0.16 |    0.85        0.378     1.00   +0.89    4.68
+    #    0.10 |    0.62        0.249     0.66   +0.77    3.89
+    #
+    # so a third of the animal's speed is available this way, at some cost to the
+    # travelling index. 0.10 is the floor; how far towards it the animal actually goes is
+    # set by ModulatorParams.dopamine_wavelength and by how much dopamine it has.
+    proprio_reach_food: float = 0.10
+
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel
     # left responding to absolute value rather than to change.
@@ -1308,6 +1331,47 @@ class SensoryParams:
     # its mind travels, and thrust is the travelling index (tools/thrust.py).
     gate_hysteresis: float = 0.09
 
+    # How far a modulator is allowed to move the gate's 50/50 point, as a fraction of the
+    # hysteresis. This is a bound, not a fitted number, and it exists because the model
+    # spent a long time with the wrong on-food behaviour for want of it.
+    #
+    # ModulatorParams.turn_bias grows linearly with serotonin and had no ceiling. On a
+    # dense lawn it reached +0.103, which is *larger than gate_hysteresis*, and at that
+    # point the Schmitt trigger stops being a trigger. The forward-to-backward threshold
+    # (bias - hysteresis) rose to +0.050 while the backward-to-forward threshold rose to
+    # +0.230, so the whole latch window sat above the resting command difference: the
+    # animal fell into reversal and could not climb back out. Measured, it spent 57% of
+    # its time reversing on food at 10-16 commanded reversals a minute against the
+    # animal's 0.7-1.25, with net-to-path 0.05 -- it thrashed in place.
+    #
+    # Keeping |turn_bias| below the hysteresis is exactly the condition for the window to
+    # keep straddling the operating point, so a modulator can bias the decision without
+    # swallowing it.
+    #
+    # How tight the bound should be is not free, and the sweep says something the model
+    # had not shown before. One number is serving two masters:
+    #
+    #   limit | chemo CI | aerotaxis end | noci /min | on-food rev/min | on-food net/path
+    #    0.05 |  -0.021  |  20.6%  wrong |   1.32    |      2.22       |     0.268
+    #    0.30 |  +0.070  |  14.5%  right |   5.15    |      7.79       |     0.149
+    #   1.0+  |  +0.070  |  14.2%  right |   5.46    |     10.21       |     0.052
+    #
+    # The reversals the taxis assays run on are the *same* reversals that make the on-food
+    # ethogram look wrong. Tighten the bound and the animal stops thrashing on a lawn, but
+    # chemotaxis inverts, aerotaxis climbs the gradient again and nociception nearly stops
+    # -- because a biased random walk with no reversals has nothing to bias. There is no
+    # setting of this one number that satisfies both, and 0.3 is the corner: every taxis
+    # number identical to the unbounded model, and the latch bug gone.
+    #
+    # Deleting the turning term outright is worse still, and was measured: chemotaxis
+    # +0.070 -> -0.015, the pirouette ratio inverting to 0.38, nociception 5.46 -> 0.14.
+    #
+    # What that leaves is a real open problem rather than a tuning one. On food the animal
+    # still reverses 7.8 times a minute against 0.7-1.25, and fixing it needs food to
+    # suppress reversals by a route that does not also suppress them off food -- a sensory
+    # pathway, not a global shift of the decision boundary that every behaviour shares.
+    turn_bias_limit: float = 0.3     # fraction of gate_hysteresis
+
 
 @dataclass(frozen=True)
 class ModulatorParams:
@@ -1363,6 +1427,30 @@ class ModulatorParams:
     # over: the honest reading is that we reproduce the behaviour by the wrong route.
     dopamine_slowing: float = 0.0
     serotonin_slowing: float = 0.0
+    # Shortens the proprioceptive reach towards SensoryParams.proprio_reach_food, which is
+    # the only lever in this model that moves locomotor speed. See both of those.
+    #
+    # Implemented, measured, and left at zero. It does work -- at 2.3 the animal slows to
+    # 79% of its off-food path speed, which is the only genuine basal slowing this model
+    # has ever produced -- but it is not free: a slower animal covers less ground in a
+    # 200 s assay, and the chemotaxis index halves from +0.070 to +0.034 with it on. Since
+    # the taxis behaviours are what the sensory model is *for*, it is off by default and
+    # kept for whoever wants to study the slowing response on its own.
+    #
+    #  da_wave | cond     | rev/min | path  ratio | net/path | wavelen  TWI  k_rms
+    #    0.0   | off food |   2.13  | 0.374  1.00 |  0.438   |  0.82  +0.86  4.52
+    #    0.0   | on food  |   1.73  | 0.374  1.00 |  0.569   |  0.84  +0.90  4.57
+    #    2.3   | off food |   1.47  | 0.377  1.00 |  0.512   |  0.84  +0.89  4.51
+    #    2.3   | on food  |   1.07  | 0.298  0.79 |  0.707   |  0.80  +0.86  4.42  <- adopted
+    #    5.0   | on food  |   0.13  | 0.292  0.79 |  0.886   |  0.78  +0.84  4.49
+    #
+    # The slowing saturates near 0.79 however hard this is driven -- at 8.0 the reach is
+    # 77% of the way to its floor and the ratio is still 0.78 -- because blending two
+    # field matrices is not the same as one short reach and the long-range component
+    # survives the blend. So the animal slows by a fifth where the animal halves. Past 2.3
+    # the on-food reversal rate falls out of its band as well (0.27 /min at 3.5), so this
+    # is the corner: the most slowing available without spending the behaviour to get it.
+    dopamine_wavelength: float = 0.0
     serotonin_turning: float = 0.6
     # Implemented, wired, and left at zero: not calibrated against anything. PDF in
     # particular is sourced from AVB, so a non-zero coefficient closes a positive feedback

@@ -309,6 +309,43 @@ the distribution falls out: about a third of reversals past 120° against the an
 None is yet at the animal's magnitude — the chemotaxis index is seven times short — so this
 opens the problem rather than closing it.
 
+### On food, and a bound that was missing
+
+On a lawn the animal used to spend **57% of its time reversing** — 10 commanded reversals a
+minute against the animal's 0.7–1.25, net-to-path 0.05. It thrashed in place, and no gait
+metric showed it, because the wave was fine the whole time.
+
+The direction gate is a Schmitt trigger, and a modulator adds to its 50/50 point with
+nothing bounding how much. On a dense lawn the serotonergic turn bias reached **+0.103
+against a hysteresis of 0.09**, lifting *both* thresholds above the resting command
+difference: the trigger became a one-way latch the animal could not climb out of. Keeping
+the shift inside the hysteresis is exactly the condition for the window to keep straddling
+the operating point — a structural invariant, now asserted in a test on the lawn that broke
+it. Time reversing falls 57% → 17%, net/path 0.052 → 0.149.
+
+**But one number is serving two masters**, and that is the more interesting finding:
+
+| bound | chemotaxis CI | aerotaxis end | nociception /min | on-food rev/min |
+|---|---|---|---|---|
+| 0.05 | −0.021 | 20.6% wrong | 1.32 | 2.22 |
+| **0.30** | **+0.070** | **14.5% right** | **5.15** | 7.79 |
+| unbounded | +0.070 | 14.2% right | 5.46 | 10.21 |
+
+The reversals every taxis behaviour runs on are the same reversals that make the on-food
+ethogram look wrong. Tighten the bound and the animal stops thrashing but chemotaxis
+inverts, aerotaxis climbs the gradient again, nociception nearly stops. Fixing it properly
+needs food to suppress reversals by a route that does not also suppress them off food — a
+sensory pathway, not a global shift of a decision boundary every behaviour shares.
+
+**And the basal slowing response was never real.** It was the thrashing, measured as lost
+displacement. Searching for an honest lever found none: across descending cord drive,
+proprioceptive gain, head reflex gain, motor adaptation time constant and both Morris-Lecar
+ratios, the undulation frequency sits at 0.650 Hz in *every one*, and path speed varies by
+at most 13% — consistent with the animal already being at 100% of its mechanical ceiling.
+Since speed is f × λ × (U/V) and f is pinned, the only route is a shorter wave, which does
+work (79% of off-food speed) but halves the chemotaxis index. It is implemented, measured,
+and left at zero.
+
 ### What it does not get right
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
