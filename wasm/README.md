@@ -33,19 +33,37 @@ buy nothing — the noise is meant to be noise. So conformance runs with **noise
 where the two must agree to floating point, and the noisy case is checked on gait
 *statistics* instead. Anything else would be measuring the random number generator.
 
-## Status
+## Status: complete and matching
 
-| piece | ported | conformance |
-|---|---|---|
-| body — drag metric, dense solve, contact | yes | **5e-13 mm** over 2000 steps |
-| world — fields, bilinear sample, eat, lawns | yes | not yet exercised |
-| nervous, muscle, senses, modulators, pharynx | **not yet** | — |
+Conformance, with noise off, comparing against the Python step for step:
 
-The mechanics were done first deliberately: they are the piece most likely to be got wrong
-— a 50×50 drag metric assembled from masked matrix products and then solved — and the piece
-where being wrong is least visible downstream, because slightly wrong drag still produces a
-worm-shaped thing that wriggles. The rest is elementwise arithmetic and matrix–vector
-products against arrays that are already exported.
+```
+MECHANICS -- prescribed moment, 2000 steps, no biology
+  worst node disagreement       4.999e-13 mm   (body spans 0.997 mm)
+  worst curvature disagreement  4.997e-13 /mm
+
+WHOLE LOOP -- neurons, muscle, senses, body; 4000 steps
+  worst node disagreement       4.999e-13 mm
+  worst membrane potential      5.000e-11 mV
+  worst muscle tension          4.999e-13
+  direction gate disagreed on   0 of 20 samples
+```
+
+Those figures are the rounding granularity of the reference file, so the two agree to at
+least the precision the reference stores. Everything is ported: nervous system, muscle,
+body, senses, modulators, pharynx, world.
+
+## What it costs
+
+| | |
+|---|---|
+| one worm | 0.87× real time (numpy manages 1.01×; its BLAS is very good at 302² matvecs) |
+| two worms | 0.43× |
+| over the wire | **~70 kB gzipped** — 51 kB model + 19 kB wasm |
+
+The model file is 3.08 MB raw and gzips to 51 kB because the connectome is sparse. The
+302×302 matrices are anatomy and shared between animals, so a second worm duplicates only
+state — which is why two in one dish costs what it does and no more.
 
 ## Build
 

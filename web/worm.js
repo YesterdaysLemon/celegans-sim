@@ -21,6 +21,18 @@ export async function instantiate(module, imports = {}) {
       // assembly/index/alloc(i32) => usize
       return exports.alloc(nbytes) >>> 0;
     },
+    ptrAct(w) {
+      // assembly/index/ptrAct(i32) => usize
+      return exports.ptrAct(w) >>> 0;
+    },
+    ptrV(w) {
+      // assembly/index/ptrV(i32) => usize
+      return exports.ptrV(w) >>> 0;
+    },
+    ptrTension(w) {
+      // assembly/index/ptrTension(i32) => usize
+      return exports.ptrTension(w) >>> 0;
+    },
     ptrNodesX(w) {
       // assembly/index/ptrNodesX(i32) => usize
       return exports.ptrNodesX(w) >>> 0;

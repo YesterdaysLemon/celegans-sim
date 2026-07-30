@@ -13,3 +13,4 @@ scratch/
 
 # WASM toolchain, installed locally by wasm/package.json
 wasm/node_modules/
+web/conform.json

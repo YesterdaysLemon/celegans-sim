@@ -54,8 +54,41 @@ def body_case():
     return out
 
 
+def full_case():
+    """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
+
+    Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
+    sampler, and reproducing that bit-for-bit in the port would buy nothing, because the
+    noise is meant to be noise. With it off both sides are deterministic and must agree to
+    floating point.
+    """
+    import dataclasses
+    from worm.engine import Simulation
+    from worm.world import World
+
+    p = Params()
+    p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+    sim = Simulation(p, seed=0, world=World(p.world, np.random.default_rng(0)),
+                     placement=(0.0, 0.0, 0.0))
+    steps = 4000
+    out = {"steps": steps, "sample": 200, "frames": []}
+    for i in range(steps):
+        sim.step()
+        if (i + 1) % 200 == 0:
+            nodes = sim.body.nodes()
+            out["frames"].append({
+                "step": i + 1,
+                "x": [round(float(v), 12) for v in nodes[:, 0]],
+                "y": [round(float(v), 12) for v in nodes[:, 1]],
+                "V": [round(float(v), 10) for v in sim.nervous.V],
+                "tension": [round(float(v), 12) for v in sim.muscles.tension],
+                "gate": 1.0 if sim.senses.going_forward else 0.0,
+            })
+    return out
+
+
 def main():
-    json.dump({"body": body_case()}, sys.stdout)
+    json.dump({"body": body_case(), "full": full_case()}, sys.stdout)
     return 0
 
 

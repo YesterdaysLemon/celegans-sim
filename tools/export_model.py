@@ -49,6 +49,14 @@ class Blob:
 
     def arr(self, name, a, dtype="f8"):
         a = np.ascontiguousarray(np.asarray(a, dtype=np.dtype(dtype)))
+        # Pad every array to an 8-byte boundary. WebAssembly loads tolerate misalignment,
+        # but a JavaScript Float64Array view does not -- and the viewer reads several of
+        # these straight out of linear memory. One u1 array (302 bytes) was enough to
+        # throw everything after it off and take the whole page down at load.
+        pad = (-self.offset) % 8
+        if pad:
+            self.chunks.append(b"\x00" * pad)
+            self.offset += pad
         self.meta["arrays"][name] = {"dtype": dtype, "shape": list(a.shape),
                                      "offset": self.offset, "bytes": a.nbytes}
         self.chunks.append(a.tobytes())
@@ -144,6 +152,7 @@ def export(path=OUT, params=None):
     b.arr("body_rho_max_off", body._rho_max_off)
     b.arr("body_radius", body.radius).arr("body_joint_radius", body.joint_radius)
     b.f("body_l", body.l)
+    b.i("body_substeps", p.body.substeps)
     b.f("body_length", p.body.length).f("body_radius_max", p.body.radius_max)
     # Every medium, so the viewer can switch without a round trip.
     for name, med in MEDIA.items():

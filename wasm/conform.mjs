@@ -59,7 +59,37 @@ console.log(`MECHANICS -- prescribed moment, ${c.steps} steps, no biology, no no
 console.log(`  worst node disagreement       ${worstXY.toExponential(3)} mm` +
             `   (body spans ${span.toFixed(3)} mm)`);
 console.log(`  worst curvature disagreement  ${worstK.toExponential(3)} /mm`);
-const ok = worstXY < 1e-9 && worstK < 1e-7;
-console.log(ok ? '\n  PASS -- the two implementations agree to floating point'
-               : '\n  FAIL -- the port does not reproduce the Python mechanics');
+const mechOk = worstXY < 1e-9 && worstK < 1e-7;
+console.log(mechOk ? '  PASS' : '  FAIL');
+
+// --- the whole loop --------------------------------------------------------------------
+const fc = ref.full;
+E.setNoise(0);
+const w2 = E.createWorm(0, 0.0, 0.0, 0.0);
+let wXY = 0, wV = 0, wT = 0, gateBad = 0;
+prev = 0;
+for (const f of fc.frames) {
+  E.step(w2, f.step - prev);
+  prev = f.step;
+  const nx = F64().subarray(E.ptrNodesX(w2) >> 3, (E.ptrNodesX(w2) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(w2) >> 3, (E.ptrNodesY(w2) >> 3) + f.y.length);
+  const vv = F64().subarray(E.ptrV(w2) >> 3, (E.ptrV(w2) >> 3) + f.V.length);
+  const tt = F64().subarray(E.ptrTension(w2) >> 3, (E.ptrTension(w2) >> 3) + f.tension.length);
+  for (let i = 0; i < f.x.length; i++)
+    wXY = Math.max(wXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  for (let i = 0; i < f.V.length; i++) wV = Math.max(wV, Math.abs(vv[i] - f.V[i]));
+  for (let i = 0; i < f.tension.length; i++) wT = Math.max(wT, Math.abs(tt[i] - f.tension[i]));
+  if (E.getGateForward(w2) !== f.gate) gateBad++;
+}
+console.log(`\nWHOLE LOOP -- neurons, muscle, senses, body; ${fc.steps} steps, noise off`);
+console.log(`  worst node disagreement       ${wXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${wV.toExponential(3)} mV`);
+console.log(`  worst muscle tension          ${wT.toExponential(3)}`);
+console.log(`  direction gate disagreed on   ${gateBad} of ${fc.frames.length} samples`);
+const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0;
+console.log(fullOk ? '  PASS' : '  FAIL');
+
+const ok = mechOk && fullOk;
+console.log(ok ? '\nThe port reproduces the Python model.'
+               : '\nThe port does NOT reproduce the Python model.');
 process.exit(ok ? 0 : 1);

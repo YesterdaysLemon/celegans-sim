@@ -75,6 +75,90 @@ declare namespace __AdaptedExports {
    */
   export function stepBodyOnly(w: number, dt: number, steps: number): void;
   /**
+   * assembly/index/setNoise
+   * @param on `i32`
+   */
+  export function setNoise(on: number): void;
+  /**
+   * assembly/index/step
+   * @param w `i32`
+   * @param n `i32`
+   */
+  export function step(w: number, n: number): void;
+  /**
+   * assembly/index/stepAll
+   * @param n `i32`
+   */
+  export function stepAll(n: number): void;
+  /**
+   * assembly/index/ptrAct
+   * @param w `i32`
+   * @returns `usize`
+   */
+  export function ptrAct(w: number): number;
+  /**
+   * assembly/index/ptrV
+   * @param w `i32`
+   * @returns `usize`
+   */
+  export function ptrV(w: number): number;
+  /**
+   * assembly/index/ptrTension
+   * @param w `i32`
+   * @returns `usize`
+   */
+  export function ptrTension(w: number): number;
+  /**
+   * assembly/index/getPumpRate
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getPumpRate(w: number): number;
+  /**
+   * assembly/index/getPumping
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getPumping(w: number): number;
+  /**
+   * assembly/index/getLumen
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getLumen(w: number): number;
+  /**
+   * assembly/index/getEaten
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEaten(w: number): number;
+  /**
+   * assembly/index/getGateForward
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getGateForward(w: number): number;
+  /**
+   * assembly/index/getOmega
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getOmega(w: number): number;
+  /**
+   * assembly/index/getSensed
+   * @param w `i32`
+   * @param which `i32`
+   * @returns `f64`
+   */
+  export function getSensed(w: number, which: number): number;
+  /**
+   * assembly/index/pokeWorm
+   * @param w `i32`
+   * @param anterior `i32`
+   * @param strength `f64`
+   */
+  export function pokeWorm(w: number, anterior: number, strength: number): void;
+  /**
    * assembly/index/ptrNodesX
    * @param w `i32`
    * @returns `usize`
