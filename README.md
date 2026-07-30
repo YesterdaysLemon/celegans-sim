@@ -595,6 +595,8 @@ tools/head_circuit.py   lumped against distributed head reflex, scored on the wa
 tools/thrust.py         what speed the mechanics allow, and what the circuit collects
 tools/ase_opponency.py  which way round the ON and OFF chemosensors should push
 tools/omega.py          can the omega turn be bought by amplifying RIV? (no, and why)
+tools/stats.py          bootstrap intervals, and the paired comparison behind compare.py
+tools/compare.py        A/B two configurations on identical seeds, with paired intervals
 tools/scorecard.py      every headline number at once, across seeds, in three media
 ```
 
