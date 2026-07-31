@@ -433,6 +433,16 @@ class Worm {
     const nd = Math.exp(-dt / G.NEURAL_NOISE_TAU);
     const kick = G.NEURAL_NOISE_SIGMA * Math.sqrt(1.0 - nd * nd);
     for (let i = 0; i < n; i++) {
+      // Not gated by `alive`, where the Python multiplies the whole input current by it.
+      // Checked, and the difference is inert: a dead cell's voltage is overwritten with
+      // its leak potential after the solve, it is skipped in the gap accumulation, its
+      // gapTot is zero and its activation is forced to zero -- so the noise written here
+      // for an absent cell has no way out. It is also drawn either way, on both sides, so
+      // the two generators stay in step with each other's consumption.
+      //
+      // Worth stating because conformance cannot see it: with the noise off this line is
+      // identical whatever `alive` says, so a real ordering difference here would pass
+      // every check in the repository. It was looked for deliberately.
       let noise = unchecked(this.Inoise[i]) * nd;
       if (noiseOn) noise += kick * this.rng.normal();
       unchecked(this.Inoise[i] = noise);

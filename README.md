@@ -715,6 +715,8 @@ tools/compare.py        A/B two configurations on identical seeds, with paired i
 tools/scorecard.py      every headline number at once, across seeds, in three media
 tools/export_model.py   freeze the model into web/worm.model + the runtime's constants
 tools/conform.py        reference trajectories the WebAssembly port is checked against
+tools/parity.py         the same two implementations compared statistically, noise ON
+wasm/trajectories.mjs   raw trajectories out of the browser runtime, for parity.py
 tools/check_web.mjs     the viewer's module graph: cycles, unresolved imports, leftovers
 tools/smoke_web.mjs     the viewer in a real browser, desktop and mobile
 web/app.js              viewer bootstrap; the modules it composes are in web/viewer/

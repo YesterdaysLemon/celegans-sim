@@ -30,8 +30,55 @@ agree by construction; there is no runtime binding step to get out of order.
 The background noise is an Ornstein–Uhlenbeck current driven by numpy's PCG64 and its
 ziggurat normal sampler. Reproducing that bit-for-bit would mean porting both, and would
 buy nothing — the noise is meant to be noise. So conformance runs with **noise disabled**,
-where the two must agree to floating point, and the noisy case is checked on gait
-*statistics* instead. Anything else would be measuring the random number generator.
+where the two must agree to floating point. Anything else would be measuring the random
+number generator.
+
+That leaves a hole, and this file used to paper over it by asserting that the noisy case
+was "checked on gait statistics instead", which was not true of any code here. **Nothing
+runs with the noise off.** The browser runs noisy, every assay runs noisy, and all of this
+model's behavioural claims are noisy-path claims — so conformance, on its own, certifies a
+mode neither deployment uses.
+
+`tools/parity.py` is the missing check. It compares the two implementations statistically,
+which is the strongest claim available once they draw from different generators: the same
+animal, not the same trajectory. The WebAssembly side dumps raw curvature, centroid and
+gate state and computes nothing; **both arms are then measured by the same code**, for the
+same reason the model file exists — if each side computed its own frequency, a
+disagreement would be ambiguous between the model and the metric, and the metric is much
+the easier of the two to get wrong.
+
+Twenty animals a side, 90 s each on a bare plate, unpaired:
+
+```
+                          python      wasm     difference (wasm - python)     resolvable to
+  undulation frequency     0.670     0.665     -0.005 [-0.013, +0.003] Hz         0.008
+  wavelength               0.839     0.846     +0.007 [-0.006, +0.019] L          0.013
+  travelling-wave index    0.862     0.865     +0.002 [-0.014, +0.022]            0.019
+  curvature rms            4.490     4.515     +0.025 [-0.010, +0.060] /mm        0.037
+  path speed              0.3630    0.3603    -0.0028 [-0.0123, +0.0064] mm/s     0.0098
+  net speed               0.1768    0.2065    +0.0297 [-0.0210, +0.0790] mm/s     0.0519
+  net / path               0.484     0.570     +0.086 [-0.046, +0.216]            0.137
+  fraction forward         0.980     0.976     -0.004 [-0.011, +0.004]            0.008
+  reversals                 3.23      3.20     -0.03 [-0.80, +0.77] /min          0.82
+```
+
+No metric separates the arms. Two honest qualifications, both of which the tool prints
+rather than leaving to the reader:
+
+- **The last column is the point.** Unpaired arms cost a great deal of power — the
+  between-animal variance that `paired_ci` cancels does not cancel here — so "they agree"
+  means "they agree to within what twenty animals a side can see". Gait is pinned tightly:
+  frequency to 1.2% of its own mean, path speed to 2.7%. **Net speed and net/path are
+  resolved only to about 29%**, because they depend on where the animal actually ended up
+  over 90 s, which one badly-timed reversal dominates. Those two rows are weak claims and
+  should be read as such.
+- The Python arm's 0.670 Hz is the README's headline 0.67 ± 0.01 Hz, measured
+  independently here. A parity tool that agreed with itself but not with the rest of the
+  repository would be measuring its own metric.
+
+This is expensive to run — about fifteen minutes for the WebAssembly arm alone, single
+threaded — so it is not in CI. It is the check to run after touching anything in
+`stepNervous`, the noise, or the command layer.
 
 ## Status: complete and matching
 
@@ -47,7 +94,26 @@ WHOLE LOOP -- neurons, muscle, senses, body; 4000 steps
   worst membrane potential      5.000e-11 mV
   worst muscle tension          4.999e-13
   direction gate disagreed on   0 of 20 samples
+
+ABLATED -- AVBL, AVAL, DB03, VB05, AVEL, RIML, I2L; 3000 steps
+  cells reported dead           7 of 7
+  worst node disagreement       4.999e-13 mm
+  worst membrane potential      5.000e-11 mV
+  worst activation              4.999e-11
+  worst muscle tension          5.000e-13
+  direction gate disagreed on   0 of 15 samples
+  ablated cells still active    0
 ```
+
+The third case exists because ablation was the largest piece of this runtime that nothing
+had ever looked at: eleven separate `anyDead` branches plus `rebuildGap`, none of them
+reached by a check, behind a button in the viewer and underneath every ablation phenotype
+in the Python. It is also the quietest place to be wrong — an ablation that is only mostly
+applied still produces a worm-shaped thing that wriggles, it just answers a different
+question than the experiment asked. The set is chosen to hit every branch: command
+interneurons so the direction gate loses inputs, motor neurons so a muscle loses drive,
+heavily gap-coupled cells so `rebuildGap` has something to do, and one pharyngeal cell,
+which reaches the rest of the animal through a single gap junction and nothing else.
 
 Those figures are the rounding granularity of the reference file, so the two agree to at
 least the precision the reference stores. Everything is ported: nervous system, muscle,
