@@ -7,11 +7,16 @@
  * since slightly wrong drag still produces a worm-shaped thing that wriggles.
  */
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const wasmBuf = fs.readFileSync(ROOT + 'web/worm.wasm');
-const modelBuf = fs.readFileSync(ROOT + 'web/worm.model');
-const ref = JSON.parse(fs.readFileSync(ROOT + 'web/conform.json', 'utf8'));
+// fileURLToPath, not .pathname. A file URL's pathname on Windows is "/C:/src/wasm/", and
+// joining that onto anything gives "C:\C:\src\...", which is not a path anywhere.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const at = (...p) => path.join(ROOT, ...p);
+const wasmBuf = fs.readFileSync(at('web', 'worm.wasm'));
+const modelBuf = fs.readFileSync(at('web', 'worm.model'));
+const ref = JSON.parse(fs.readFileSync(at('web', 'conform.json'), 'utf8'));
 
 // --- model file: 'WORM' + version, u32 header length, JSON header, payload ------------
 const dv = new DataView(modelBuf.buffer, modelBuf.byteOffset, modelBuf.byteLength);

@@ -18,7 +18,7 @@ import { send } from './transport.js';
 
 const tip = () => el('tooltip');
 
-export function showTip(at, html) {
+function showTip(at, html) {
   const tooltip = tip();
   tooltip.innerHTML = html;
   tooltip.classList.add('on');
@@ -29,7 +29,7 @@ export function showTip(at, html) {
   if (y + r.height > innerHeight - 8) y = at.clientY - r.height - pad;
   tooltip.style.left = `${x}px`; tooltip.style.top = `${y}px`;
 }
-export const hideTip = () => tip().classList.remove('on');
+const hideTip = () => tip().classList.remove('on');
 
 /* ----------------------------------------------------------------- worm selector -- */
 
@@ -54,7 +54,7 @@ export function buildWormSel() {
   el('b-worm-del').disabled = n <= 1;
 }
 
-export function focusWorm(i) {
+function focusWorm(i) {
   if (!S.engine || i < 0 || i >= S.engine.worms.length) return;
   S.focus = i;
   S.recentre = true;
@@ -65,7 +65,7 @@ export function focusWorm(i) {
   buildWormSel();
 }
 
-export function updateAblateUI() {
+function updateAblateUI() {
   const b = el('b-ablate');
   const many = S.engine && S.engine.worms.length > 1;
   b.setAttribute('aria-pressed', String(S.ablateMode));

@@ -628,11 +628,22 @@ docker build -t celegans-sim . && docker run --rm -p 8080:8080 celegans-sim
 
 ## The viewer
 
-`web/` is a single page with no build step and no dependencies. Telemetry is packed
-float32 over a WebSocket at 30 Hz — 302 voltages, 302 activations, 95 muscle tensions, the
-body outline, the curvature profile and the pharyngeal pump, about 3 kB a frame. The
-chemical fields are larger and change slowly, so they go separately as downsampled 8-bit
-images every two seconds.
+`web/` is a set of native ES modules — no build step, no bundler, no dependencies. There
+are **two ways to feed it**, and the default is the one with no server in it:
+
+- **Local (default).** The animal runs in the tab. `web/local.js` loads `worm.wasm` and
+  `worm.model`, steps the WebAssembly against a wall-clock budget and reads the state
+  straight out of linear memory. No socket, no backend, no round trip — a static file
+  server is the whole deployment. See [wasm/README.md](wasm/README.md).
+- **`?server`.** The original WebSocket feed from `python run.py`: packed float32 at 30 Hz,
+  302 voltages, 302 activations, 95 muscle tensions, the body outline, the curvature
+  profile and the pharyngeal pump, about 3 kB a frame, with the chemical fields going
+  separately as downsampled 8-bit images every two seconds. This is still how the *Python*
+  model is driven, so it is the only way to watch the reference implementation rather than
+  the port.
+
+Everything downstream of `send()` is shared: the two paths differ in where the numbers come
+from and in nothing else. [web/README.md](web/README.md) has the module map.
 
 **The dish has three looks**, and they are more than a palette swap — each is a different
 claim about what you are looking at:
@@ -702,6 +713,13 @@ tools/pharynx.py        pump rate on and off food, and five ablation phenotypes
 tools/stats.py          bootstrap intervals, and the paired comparison behind compare.py
 tools/compare.py        A/B two configurations on identical seeds, with paired intervals
 tools/scorecard.py      every headline number at once, across seeds, in three media
+tools/export_model.py   freeze the model into web/worm.model + the runtime's constants
+tools/conform.py        reference trajectories the WebAssembly port is checked against
+tools/check_web.mjs     the viewer's module graph: cycles, unresolved imports, leftovers
+tools/smoke_web.mjs     the viewer in a real browser, desktop and mobile
+web/app.js              viewer bootstrap; the modules it composes are in web/viewer/
+web/local.js            the WebAssembly engine: model loading, stepping budget, frames
+wasm/assembly/index.ts  the runtime — the same model, in the browser
 ```
 
 ## Data and licensing

@@ -100,7 +100,7 @@ function localTick(now) {
 
 let lastTick = 0;
 
-export function tick(now) {
+function tick(now) {
   // The flash decays in wall-clock time so it looks the same however fast the simulation
   // is being run, and however many frames arrive.
   const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;

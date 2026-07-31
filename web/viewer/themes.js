@@ -41,7 +41,7 @@ export function getNoise() {
   return cv;
 }
 
-export const THEMES = {
+const THEMES = {
   digital: {
     plate: '#141413',
     rim: () => C('--baseline'),

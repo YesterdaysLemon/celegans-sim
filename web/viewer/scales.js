@@ -39,4 +39,3 @@ export function div(v) {
   const c = divRgb(v);
   return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
 }
-export const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;

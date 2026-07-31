@@ -51,3 +51,22 @@ therefore the only way to watch the reference implementation rather than the por
 `send()` in `transport.js` is the seam. Everything upstream issues commands — play, rate,
 poke, ablate, drop a lawn — without knowing which path is live.
 
+## Checks
+
+```bash
+npm ci                            # puppeteer-core; CI tooling only, nothing is served
+node tools/check_web.mjs          # module graph: cycles, unresolved imports, leftovers
+node tools/smoke_web.mjs          # a real browser, at 1440x900, 768x1024 and 390x844
+```
+
+Both run in CI on any change under `web/` or `wasm/`
+([.github/workflows/viewer.yml](../.github/workflows/viewer.yml)). The smoke test fails on
+a console error, a failed request, a missing or invisible control, a layer toggle that has
+gone missing at some width, horizontal overflow, a touch target under 44 px, or a control
+with no accessible name — the class of breakage a no-build-step viewer is otherwise wide
+open to, since nothing else ever looks at this code between typing it and someone loading
+it.
+
+It deliberately asserts nothing about what the *animal* does. Those claims belong in
+`tests/` and `wasm/conform.mjs`, where they can be made precisely; a smoke test that
+depended on the worm's behaviour would start failing for reasons that were not its business.
