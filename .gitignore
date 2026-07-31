@@ -17,3 +17,6 @@ web/conform.json
 
 # CI tooling (puppeteer-core). The viewer itself has no dependencies.
 node_modules/
+
+web/traj-wasm.bin
+web/traj-wasm.json

@@ -46,6 +46,11 @@ class World:
 
         self.patches = []        # bookkeeping for the viewer
         self.obstacles = []      # (x, y, radius)
+        # Eggs, as (x, y, t). The first thing this animal does that leaves something
+        # behind: every other state in the dish is either a field or the worm itself, and
+        # both forget. These do not, which is what makes them worth having on the plate
+        # rather than in a counter.
+        self.eggs = []
 
         self.t = 0.0
         self._acc = 0.0
@@ -92,6 +97,10 @@ class World:
         self.repellent += strength * np.exp(-d / length_scale)
         self.repellent *= self.inside
         self.patches.append({"x": x, "y": y, "r": length_scale * 0.4, "kind": "repellent"})
+
+    def lay_egg(self, x: float, y: float) -> None:
+        """Deposit an egg where the vulva is. The dish keeps it; nothing removes it."""
+        self.eggs.append((float(x), float(y), float(self.t)))
 
     def add_obstacle(self, x: float, y: float, radius: float) -> None:
         self.obstacles.append((float(x), float(y), float(radius)))
