@@ -1763,6 +1763,32 @@ class EggLayingParams:
     # The floor: what the vulval muscle does with no drive at all. An HSN-ablated animal
     # is egg-laying *defective*, not incapable, so this cannot be zero -- the same role,
     # for the same reason, that myogenic_rate plays for the pharyngeal pump.
+    #
+    # KNOWN OVERSHOOT, and the reason is structural rather than a bad value here.
+    #
+    # An HSN-ablated animal in this model lays *nothing*: five animals, sixty simulated
+    # minutes each, zero eggs, uterus pinned at capacity in all five. The real phenotype is
+    # egg-laying *defective* -- retention and bloating, which this does reproduce, plus a
+    # much reduced but nonzero rate, which it does not.
+    #
+    # Raising this floor from 0.25 to 0.33 did not help, and measuring the drive explains
+    # why. With HSN gone the vulval muscle activation over ten minutes runs
+    #
+    #     min 0.081   p50 0.458   p90 0.474   p99 0.485   max 0.494
+    #
+    # against a vm_threshold of 0.55. That distribution is almost flat: above the median it
+    # spans four hundredths, and its maximum over ten minutes never comes within 0.05 of
+    # firing. vm is a low-pass filter of the drive with a 0.35 s constant, and the surviving
+    # inputs -- the myogenic floor and a serotonin level averaged over its own 20 s tau --
+    # have no fast structure left to pass. So there is nothing for a threshold to catch
+    # intermittently: any value of this parameter flips the ablated animal from never to
+    # often, with no graded regime between.
+    #
+    # A graded ablation phenotype therefore needs a mechanism this model does not have, not
+    # a better constant. The candidate is the right one biologically: vulval muscle calcium
+    # transients are themselves stochastic, so the decision to lay is not a deterministic
+    # function of the network state the way it is here. Adding that is a real change and
+    # should be made for that reason, not to rescue a number. Left at the original 0.25.
     myogenic: float = 0.25
     # HSN is the driver, and it enters as its ABSOLUTE activation rather than as a
     # deviation from its own resting level. That distinction is the phenotype: written as
@@ -1820,6 +1846,15 @@ class EggLayingParams:
     # HSN gone it fills and stays full, which is the retention half of the Egl phenotype.
     eggs_per_food: float = 0.70      # eggs per unit ingested (~15/hour on a lawn)
     uterus_capacity: float = 15.0    # eggs; a blocked animal becomes bloated, not infinite
+    # KNOWN SIMPLIFICATION: there is no brood limit. A self-fertilising hermaphrodite makes
+    # about 300 sperm during L4 and then switches its germline to oocytes permanently, so
+    # its ~300-egg brood is *sperm*-limited -- it runs out of sperm, not of food or of
+    # oocytes. Here eggs are made from food without end, so an animal kept on a lawn lays
+    # forever. That is wrong on any run longer than a few hours of simulated time, and it
+    # is the first thing to fix if this is ever used for a population: a lifetime brood cap
+    # is what makes generations finite. (Mated with a male the real animal exceeds 1000,
+    # because male sperm outcompete self sperm and are not limiting -- but modelling that
+    # needs males, and males need a tail, spicules and their own motor program.)
     eggs_initial: float = 3.0        # a young adult starts with some ready to go
 
     # --- what makes phases -----------------------------------------------------------

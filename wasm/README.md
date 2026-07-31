@@ -25,6 +25,35 @@ The exporter also emits `assembly/model_gen.ts`, so every offset and constant is
 compile-time literal. The `.wasm` and the `.model` are produced by the same command and
 agree by construction; there is no runtime binding step to get out of order.
 
+### It is not a transpiler, and that has a price
+
+"Python is the compiler" is true of the *setup* and not of the maths. `tools/export_model.py`
+really does compile — it runs the Python construction and emits the results — but
+`assembly/index.ts` is **hand-written AssemblyScript** mirroring the Python step functions.
+Nothing generates it. So the constants and the precomputed matrices are compiled, and the
+per-step arithmetic is transcribed by a person.
+
+The cost of that is exactly what it sounds like: **two implementations of the same
+equations, and every change to a step function has to be made twice.** The modulator
+ablation fix was written twice. The differential repellent was written twice.
+
+What makes it survivable is that the duplicated surface is the small, mechanical third —
+and that `wasm/conform.mjs` checks it to floating point. What makes it *dangerous* is that
+the check only protects what it covers, which this repository has now learned three times:
+the plate's chemistry did not diffuse in the browser for weeks because the conformance dish
+was empty and a field of zeros diffuses to zeros; ablation had eleven branches and zero
+coverage until someone went looking; and the noisy path — the only path anything actually
+runs in — was asserted to be checked when it was not. Every one of those was invisible to a
+passing test suite.
+
+The alternatives were considered and are worse *for this project*. CPython in WebAssembly
+removes the duplication and costs about ten megabytes plus a numpy that is not fast, which
+would take away the thing the port exists for. Auto-transpiling numpy is brittle in the
+places that matter. The honest right answer, from a standing start, is to write the model
+once in a language that targets both — native for the Python side, wasm for the browser —
+and that is a rewrite which would cost the readability that makes `worm/*.py` reviewable as
+science rather than as code. The split here is a trade, not a solution.
+
 ## What cannot match, and why that is fine
 
 The background noise is an Ornstein–Uhlenbeck current driven by numpy's PCG64 and its
@@ -145,6 +174,54 @@ Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19
 
 The 302² matrices are anatomy and shared between animals, so a second worm duplicates only
 state; that is why two in one dish costs what it does and no more.
+
+## Running measurements on it
+
+The runtime is faster than the Python it was ported from, which is worth having for any
+measurement whose cost is wall clock. **How much faster depends on how many you run at
+once, and the headline number is the one that does not apply to a sweep.**
+
+| | measured |
+|---|---|
+| one process, machine otherwise idle | **2.28x** real time |
+| ten concurrent, on twelve cores | **~1.5x** real time |
+
+The table under *What it costs* is the first row. A sweep is the second: ten workers do not
+each get a core, and this machine stops scaling around eight concurrent trials. An hour of
+animal costs about forty minutes under a full sweep, not the twenty-six the single-process
+figure suggests. Worth stating plainly because the first version of this section quoted
+2.3x for a ten-way sweep, which was measured on one idle process and was wrong by a factor
+of about 1.5.
+
+`wasm/egglaying.mjs` is the first user: egg-laying clustering is a claim about several
+twenty-minute cycles, so a job is an hour long whichever implementation runs it.
+
+The division of labour is the same one the model file rests on. **The runtime emits raw
+observations and computes nothing**; every statistic comes from one implementation in
+`tools/`. `wasm/trajectories.mjs` dumps curvature, centroid and gate for `tools/parity.py`;
+`wasm/egglaying.mjs` dumps event times for `tools/egglaying.py clustering`. If each side
+measured its own frequency or its own clustering, a disagreement would be ambiguous
+between the model and the metric, and the metric is much the easier of the two to get
+wrong.
+
+**Where this is safe.** Long runs at the shipped parameters, where the question is what the
+animal does and the answer is a statistic over many events.
+
+**Where it is not, and this is the one to remember.** *Never split the arms of a comparison
+across implementations.* Conformance is exact only with the noise off. With it on the two
+agree to within what twenty animals a side can resolve -- gait to about 1%, net
+displacement only to about 29% (see the parity table above). Running a control in Python
+and a treatment here would fold that uncertainty straight into the effect being measured.
+Both arms in one implementation, always.
+
+**Parameter sweeps need a rebuild.** Every constant is compiled in: `model_gen.ts` has
+`EGL_HSN_GAIN` as a literal, not a field. So an A/B on a parameter means exporting and
+recompiling per arm -- about thirty seconds, which is nothing against a twenty-minute run,
+but it is not wired up, and each arm needs its own matched `.wasm` and `.model` pair. A
+mismatched pair does not degrade gracefully; it reads the wrong byte offsets. `tools/
+compare.py` stays on the Python for now, which is the right default anyway: it is the
+reference implementation, and an assay suite that ran entirely on the port would leave the
+thing it is a port *of* untested.
 
 ## Serving it
 

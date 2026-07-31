@@ -39,16 +39,35 @@ What the animal actually does, and what this has to reproduce:
     off food                      strongly suppressed; eggs are retained
     HSN killed                    egg-laying defective, and slow -- but NOT zero. The
                                   vulval muscles can still be driven without HSN.
+                                  *This model overshoots it: ablated animals lay nothing
+                                  at all. The retention and bloating are right, the
+                                  residual rate is not. See EggLayingParams.myogenic for
+                                  the measurement showing why it is structural rather than
+                                  a bad constant.*
     exogenous serotonin           induces laying, including in HSN-ablated animals,
                                   because it acts downstream on the muscle
     VC killed                     a mild *increase*; the VCs are not the drivers
 
 The two-state structure is built the way this repository builds persistent state
 elsewhere: a depleting resource with its own recovery time constant, exactly the
-Tsodyks-Markram idiom `worm/senses.py` uses for tap habituation. An active phase runs the
-resource down; recovery takes minutes; the phase ends when the resource cannot support the
-next event. Nothing here schedules a phase, and nothing counts events -- the clustering is
-what the resource does.
+Tsodyks-Markram idiom `worm/senses.py` uses for tap habituation, behind a two-threshold
+Schmitt trigger like the direction gate's. An active phase runs the resource down;
+recovery takes minutes; the next phase cannot begin until it is back above the upper
+threshold. Nothing here schedules a phase, and nothing counts events.
+
+Measured, five animals on a lawn for sixty simulated minutes each (55 events):
+
+    rate                   11.0 eggs/hour
+    interval CV            1.79        (0 = metronome, 1 = Poisson, >1 = clustered)
+    intervals under 60 s   60%
+    intervals over 2 min   20%
+
+Both tails populated is what bimodal means, and it is the one of the three a timer cannot
+produce. One caveat, stated because the CV alone would oversell it: **the median interval
+is 6.0 s, which is exactly `refractory`** -- the fast mode is a parameter, not an emergent
+spacing, and the animal's intra-bout interval is nearer 20 s. What genuinely emerges is the
+slow mode: the fifth of intervals longer than two minutes, which is the resource behind the
+Schmitt trigger and nothing else.
 """
 
 from __future__ import annotations

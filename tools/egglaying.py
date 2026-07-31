@@ -33,6 +33,7 @@ Run:  PYTHONPATH=. .venv/bin/python tools/egglaying.py [minutes] [seeds]
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -43,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.stats import bootstrap_ci, paired_ci, fmt, mde, verdict   # noqa: E402
 from worm.params import Params                                       # noqa: E402
 
-MINUTES = 40
+MINUTES = 8
 SEEDS = 6
 
 
@@ -192,7 +193,78 @@ def report(rows, minutes):
     return rows
 
 
+def from_runtime(path="web/egg-events.json"):
+    """Read event times produced by wasm/egglaying.mjs and measure them here.
+
+    Same division of labour as tools/parity.py: the runtime produces raw event times and
+    computes nothing, and every statistic below comes from the code in this file. If each
+    side measured its own clustering, a disagreement would be ambiguous between the model
+    and the metric, and the metric is much the easier of the two to get wrong.
+
+    The runtime is used for exactly one reason. Clustering is a claim about several
+    twenty-minute cycles, so the run has to be an hour long whichever implementation
+    executes it; this one gets through an hour of animal in twenty-six minutes instead of
+    sixty, and conform.mjs shows the two agree on every piece of egg-laying state to
+    0.000e+0.
+    """
+    if not os.path.exists(path):
+        print("no runtime events. Run:\n  node wasm/egglaying.mjs", file=sys.stderr)
+        return 2
+    rows = json.load(open(path))
+    by = {}
+    for r in rows:
+        by.setdefault(r["arm"], []).append(r)
+
+    mins = rows[0]["minutes"]
+    print("EGG-LAYING, CLUSTERING -- %g simulated minutes per animal, on the WASM runtime\n"
+          % mins)
+    print("  Waggoner et al. 1998: active phases of ~2 min holding several events ~20 s")
+    print("  apart, separated by inactive phases of ~20 min. Nothing in worm/egglaying.py")
+    print("  schedules a phase or counts events -- if this structure is here it is what the")
+    print("  depleting resource behind the Schmitt trigger does.\n")
+    print("    %-14s %6s %7s %9s %8s %10s %10s"
+          % ("arm", "worms", "events", "median s", "CV", "<60 s", ">2 min"))
+    out = {}
+    for arm in ("on_food", "hsn"):
+        g = by.get(arm, [])
+        if not g:
+            continue
+        st = interval_stats([r["times"] for r in g])
+        n_eggs = sum(r["laid"] for r in g)
+        if not st:
+            print("    %-14s %6d %7d   too few events to say" % (arm, len(g), n_eggs))
+            continue
+        out[arm] = st
+        print("    %-14s %6d %7d %9.1f %8.2f %9.0f%% %9.0f%%"
+              % (arm, len(g), n_eggs, st["median"], st["cv"],
+                 100 * st["frac_within_60s"], 100 * st["frac_over_gap"]))
+        print("      rate %.1f eggs/hour" % (n_eggs * 60.0 / (mins * len(g))))
+
+    print("\n  CV is 0 for a metronome and exactly 1 for a Poisson process. Above 1 means")
+    print("  the events are clustered -- bunched into bouts with gaps between them -- which")
+    print("  is the only one of the three a timer cannot produce.")
+    st = out.get("on_food")
+    if st:
+        if st["cv"] > 1.2 and st["frac_within_60s"] > 0.4 and st["frac_over_gap"] > 0.15:
+            print("\n  Clustered: %.0f%% of intervals under a minute and %.0f%% over two,"
+                  % (100 * st["frac_within_60s"], 100 * st["frac_over_gap"]))
+            print("  with CV %.2f. Both tails are populated, which is what bimodal means" % st["cv"])
+            print("  and what a single rate cannot do.")
+        elif st["cv"] < 1.2:
+            print("\n  NOT clustered: CV %.2f is Poisson or tighter. The resource is not" % st["cv"])
+            print("  structuring anything and this is a rate with extra steps. The honest")
+            print("  reading is that the phase machinery earns nothing as tuned.")
+        else:
+            print("\n  Ambiguous: CV %.2f is above Poisson but the two tails are not both"
+                  % st["cv"])
+            print("  populated (%.0f%% under a minute, %.0f%% over two). More animals."
+                  % (100 * st["frac_within_60s"], 100 * st["frac_over_gap"]))
+    return 0
+
+
 def main(argv):
+    if argv and argv[0] == "clustering":
+        return from_runtime()
     minutes = float(argv[0]) if argv else MINUTES
     seeds = int(argv[1]) if len(argv) > 1 else SEEDS
 
@@ -206,7 +278,10 @@ def main(argv):
         jobs.append({"seed": s, "arm": "serotonin", "minutes": minutes, "serotonin": 0.6})
         jobs.append({"seed": s, "arm": "hsn_serotonin", "minutes": minutes, "serotonin": 0.6})
 
-    rows = [r for r in pooled(trial, jobs) if r]
+    # Generous: a job runs `minutes` of simulated time at about real time, and pooled's
+    # default deadline is forty minutes. A sweep that outlives it is killed with no output
+    # at all, which is how one forty-five-minute run was lost.
+    rows = [r for r in pooled(trial, jobs, timeout=int(minutes * 60 * 1.6) + 600) if r]
     if not rows:
         print("no trials completed", file=sys.stderr)
         return 2
