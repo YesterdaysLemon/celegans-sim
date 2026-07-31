@@ -67,6 +67,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
         working-directory: wasm
 
+      - name: conformance input diagnostics
+        run: node --test wasm/conform-inputs.test.mjs
+
       # The exporter and the compiler are one command's worth of output apart: the .wasm
       # has the .model's byte offsets compiled into it, so a mismatched pair does not
       # degrade gracefully, it reads the wrong offsets.
