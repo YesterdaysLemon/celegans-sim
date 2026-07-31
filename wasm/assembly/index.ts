@@ -283,6 +283,15 @@ class Worm {
   waf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   whv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   kh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+  /* Ablation. Zeroing a cell's conductances is not enough on its own: a cell whose
+   * synaptic and gap conductances are gone still receives whatever the sensory layer
+   * injects, with only its leak to shunt it -- which is how ablating AVB once drove it
+   * from -11.6 mV to +34.8 mV and made the forward command *maximally* active. A dead
+   * cell is cut off from external input, pinned at its leak potential, and releases
+   * nothing. */
+  alive: StaticArray<u8> = new StaticArray<u8>(G.N_NEURONS);
+  gapTot: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  anyDead: bool = false;
   // muscle
   mV: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
   mCa: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
@@ -332,6 +341,8 @@ class Worm {
       unchecked(this.Dv[i] = m(G.OFF_d_rest, i));
     }
     for (let i = 0; i < G.N_MUSCLES; i++) unchecked(this.mV[i] = G.MUS_E_LEAK);
+    for (let i = 0; i < G.N_NEURONS; i++) unchecked(this.alive[i] = 1);
+    this.rebuildGap();
     this.updateNodes();
   }
 
@@ -358,6 +369,7 @@ class Worm {
     for (let c = 0; c < n; c++) {
       let rel = unchecked(this.sv[c]);
       if (G.ANY_DEPRESS) rel *= unchecked(this.Dv[c]);
+      if (this.anyDead && !unchecked(this.alive[c])) rel = 0.0;   // releases nothing
       unchecked(this.rel[c] = rel);
     }
     for (let r = 0; r < n; r++) {
@@ -376,16 +388,29 @@ class Worm {
       const gAd = m(G.OFF_g_adapt, i) * unchecked(this.av[i]);
       const gC = m(G.OFF_g_ca, i) * 0.5 *
                  (1.0 + Math.tanh((V - m(G.OFF_ca_vhalf, i)) / G.NEURAL_CA_SLOPE));
-      const gt = gLeak + m(G.OFF_gap_total, i) + unchecked(this.gs[i]) + gAd + gC;
+      const gt = gLeak + unchecked(this.gapTot[i]) + unchecked(this.gs[i]) + gAd + gC;
       unchecked(this.gtot[i] = gt);
       unchecked(this.fx[i] = gLeak * eLeak + unchecked(this.Es[i])
                 + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
-                + unchecked(this.Inoise[i]) + unchecked(this.Iext[i]));
+                + unchecked(this.Inoise[i])
+                + (this.anyDead && !unchecked(this.alive[i]) ? 0.0 : unchecked(this.Iext[i])));
       unchecked(this.dec[i] = Math.exp(-gt * dt / (G.NEURAL_C_M * 1e-3)));
       unchecked(this.Vn[i] = V);
     }
     for (let it = 0; it < G.GAP_ITERS; it++) {
-      spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, this.Vn, this.gapAcc);
+      if (this.anyDead) {
+        for (let r = 0; r < n; r++) {
+          let acc: f64 = 0.0;
+          const e = mi(G.OFF_gap_ptr, r + 1);
+          for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
+            const c = mi(G.OFF_gap_idx, k);
+            if (unchecked(this.alive[c])) acc += m(G.OFF_gap_val, k) * unchecked(this.Vn[c]);
+          }
+          unchecked(this.gapAcc[r] = acc);
+        }
+      } else {
+        spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, this.Vn, this.gapAcc);
+      }
       for (let r = 0; r < n; r++) {
         const vInf = (unchecked(this.fx[r]) + unchecked(this.gapAcc[r])) / unchecked(this.gtot[r]);
         unchecked(this.gapv[r] = vInf + (unchecked(this.Vold[r]) - vInf) * unchecked(this.dec[r]));
@@ -394,6 +419,11 @@ class Worm {
     }
 
     for (let i = 0; i < n; i++) {
+      if (this.anyDead && !unchecked(this.alive[i])) {
+        unchecked(this.V[i] = m(G.OFF_E_leak, 0));
+        unchecked(this.sv[i] = 0.0);
+        continue;
+      }
       unchecked(this.V[i] = clamp(unchecked(this.Vn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
       // Release is driven by the *pre-update* voltage, so the network has one consistent
       // step of delay everywhere rather than an index-order dependence.
@@ -416,8 +446,11 @@ class Worm {
 
   activation(): void {
     for (let i = 0; i < G.N_NEURONS; i++) {
-      unchecked(this.act[i] =
-        sigmoid(G.NEURAL_BETA * (unchecked(this.V[i]) - m(G.OFF_V_th, i))));
+      // Zero for an ablated cell. This matters beyond tidiness: the direction gate reads
+      // the mean activation of the command pools, so a dead neuron reporting anything but
+      // zero votes in a decision it is not present for.
+      unchecked(this.act[i] = (this.anyDead && !unchecked(this.alive[i])) ? 0.0
+        : sigmoid(G.NEURAL_BETA * (unchecked(this.V[i]) - m(G.OFF_V_th, i))));
     }
   }
 
@@ -498,6 +531,22 @@ class Worm {
       const dj = unchecked(this.rowD[k]) + f * (unchecked(this.rowD[k + 1]) - unchecked(this.rowD[k]));
       const vj = unchecked(this.rowV[k]) + f * (unchecked(this.rowV[k + 1]) - unchecked(this.rowV[k]));
       unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj));
+    }
+  }
+
+  /* Total gap conductance per cell, over living neighbours only. A dead cell neither
+   * drives nor is driven, so it has to leave the conductance sum as well as the matrix. */
+  rebuildGap(): void {
+    this.anyDead = false;
+    for (let i = 0; i < G.N_NEURONS; i++) if (!unchecked(this.alive[i])) { this.anyDead = true; break; }
+    for (let r = 0; r < G.N_NEURONS; r++) {
+      if (!unchecked(this.alive[r])) { unchecked(this.gapTot[r] = 0.0); continue; }
+      let acc: f64 = 0.0;
+      const e = mi(G.OFF_gap_ptr, r + 1);
+      for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
+        if (unchecked(this.alive[mi(G.OFF_gap_idx, k)])) acc += m(G.OFF_gap_val, k);
+      }
+      unchecked(this.gapTot[r] = acc);
     }
   }
 
@@ -654,11 +703,15 @@ class Worm {
   }
   modLevel(level: f64, off: usize, len: i32, rate: f64): f64 {
     if (len == 0) return level;
-    let acc: f64 = 0.0;
-    for (let i = 0; i < len; i++) acc += unchecked(this.act[mi(off, i)]);
-    // Levels are deviations from a resting release of exactly 0.5: every sigmoid midpoint
-    // sits at its own resting potential by construction, so phi(V_rest) = 1/2.
-    const target = acc / <f64>len - 0.5;
+    // Without the mask an ablated source does not fall silent, it signals the *opposite*:
+    // levels are deviations from a resting release of 0.5 and a dead cell reads 0.0.
+    let acc: f64 = 0.0; let live = 0;
+    for (let i = 0; i < len; i++) {
+      const c = mi(off, i);
+      if (this.anyDead && !unchecked(this.alive[c])) continue;
+      acc += unchecked(this.act[c]); live++;
+    }
+    const target = live > 0 ? acc / <f64>live - 0.5 : 0.0;
     return level + (target - level) * rate;
   }
   turnBias(): f64 { return G.MOD_SEROTONIN_TURNING * this.modSER - G.MOD_PDF_ROAMING * this.modPDF; }
@@ -871,17 +924,25 @@ class Worm {
 
   /* ----------------------------------------------------------------------- pharynx --- */
   @inline meanDev(off: usize, len: i32): f64 {
-    if (len == 0) return 0.0;
-    let acc: f64 = 0.0;
-    for (let i = 0; i < len; i++) acc += unchecked(this.act[mi(off, i)]);
-    return acc / <f64>len - 0.5;
+    let acc: f64 = 0.0; let live = 0;
+    for (let i = 0; i < len; i++) {
+      const c = mi(off, i);
+      if (this.anyDead && !unchecked(this.alive[c])) continue;
+      acc += unchecked(this.act[c]); live++;
+    }
+    return live > 0 ? acc / <f64>live - 0.5 : 0.0;
   }
   stepPharynx(foodAtMouth: f64): f64 {
     const dt = G.DT;
     // Serotonin acts *through* the pacemaker rather than beside it: SER-7 sits in MC, so
     // an animal without MC does not pump fast however much serotonin it has.
     let mc = this.meanDev(G.OFF_idx_mc, G.LEN_idx_mc);
-    mc += G.PH_SEROTONIN_TO_MC * this.modSER - G.PH_OCTOPAMINE_TO_MC * this.modOA;
+    // Serotonin acts through the pacemaker, so with MC gone it has nothing to act on.
+    let mcLive = false;
+    for (let i = 0; i < G.LEN_idx_mc; i++) {
+      if (!this.anyDead || unchecked(this.alive[mi(G.OFF_idx_mc, i)])) { mcLive = true; break; }
+    }
+    if (mcLive) mc += G.PH_SEROTONIN_TO_MC * this.modSER - G.PH_OCTOPAMINE_TO_MC * this.modOA;
     const i2 = this.meanDev(G.OFF_idx_i2, G.LEN_idx_i2);
     this.phRate = clamp(G.PH_MYOGENIC_RATE + G.PH_MC_RATE_GAIN * mc - G.PH_I2_RATE_GAIN * i2,
                         0.0, G.PH_MAX_RATE);
@@ -979,6 +1040,28 @@ export function createWorm(seed: i32, x: f64, y: f64, heading: f64): i32 {
   return worms.length - 1;
 }
 export function wormCount(): i32 { return worms.length; }
+export function clearWorms(): void { worms = []; }
+export function popWorm(): void { if (worms.length > 1) worms.pop(); }
+export function resetWorld(): void { world = new World(); }
+
+/* Ablation. The caller passes a list of neuron indices; passing none restores everything,
+ * which is why this replaces the set rather than adding to it. */
+export function setAblated(w: i32, ptr: usize, count: i32): void {
+  const wm = worms[w];
+  for (let i = 0; i < G.N_NEURONS; i++) unchecked(wm.alive[i] = 1);
+  for (let k = 0; k < count; k++) {
+    const idx = load<i32>(ptr + (<usize>k << 2));
+    if (idx >= 0 && idx < G.N_NEURONS) unchecked(wm.alive[idx] = 0);
+  }
+  wm.rebuildGap();
+  for (let i = 0; i < G.N_NEURONS; i++) {
+    if (!unchecked(wm.alive[i])) {
+      unchecked(wm.V[i] = m(G.OFF_E_leak, 0));
+      unchecked(wm.sv[i] = 0.0);
+    }
+  }
+}
+export function isAlive(w: i32, i: i32): i32 { return worms[w].alive[i]; }
 export function setMedium(ct: f64, cn: f64): void {
   for (let i = 0; i < worms.length; i++) { worms[i].cT = ct; worms[i].cN = cn; }
 }

@@ -11,8 +11,18 @@
  * and a stream of frames -- so the viewer does not have to care which it is talking to.
  */
 
-const MODEL_URL = 'worm.model';
-const WASM_URL = 'worm.wasm';
+/* The .wasm has the .model's byte offsets compiled into it, so they are a matched pair:
+ * a new .wasm against a cached .model would not degrade gracefully, it would read the
+ * wrong offsets. Both are cached hard, so both carry a content hash -- and the manifest
+ * naming them is the one file that must not be cached. */
+async function assetUrls() {
+  try {
+    const b = await fetch('build.json', { cache: 'no-cache' }).then((r) => r.json());
+    return [`worm.model?v=${b['worm.model']}`, `worm.wasm?v=${b['worm.wasm']}`];
+  } catch (e) {
+    return ['worm.model', 'worm.wasm'];      // dev, served straight off disk
+  }
+}
 
 /* How long stepping may take per animation frame, in milliseconds of *wall* time.
  *
@@ -42,9 +52,10 @@ export class LocalEngine {
   }
 
   async init(nWorms = 2) {
+    const [modelUrl, wasmUrl] = await assetUrls();
     const [wasmBuf, modelBuf] = await Promise.all([
-      fetch(WASM_URL).then((r) => r.arrayBuffer()),
-      fetch(MODEL_URL).then((r) => r.arrayBuffer()),
+      fetch(wasmUrl).then((r) => r.arrayBuffer()),
+      fetch(modelUrl).then((r) => r.arrayBuffer()),
     ]);
 
     // model file: 'WORM' + version, u32 header length, JSON header, raw payload
@@ -139,6 +150,52 @@ export class LocalEngine {
       { x: 16.0, y: -10.0, r: 5.0, kind: 'food' },
       { x: 6.0, y: 14.0, r: 3.0, kind: 'repellent' },
     ];
+  }
+
+  /* Worms come and go at runtime. They share the plate and the anatomy, so adding one
+   * costs a few kB of state and nothing else -- the 302x302 matrices are read-only and
+   * common to every animal. */
+  addWorm() {
+    const a = Math.random() * Math.PI * 2;
+    const r = 2 + Math.random() * 9;
+    const seed = (Math.random() * 0x7fffffff) | 0;
+    this.worms.push(this.E.createWorm(seed, Math.cos(a) * r, Math.sin(a) * r,
+                                      Math.random() * Math.PI * 2));
+    return this.worms.length - 1;
+  }
+  removeWorm() {
+    if (this.worms.length <= 1) return false;
+    this.E.popWorm();
+    this.worms.pop();
+    return true;
+  }
+  reset(nWorms) {
+    const n = nWorms || this.worms.length;
+    this.E.clearWorms();
+    this.E.resetWorld();
+    this.worms = [];
+    this.meta.world.patches = [];
+    this._defaultPlate();
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2;
+      const r = i === 0 ? 0 : 3.5;
+      this.worms.push(this.E.createWorm(1000 + i * 7717,
+                                        Math.cos(ang) * r, Math.sin(ang) * r, ang + 0.6));
+    }
+    this._acc = 0;
+  }
+
+  /* Ablation applies to one animal, which is the interesting way round: kill AVB in one
+   * worm and watch it next to an intact one in the same dish. */
+  setAblated(wormIndex, indices) {
+    const n = indices.length;
+    if (!this._ablPtr || this._ablCap < n) {
+      this._ablPtr = this.E.alloc(Math.max(16, n) * 4);
+      this._ablCap = Math.max(16, n);
+    }
+    const view = new Int32Array(this.E.memory.buffer, this._ablPtr, Math.max(1, n));
+    for (let i = 0; i < n; i++) view[i] = indices[i];
+    this.E.setAblated(this.worms[wormIndex], this._ablPtr, n);
   }
 
   dropFood(x, y, r = 2.5) {

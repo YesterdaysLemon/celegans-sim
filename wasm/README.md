@@ -75,6 +75,26 @@ Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19
 The 302² matrices are anatomy and shared between animals, so a second worm duplicates only
 state; that is why two in one dish costs what it does and no more.
 
+## Serving it
+
+```bash
+docker build -t celegans-sim . && docker run --rm -p 8080:8080 celegans-sim
+```
+
+Static nginx, no application server. Two things in that image are worth knowing about.
+
+**The build runs the conformance check**, so a container that would ship a diverged model
+fails to build instead. That is not belt-and-braces: the `.wasm` has the `.model`'s byte
+offsets compiled into it, so a mismatched pair does not degrade gracefully — it reads the
+wrong offsets.
+
+**The asset URLs carry a content hash.** They have to. The exported model is *not*
+bit-reproducible across numpy builds, because `_resting_potentials` goes through LAPACK:
+rebuilding the container moved every resting potential by about 6e-14. Nothing numerically,
+but a different file at the same URL is all a cache needs to serve a stale model against a
+fresh runtime. `build.json` names the hashed assets and is the one file that is never
+cached.
+
 ## Build
 
 ```bash

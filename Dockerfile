@@ -29,7 +29,9 @@ ENV PYTHONPATH=/src
 RUN python tools/export_model.py \
  && cd wasm && npm ci --no-audit --no-fund && npx asc assembly/index.ts --target release
 RUN python tools/conform.py > web/conform.json \
- && node wasm/conform.mjs                      # the build fails here if the port drifted
+ && node wasm/conform.mjs \
+ && rm web/conform.json                        # the build fails above if the port drifted
+RUN python tools/manifest.py                   # content hashes, so immutable caching is safe
 
 # ---- stage 2: nothing but the files ---------------------------------------------------
 FROM nginx:alpine

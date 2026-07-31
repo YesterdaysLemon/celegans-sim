@@ -55,6 +55,32 @@ declare namespace __AdaptedExports {
    */
   export function wormCount(): number;
   /**
+   * assembly/index/clearWorms
+   */
+  export function clearWorms(): void;
+  /**
+   * assembly/index/popWorm
+   */
+  export function popWorm(): void;
+  /**
+   * assembly/index/resetWorld
+   */
+  export function resetWorld(): void;
+  /**
+   * assembly/index/setAblated
+   * @param w `i32`
+   * @param ptr `usize`
+   * @param count `i32`
+   */
+  export function setAblated(w: number, ptr: number, count: number): void;
+  /**
+   * assembly/index/isAlive
+   * @param w `i32`
+   * @param i `i32`
+   * @returns `i32`
+   */
+  export function isAlive(w: number, i: number): number;
+  /**
    * assembly/index/setMedium
    * @param ct `f64`
    * @param cn `f64`

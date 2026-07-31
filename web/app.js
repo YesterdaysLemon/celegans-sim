@@ -82,8 +82,9 @@ const S = {
   pumpFlash: 0, lastPumping: 0,
   connected: false,
   engine: null,        // the local WASM engine, when running client-side
-  others: [],          // every worm after the first, for the dish
-  trails: [],          // one track per worm
+  worms: [],           // every animal's frame, for the dish
+  trails: [],          // one track per animal
+  focus: 0,            // which animal the camera and the panels are about
 };
 
 const el = (id) => document.getElementById(id);
@@ -238,12 +239,29 @@ function drawDish() {
   }
 
   // Every animal in the dish. They share the plate and the anatomy; only the state
-  // differs, which is why a second one costs almost nothing.
-  for (let i = 0; i < S.others.length; i++) {
-    const o = S.others[i];
+  // differs, which is why a second one costs almost nothing. The focused animal is drawn
+  // last so it is never hidden under another, and carries a ring: with more than one
+  // worm on the plate the panels have to say *which* worm they are about.
+  for (let i = 0; i < S.worms.length; i++) {
+    if (i === S.focus) continue;
+    const o = S.worms[i];
     if (o) T.worm(ctx, geometry(o, X, Y, scale), o, scale);
   }
-  if (f) T.worm(ctx, geometry(f, X, Y, scale), f, scale);
+  const fw = S.worms[S.focus];
+  if (fw) {
+    const Gf = geometry(fw, X, Y, scale);
+    if (S.worms.length > 1) {
+      let cx = 0, cy = 0;
+      for (let i = 0; i < Gf.n; i++) { cx += Gf.px[i]; cy += Gf.py[i]; }
+      cx /= Gf.n; cy /= Gf.n;
+      ctx.strokeStyle = theme().dark ? 'rgba(43,39,34,0.45)' : 'rgba(255,255,255,0.42)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.arc(cx, cy, 0.62 * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    T.worm(ctx, Gf, fw, scale);
+  }
   if (T.vignette) drawVignette(ctx, w, h);
   ctx.restore();
 
@@ -563,9 +581,13 @@ function drawMinimap(ctx, w, h, R, f) {
   ctx.strokeStyle = T.dark ? 'rgba(43,39,34,0.5)' : 'rgba(255,255,255,0.45)';
   ctx.lineWidth = 1;
   ctx.strokeRect(cx + S.view.cx * s - half, cy - S.view.cy * s - half, half * 2, half * 2);
-  if (f) {
-    ctx.fillStyle = T.dark ? '#c2401f' : '#fff';
-    ctx.beginPath(); ctx.arc(cx + f.nodes[0] * s, cy - f.nodes[1] * s, 2.4, 0, Math.PI * 2);
+  for (let i = 0; i < S.worms.length; i++) {
+    const o = S.worms[i];
+    if (!o) continue;
+    ctx.fillStyle = i === S.focus ? (T.dark ? '#c2401f' : '#fff')
+                                  : (T.dark ? 'rgba(43,39,34,0.45)' : 'rgba(255,255,255,0.45)');
+    ctx.beginPath();
+    ctx.arc(cx + o.nodes[0] * s, cy - o.nodes[1] * s, i === S.focus ? 2.6 : 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
@@ -896,6 +918,19 @@ function wire() {
   dish.addEventListener('pointerup', endDrag);
   dish.addEventListener('pointercancel', endDrag);
 
+  // A plain click on the dish selects the animal nearest the pointer, so with several on
+  // the plate you can just point at the one you mean.
+  dish.addEventListener('click', (e) => {
+    if (!S.engine || S.worms.length < 2 || (drag && drag.moved > 3)) return;
+    const [x, y] = worldAt(dish, e);
+    let best = -1, bd = 1.2 * 1.2;
+    S.worms.forEach((o, i) => {
+      const d = (o.cx - x) ** 2 + (o.cy - y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    });
+    if (best >= 0 && best !== S.focus) focusWorm(best);
+  });
+
   dish.addEventListener('dblclick', (e) => {
     if (!S.meta) return;
     const [x, y] = worldAt(dish, e);
@@ -935,6 +970,19 @@ function wire() {
     });
   });
 
+  el('b-worm-add').addEventListener('click', () => {
+    if (!S.engine) return;
+    const i = S.engine.addWorm();
+    S.trails[i] = [];
+    focusWorm(i);
+  });
+  el('b-worm-del').addEventListener('click', () => {
+    if (!S.engine || !S.engine.removeWorm()) return;
+    S.trails.pop();
+    if (S.focus >= S.engine.worms.length) S.focus = S.engine.worms.length - 1;
+    focusWorm(S.focus);
+  });
+
   el('b-rail').addEventListener('click', (e) => {
     const on = el('app').classList.toggle('norail');
     e.target.setAttribute('aria-pressed', String(!on));
@@ -962,7 +1010,8 @@ function wire() {
     if (S.ablateMode) {
       if (S.ablated.has(i)) return;              // ablation is not undone one cell at a time
       S.ablated.add(i);
-      send({ cmd: 'ablate', neurons: [S.meta.neurons[i].name] });
+      if (S.engine) S.engine.setAblated(S.focus, [...S.ablated]);
+      else send({ cmd: 'ablate', neurons: [S.meta.neurons[i].name] });
       updateAblateUI();
       return;
     }
@@ -982,6 +1031,14 @@ function wire() {
   el('b-reset').addEventListener('click', () => {
     S.ablated.clear(); updateAblateUI();
     S.trail = []; S.kymo = null; S.traces = S.selected.map(() => []);
+    S.freqBuf = []; S.speedWin = [];
+    if (S.engine) {
+      S.engine.reset();
+      S.trails = S.engine.worms.map(() => []);
+      S.focus = 0; S.recentre = true;
+      buildWormSel();
+      return;
+    }
     send({ cmd: 'reset' });
   });
   el('r-rate').addEventListener('input', (e) => {
@@ -993,7 +1050,8 @@ function wire() {
   el('b-restore').addEventListener('click', () => {
     if (!S.ablated.size) return;
     S.ablated.clear();
-    send({ cmd: 'restore' });
+    if (S.engine) S.engine.setAblated(S.focus, []);
+    else send({ cmd: 'restore' });
     updateAblateUI();
   });
   el('b-poke-a').addEventListener('click', () => send({ cmd: 'poke', where: 'anterior', strength: 1.4 }));
@@ -1019,6 +1077,35 @@ function wire() {
   zoom(1);
 }
 
+/* The worm selector. With more than one animal on the plate every panel has to say which
+ * animal it is about, so focus is explicit and visible rather than implied by index 0. */
+function buildWormSel() {
+  const host = el('worm-sel');
+  if (!host) return;
+  const n = S.engine ? S.engine.worms.length : 1;
+  host.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const b = document.createElement('button');
+    b.textContent = String(i + 1);
+    b.setAttribute('aria-pressed', String(i === S.focus));
+    b.title = `Focus the camera and the panels on worm ${i + 1}`;
+    b.addEventListener('click', () => focusWorm(i));
+    host.appendChild(b);
+  }
+  el('b-worm-del').disabled = n <= 1;
+}
+
+function focusWorm(i) {
+  if (!S.engine || i < 0 || i >= S.engine.worms.length) return;
+  S.focus = i;
+  S.recentre = true;
+  // The panels are about one animal, so their history has to start again when it changes.
+  S.kymo = null;
+  S.traces = S.selected.map(() => []);
+  S.freqBuf = [];
+  buildWormSel();
+}
+
 // The legend explains whatever the dish is currently saying, which is different in each
 // mode: digital colours the body by curvature, the other two do not.
 function buildLegend() {
@@ -1036,13 +1123,14 @@ function buildLegend() {
 let ws = null;
 function updateAblateUI() {
   const b = el('b-ablate');
+  const many = S.engine && S.engine.worms.length > 1;
   b.setAttribute('aria-pressed', String(S.ablateMode));
   b.textContent = S.ablateMode ? 'Click a cell' : 'Ablate';
   el('b-restore').disabled = S.ablated.size === 0;
   const n = S.ablated.size;
   el('neuron-hint').textContent = S.ablateMode
-    ? 'click a neuron to silence it'
-    : (n ? n + ' ablated' : 'hover a neuron');
+    ? (many ? `click a neuron to silence it in worm ${S.focus + 1}` : 'click a neuron to silence it')
+    : (n ? `${n} ablated${many ? ' in worm ' + (S.focus + 1) : ''}` : 'hover a neuron');
 }
 
 function send(msg) {
@@ -1283,35 +1371,37 @@ function localTick(now) {
     el('trace-hint').textContent = S.selected.map((k) => S.meta.neurons[k].name).join(', ');
     S.trails = eng.worms.map(() => []);
     S.recentre = true;
+    buildWormSel();
     el('banner').classList.add('gone');
   }
 
-  const f0 = eng.frame(0);
+  // Every animal, every frame: the dish needs them all. The panels, the camera and the
+  // stats are about one of them -- S.focus -- because "the membrane potential" is not a
+  // property of a dish, it is a property of an animal.
+  if (S.focus >= eng.worms.length) S.focus = 0;
+  S.worms = [];
+  for (let i = 0; i < eng.worms.length; i++) S.worms.push(eng.frame(i));
+  const f0 = S.worms[S.focus];
   S.frame = {
     t: f0.t, speed: 0, food: f0.food, dir: f0.dir, achieved: eng.achieved,
     sensed: f0.sensed, nodes: f0.nodes, act: f0.act, V: f0.V,
     tension: f0.tension, kappa: f0.kappa, running: f0.running,
   };
-  S.others = [];
-  for (let i = 1; i < eng.worms.length; i++) {
-    const fi = eng.frame(i);
-    S.others.push({ nodes: fi.nodes, kappa: fi.kappa });
-  }
 
-  // Trails, one per animal.
-  for (let i = 0; i < eng.worms.length; i++) {
-    const fi = i === 0 ? f0 : { nodes: S.others[i - 1].nodes };
+  for (let i = 0; i < S.worms.length; i++) {
+    const fi = S.worms[i];
     let cx = 0, cy = 0;
     const nn = fi.nodes.length / 2;
     for (let k = 0; k < nn; k++) { cx += fi.nodes[k * 2]; cy += fi.nodes[k * 2 + 1]; }
     cx /= nn; cy /= nn;
+    fi.cx = cx; fi.cy = cy;
     const tr = S.trails[i] || (S.trails[i] = []);
     const last = tr[tr.length - 1];
     if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {
       tr.push([cx, cy]);
       if (tr.length > 2200) tr.shift();
     }
-    if (i === 0) {
+    if (i === S.focus) {
       if (S.recentre) { S.view.cx = cx; S.view.cy = cy; S.recentre = false; }
       if (S.cam === 'follow') {
         const dead = S.view.span * 0.18;
@@ -1321,11 +1411,11 @@ function localTick(now) {
     }
   }
 
-  // Speed of the first animal, over a window of *simulated* time. Dividing by anything
+  // Speed of the focused animal, over a window of *simulated* time. Dividing by anything
   // else makes the number a statement about the frame rate: an undulating worm slews its
   // centroid from side to side once a cycle, so a short window reports the slosh.
-  if (S.speedWin === undefined) S.speedWin = [];
-  const c0 = S.trails[0][S.trails[0].length - 1];
+  if (S.speedWin === undefined || S.speedFocus !== S.focus) { S.speedWin = []; S.speedFocus = S.focus; }
+  const c0 = S.trails[S.focus][S.trails[S.focus].length - 1];
   if (c0) {
     S.speedWin.push([f0.t, c0[0], c0[1]]);
     while (S.speedWin.length > 1 && f0.t - S.speedWin[0][0] > 2.0) S.speedWin.shift();
@@ -1381,6 +1471,7 @@ function tick(now) {
 
 /* Local by default: the point of the WASM port is that no server is involved. `?server`
  * falls back to the WebSocket feed, which is still how the Python model is driven. */
+if (location.search.includes('debug')) window.__sim = S;   // for poking from the console
 wire();
 if (location.search.includes('server')) {
   connect();

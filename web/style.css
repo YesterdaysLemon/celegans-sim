@@ -235,7 +235,12 @@ aside {
   position: relative;
   overflow: hidden;
   display: flex; flex-direction: column;
-  flex: 1 1 var(--basis, 0);
+  /* Every panel needs a real basis, not zero. flex-grow shares the *leftover* equally,
+     so a panel that starts at 0 ends up with only its share of the slack while one that
+     declares a basis keeps that on top -- which left the nervous system showing a single
+     row of neurons next to a muscle panel four times its height. Sizing them all in
+     proportion and letting them shrink together is what the layout actually wanted. */
+  flex: 1 1 var(--basis, 150px);
   min-height: 0;
 }
 /* Collapsed panels give their space back to the ones still open, rather than every
@@ -309,6 +314,12 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
   font-size: 12px; color: var(--text-secondary);
   font-variant-numeric: tabular-nums; min-width: 40px;
 }
+
+/* The worm selector sits in the footer rather than over the dish: it is about which
+   animal the panels describe, and the panels are chrome, not plate. */
+#worm-sel { background: var(--surface-2); padding: 2px; }
+#worm-sel button { min-width: 24px; padding: 3px 7px; font-variant-numeric: tabular-nums; }
+#b-worm-add, #b-worm-del { min-width: 28px; padding: 5px 8px; font-weight: 600; }
 
 .legend {
   display: flex; gap: 10px; align-items: center; margin-left: auto;

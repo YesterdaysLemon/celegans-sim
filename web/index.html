@@ -65,7 +65,7 @@
   </section>
 
   <aside id="rail">
-    <section class="panel" data-panel="neurons">
+    <section class="panel" data-panel="neurons" style="--basis:170px">
       <button class="phead"><span class="chev"></span><h2>Nervous system</h2><span class="hint" id="neuron-hint">hover a neuron</span></button>
       <div class="pbody"><canvas id="c-neurons"></canvas></div>
     </section>
@@ -75,12 +75,12 @@
       <div class="pbody"><canvas id="c-muscle"></canvas></div>
     </section>
 
-    <section class="panel" data-panel="kymo">
+    <section class="panel" data-panel="kymo" style="--basis:96px">
       <button class="phead"><span class="chev"></span><h2>Curvature kymograph</h2><span class="hint">head &rarr; tail, 20 s</span></button>
       <div class="pbody"><canvas id="c-kymo"></canvas></div>
     </section>
 
-    <section class="panel" data-panel="trace">
+    <section class="panel" data-panel="trace" style="--basis:96px">
       <button class="phead"><span class="chev"></span><h2>Membrane potential</h2><span class="hint" id="trace-hint">&mdash;</span></button>
       <div class="pbody"><canvas id="c-trace"></canvas></div>
     </section>
@@ -120,6 +120,13 @@
       <span class="cap">Neurons</span>
       <button id="b-ablate" aria-pressed="false">Ablate</button>
       <button id="b-restore" disabled>Restore</button>
+    </div>
+
+    <div class="group">
+      <span class="cap">Worms</span>
+      <span class="seg" id="worm-sel"></span>
+      <button id="b-worm-add" title="Add a worm to the dish">+</button>
+      <button id="b-worm-del" title="Remove the last worm">&minus;</button>
     </div>
 
     <div class="group">

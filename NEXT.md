@@ -1,5 +1,51 @@
 # Where this is, and what to do next
 
+## A direction worth thinking about: reproduction and evolution
+
+Not started, and deliberately not started yet — but the WebAssembly port changed what is
+cheap, and it is worth writing down what it made possible while that is fresh.
+
+**Animals are now nearly free.** The 302×302 matrices are *anatomy*: read-only, identical
+for every worm, shared. A second animal duplicates only state — a few kB — which is why
+four in a dish costs what one used to. A population is no longer an architectural problem,
+it is a throughput one, and throughput is 2.36× real time per animal.
+
+**And the animal is already a file.** `tools/export_model.py` freezes the whole animal into
+one block of arrays. That file *is* a genome in every sense that matters here: change a
+number in it and you have a different worm, with no code touched.
+
+That framing makes the real question sharp, and it is not a coding question.
+
+**What is heritable?** Three answers, in increasing order of interest and difficulty.
+
+1. **Parameters** — the ~99 scalars: gains, time constants, thresholds. Trivial to mutate
+   and immediately meaningful, since `omega_current`, `gate_bias`, `chemo_gain` and
+   `serotonin_mod1` all visibly change behaviour. Build this one first, because it can run
+   in an afternoon and it will tell us whether the fitness measure is any good.
+2. **Synaptic weights** — mutate `G_syn` while keeping the connectome's *topology* fixed.
+   Biologically odd (real variation is mostly not per-synapse weight jitter) but it is the
+   version that would actually explore the space this model lives in.
+3. **Topology** — adding and removing connections. Closest to real evolution, and the one
+   that breaks the current framing: the exported model would have to carry the graph rather
+   than its precomputed products, because `_balance` and `_resting_potentials` depend on it.
+
+**What is fitness?** Easier than it looks. The animal already eats, and `food_eaten`
+depends on the whole chain working — find the lawn, stay on it, pump. It is a genuinely
+integrative measure and it already exists.
+
+**What is reproduction?** The honest version needs the egg-laying circuit: HSN and VC, and
+another dozen neurons currently doing nothing. That is a satisfying amount of biology to
+add, and it connects to the pharynx work — an animal that has eaten enough lays. The cheap
+version is asexual copy-with-mutation on a food threshold, which needs no new neurons and
+would work today.
+
+**One caution, recorded now rather than after.** Evolution finds bugs, enthusiastically.
+Anywhere the model is exploitable — a way to gain food without foraging, a parameter that
+makes the integrator unstable in a profitable direction — is where a population will end
+up. That is not a reason to avoid it; it is a reason to keep `tools/conform.py` and the
+assay suite pointed at whatever comes out. "It evolved a high fitness" and "it evolved a
+worm" are different claims, and only one of them is interesting.
+
 > ## Day nineteen. The pharynx eats.
 >
 > Twenty neurons were simulated in full and drove nothing. Measured in this reconstruction
