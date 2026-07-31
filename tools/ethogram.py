@@ -128,6 +128,8 @@ def _job(job):
     step = np.hypot(np.diff(tr["x"]), np.diff(tr["y"]))
     net = float(np.hypot(tr["x"][-1] - tr["x"][0], tr["y"][-1] - tr["y"][0]))
     path = float(step.sum())
+    heading = np.unwrap(np.arctan2(tr["dir_y"], tr["dir_x"]))
+    heading_drift = float(np.degrees(heading[-1] - heading[0]) / span)
 
     return dict(
         condition=condition, seed=seed, minutes=minutes,
@@ -142,6 +144,7 @@ def _job(job):
         gate_sd=float(tr["gate_forward"].std()),
         margin_sigma=float(margin.mean() / m_sd) if m_sd > 0 else float("nan"),
         speed=net / span, path_speed=path / span, net_path=net / max(path, 1e-9),
+        heading_drift=heading_drift,
         food=float(np.mean(tr["attractant"])),
     )
 

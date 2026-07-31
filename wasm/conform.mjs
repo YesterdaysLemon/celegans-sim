@@ -14,6 +14,41 @@ import { fileURLToPath } from 'url';
 // joining that onto anything gives "C:\C:\src\...", which is not a path anywhere.
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const at = (...p) => path.join(ROOT, ...p);
+
+const inputs = [
+  {
+    path: at('web', 'worm.wasm'),
+    display: 'web/worm.wasm',
+    command: 'cd wasm && npx asc assembly/index.ts --target release',
+  },
+  {
+    path: at('web', 'worm.model'),
+    display: 'web/worm.model',
+    command: 'PYTHONPATH=. python tools/export_model.py',
+  },
+  {
+    path: at('web', 'conform.json'),
+    display: 'web/conform.json',
+    command: 'PYTHONPATH=. python tools/conform.py > web/conform.json',
+  },
+];
+const missing = inputs.filter(input => !fs.existsSync(input.path));
+if (missing.length) {
+  for (const input of missing) {
+    console.error(`Missing ${input.display}; generate it with: ${input.command}`);
+  }
+  process.exit(2);
+}
+
+const modelMtime = fs.statSync(at('web', 'worm.model')).mtimeMs;
+const referenceMtime = fs.statSync(at('web', 'conform.json')).mtimeMs;
+if (referenceMtime < modelMtime) {
+  console.warn(
+    'Warning: web/conform.json is older than web/worm.model; regenerate it with: ' +
+    'PYTHONPATH=. python tools/conform.py > web/conform.json',
+  );
+}
+
 const wasmBuf = fs.readFileSync(at('web', 'worm.wasm'));
 const modelBuf = fs.readFileSync(at('web', 'worm.model'));
 const ref = JSON.parse(fs.readFileSync(at('web', 'conform.json'), 'utf8'));

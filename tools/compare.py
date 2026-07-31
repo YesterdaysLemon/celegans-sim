@@ -15,6 +15,7 @@ common to both arms and cancels in the difference. What is left is the treatment
 
     PYTHONPATH=. .venv/bin/python tools/compare.py chemotaxis modulator.serotonin_mod1=0.3
     PYTHONPATH=. .venv/bin/python tools/compare.py all sensory.omega_current=450
+    PYTHONPATH=. .venv/bin/python tools/compare.py ethogram sensory.omega_wave_suppression=1.0
 
 Every argument after the assay name is a dotted parameter path and a value. The baseline
 arm is the shipped model; the treatment arm is the shipped model with those fields replaced.
@@ -37,7 +38,7 @@ import sys
 import numpy as np
 
 from tools.assays import ASSAYS, DURATIONS, ORDER, THROUGHPUT, WORKERS, _dispatch, pooled
-from tools.stats import bootstrap_ci, fmt, mde, paired_ci, ratio_ci, verdict
+from tools.stats import BOOTSTRAP, bootstrap_ci, fmt, mde, paired_ci, ratio_ci, verdict
 from worm.params import Params
 
 # Per-animal metrics, keyed by assay. Each is (label, extractor, format, higher_is_better).
@@ -84,7 +85,19 @@ def parse_spec(args):
 def _key(row):
     """Identify an animal so the two arms can be lined up. Seed alone is not enough:
     thermotaxis runs each seed from two starting positions."""
-    return (row.get("seed"), round(float(row.get("start_x", 0.0)), 3))
+    return (row.get("condition"), row.get("seed"),
+            round(float(row.get("start_x", 0.0)), 3))
+
+
+def _ethogram_dispatch(job):
+    """Run one ethogram arm with the same override isolation as the plate assays."""
+    from tools import assays, ethogram
+    condition, seed, spec, arm = job
+    assays.OVERRIDE = spec
+    row = ethogram._job((condition, seed))
+    row["_assay"] = "ethogram"
+    row["_arm"] = arm
+    return row
 
 
 def main():
@@ -92,8 +105,9 @@ def main():
         print(__doc__)
         return 1
     which = sys.argv[1]
-    if which != "all" and which not in ASSAYS:
-        print("unknown assay %r; choose from %s or 'all'" % (which, ", ".join(ASSAYS)))
+    if which != "all" and which not in ASSAYS and which != "ethogram":
+        print("unknown assay %r; choose from %s, ethogram, or 'all'"
+              % (which, ", ".join(ASSAYS)))
         return 1
     spec = parse_spec(sys.argv[2:])
 
@@ -103,22 +117,33 @@ def main():
 
     names = ORDER if which == "all" else [which]
     jobs = []
-    for name in names:
-        for payload in ASSAYS[name][1]():
-            jobs.append([name, payload, {}, 0])          # baseline arm
-            jobs.append([name, payload, spec, 1])        # treatment arm
-
-    sim_s = 2 * sum(DURATIONS[n] * len(ASSAYS[n][1]()) for n in names)
+    if which == "ethogram":
+        from tools.ethogram import DURATION, PLATES, SEEDS
+        for condition in PLATES:
+            for seed in SEEDS:
+                jobs.append([condition, seed, {}, 0])
+                jobs.append([condition, seed, spec, 1])
+        sim_s = len(jobs) * DURATION
+        runner = _ethogram_dispatch
+    else:
+        for name in names:
+            for payload in ASSAYS[name][1]():
+                jobs.append([name, payload, {}, 0])          # baseline arm
+                jobs.append([name, payload, spec, 1])        # treatment arm
+        sim_s = 2 * sum(DURATIONS[n] * len(ASSAYS[n][1]()) for n in names)
+        runner = _dispatch
     print("PAIRED COMPARISON -- %d trials (two arms on identical seeds)" % len(jobs))
     for k, v in sorted(spec.items()):
         print("  %s = %r" % (k, v))
     print("  estimated %.0f s\n" % (sim_s / Params().neural.dt / THROUGHPUT))
 
-    rows = pooled(_dispatch, jobs, procs=WORKERS,
+    rows = pooled(runner, jobs, procs=WORKERS,
                   timeout=max(2400.0, 3.0 * sim_s / Params().neural.dt / THROUGHPUT))
     if not rows:
         print("  no trials completed")
         return 1
+    if which == "ethogram":
+        return _report_ethogram(rows)
 
     for i, name in enumerate(names):
         got = [r for r in rows if r.get("_assay") == name]
@@ -176,6 +201,74 @@ def main():
             print("  no effect detected on: %s" % ", ".join(nulls))
             print("  at %d paired animals the smallest resolvable change in %s is %.3f"
                   % (len(shared), METRICS[name][0][0], mde(a0)))
+    return 0
+
+
+def _turns(rows):
+    return np.asarray([turn for row in rows for turn in row["turn_mech"]], dtype=float)
+
+
+def _paired_cluster_ci(before, after, stat, reps=BOOTSTRAP, seed=0):
+    """Paired interval for an event statistic, resampling animals as clusters."""
+    if len(before) != len(after):
+        raise ValueError("paired cluster arms have different lengths")
+    if not before:
+        return (float("nan"),) * 5
+    a_all, b_all = _turns(before), _turns(after)
+    if not len(a_all) or not len(b_all):
+        return (float("nan"),) * 5
+    a_point, b_point = float(stat(a_all)), float(stat(b_all))
+    rng = np.random.default_rng(seed)
+    draws = []
+    for _ in range(reps):
+        idx = rng.integers(0, len(before), size=len(before))
+        a = _turns([before[i] for i in idx])
+        b = _turns([after[i] for i in idx])
+        if len(a) and len(b):
+            draws.append(float(stat(b) - stat(a)))
+    lo, hi = np.percentile(draws, [2.5, 97.5]) if draws else (float("nan"), float("nan"))
+    return a_point, b_point, b_point - a_point, float(lo), float(hi)
+
+
+def _report_ethogram(rows):
+    """Report event statistics without pretending correlated events are animals."""
+    print()
+    for condition in ("off food", "on food"):
+        got = [row for row in rows if row["condition"] == condition]
+        base = {row["seed"]: row for row in got if row["_arm"] == 0}
+        treat = {row["seed"]: row for row in got if row["_arm"] == 1}
+        shared = sorted(set(base) & set(treat))
+        before, after = [base[k] for k in shared], [treat[k] for k in shared]
+        print("=" * 78)
+        print("%s -- %d paired animals, %d / %d reversal events"
+              % (condition.upper(), len(shared), len(_turns(before)), len(_turns(after))))
+        print()
+        print("  turn statistic             baseline   treatment   paired difference")
+        turn_metrics = (
+            ("median reorientation deg", np.median, "%+.1f"),
+            ("mean reorientation deg", np.mean, "%+.1f"),
+            ("fraction above 120 deg", lambda values: 100 * np.mean(values > 120), "%+.1f"),
+        )
+        for label, stat, spec_fmt in turn_metrics:
+            a, b, d, lo, hi = _paired_cluster_ci(before, after, stat)
+            print("  %-27s %8.2f   %8.2f   %-28s %s"
+                  % (label, a, b, fmt(d, lo, hi, spec_fmt), verdict(d, lo, hi)))
+
+        print()
+        print("  trajectory guard           baseline   treatment   paired difference")
+        for label, get, spec_fmt in (
+                ("net / path", lambda row: row["net_path"], "%+.3f"),
+                ("|heading drift| deg/s", lambda row: abs(row["heading_drift"]), "%+.2f"),
+                ("path speed mm/s", lambda row: row["path_speed"], "%+.3f")):
+            a = np.asarray([get(row) for row in before])
+            b = np.asarray([get(row) for row in after])
+            d, lo, hi = paired_ci(a, b)
+            moved = verdict(d, lo, hi)
+            if moved in ("better", "worse"):
+                moved = "higher" if d > 0 else "lower"
+            print("  %-27s %8.3f   %8.3f   %-28s %s"
+                  % (label, a.mean(), b.mean(), fmt(d, lo, hi, spec_fmt), moved))
+        print()
     return 0
 
 
