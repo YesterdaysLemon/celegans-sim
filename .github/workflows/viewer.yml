@@ -1,0 +1,88 @@
+# Quality gates for the browser viewer and the WebAssembly runtime.
+#
+# The viewer has no build step, which is deliberate -- a static file server is enough to
+# run the animal -- but it means nothing between "I typed it" and "it is a black rectangle
+# in someone's browser" ever looks at the code. These two jobs are that step.
+#
+# The Python model has its own suite in tests/, which is slow (25 minutes of simulation)
+# and is not run here; this workflow only fires on changes to web/ or wasm/.
+
+name: viewer
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'wasm/**', 'tools/check_web.mjs', 'tools/smoke_web.mjs',
+            'package.json', '.github/workflows/viewer.yml']
+  pull_request:
+    paths: ['web/**', 'wasm/**', 'tools/check_web.mjs', 'tools/smoke_web.mjs',
+            'package.json', '.github/workflows/viewer.yml']
+
+jobs:
+  viewer:
+    name: static checks and browser smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      # Cheapest first, and the one with the clearest message. A module that does not parse
+      # never reaches the browser check as anything but "blank page".
+      - name: every module parses
+        run: |
+          for f in $(find web -name '*.js') tools/*.mjs wasm/conform.mjs; do
+            node --check "$f" || exit 1
+          done
+          echo "$(find web -name '*.js' | wc -l) viewer modules parse"
+
+      - name: module graph resolves and is acyclic
+        run: node tools/check_web.mjs
+
+      # ubuntu-latest ships Chrome; puppeteer-core drives it rather than downloading its
+      # own, which keeps `npm ci` at a couple of seconds.
+      - name: browser smoke test
+        run: node tools/smoke_web.mjs
+        env:
+          CHROME: /usr/bin/google-chrome
+
+  conformance:
+    name: the port still reproduces the Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: pip install -r requirements.txt
+      - run: npm ci --no-audit --no-fund
+        working-directory: wasm
+
+      # The exporter and the compiler are one command's worth of output apart: the .wasm
+      # has the .model's byte offsets compiled into it, so a mismatched pair does not
+      # degrade gracefully, it reads the wrong offsets.
+      - name: rebuild the model and the runtime
+        run: |
+          python tools/export_model.py
+          cd wasm && npx asc assembly/index.ts --target release
+        env:
+          PYTHONPATH: .
+
+      # conform.json is a *recording* of what the Python did, so it is regenerated here
+      # rather than committed. A stale one does not weaken this check, it inverts it: the
+      # port gets measured against a model that no longer exists.
+      - name: reference trajectories, then compare
+        run: |
+          python tools/conform.py > web/conform.json
+          node wasm/conform.mjs
+        env:
+          PYTHONPATH: .

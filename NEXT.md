@@ -1956,12 +1956,20 @@ table's five rows fix themselves at once.
 
 ## Third tier / nice to have
 
-- Pharyngeal pumping. The 20 pharyngeal neurons are simulated and drive nothing.
 - Three dimensions, so left/right muscle quadrants separate and omega turns are real.
 - A recorded-playback mode in the viewer — the transport bar has no scrubber because there
-  is no history buffer on the server. A ring buffer of a few thousand frames would let the
-  media-player metaphor actually be one.
-- Multi-worm. The engine is one `Simulation` object; nothing prevents several.
+  is no history buffer. A ring buffer of a few thousand frames would let the media-player
+  metaphor actually be one.
+
+### Done, and left here so the list stays honest about what moved
+
+- ~~Pharyngeal pumping. The 20 pharyngeal neurons are simulated and drive nothing.~~
+  **Done, day nineteen.** They drive a myogenic pump, the pump is what feeds the animal,
+  and five ablation phenotypes come out of it. See `worm/pharynx.py`.
+- ~~Multi-worm. The engine is one `Simulation` object; nothing prevents several.~~
+  **Done with the WebAssembly port.** The connectome is read-only and shared, so a second
+  animal duplicates a few kB of state; the viewer runs n of them and focuses one. This is
+  what makes the population direction at the top of this file thinkable.
 
 ---
 

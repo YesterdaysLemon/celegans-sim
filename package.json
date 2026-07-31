@@ -1,0 +1,13 @@
+{
+  "name": "celegans-sim-tools",
+  "private": true,
+  "type": "module",
+  "description": "CI tooling only. The viewer itself has no dependencies and no build step; nothing in here is served.",
+  "scripts": {
+    "check:web": "node tools/check_web.mjs",
+    "smoke:web": "node tools/smoke_web.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.4.0"
+  }
+}
