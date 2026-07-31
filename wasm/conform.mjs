@@ -115,6 +115,7 @@ const fc = ref.full;
 E.setNoise(0);
 E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
 E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);   // food under the animal; see conform.py
 const w2 = E.createWorm(0, 0.0, 0.0, 0.0);
 let wXY = 0, wV = 0, wT = 0, gateBad = 0, wEgl = 0;
 prev = 0;
@@ -130,10 +131,14 @@ for (const f of fc.frames) {
   for (let i = 0; i < f.V.length; i++) wV = Math.max(wV, Math.abs(vv[i] - f.V[i]));
   for (let i = 0; i < f.tension.length; i++) wT = Math.max(wT, Math.abs(tt[i] - f.tension[i]));
   if (E.getGateForward(w2) !== f.gate) gateBad++;
-  if (f.egl) {
-    const got = [E.getVulvalMuscle(w2), E.getEggsHeld(w2), E.getEglResource(w2), E.getEggsLaid(w2)];
-    for (let i = 0; i < 4; i++) wEgl = Math.max(wEgl, Math.abs(got[i] - f.egl[i]));
-  }
+  // No `if (f.egl)`. A missing field is a broken reference, not a field with nothing to
+  // say, and guarding on its presence is how this check spent its whole life printing a
+  // perfect 0.000e+0 while comparing nothing: the exporter-side edit that was supposed to
+  // emit `egl` silently matched no text and never applied, and the guard turned that into
+  // a pass. Absent data fails here now.
+  if (!f.egl) { console.error('  reference frame has no `egl` -- regenerate it'); process.exit(1); }
+  const got = [E.getVulvalMuscle(w2), E.getEggsHeld(w2), E.getEglResource(w2), E.getEggsLaid(w2)];
+  for (let i = 0; i < 4; i++) wEgl = Math.max(wEgl, Math.abs(got[i] - f.egl[i]));
 }
 console.log(`\nWHOLE LOOP -- neurons, muscle, senses, body; ${fc.steps} steps, noise off`);
 console.log(`  worst node disagreement       ${wXY.toExponential(3)} mm`);
@@ -158,6 +163,10 @@ E.setNoise(0);
 E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
 E.addRepellent(7.0, -3.0, 0.9, 5.0);
 const w3 = E.createWorm(0, 0.0, 0.0, 0.0);
+
+// Warm up first: the cells have to be *alive and running* when they are killed, or the
+// code that clears their live state is never exercised. See conform.py.
+E.step(w3, ac.warm);
 
 // setAblated takes a pointer to i32 indices, so the list has to go into linear memory.
 const idxPtr = E.alloc(ac.ablated.length * 4);
@@ -201,7 +210,38 @@ const ablOk = aliveBad === 0 && deadNoisy === 0 && aXY < 1e-6 && aV < 1e-6
            && aAct < 1e-8 && aT < 1e-8 && aGate === 0;
 console.log(ablOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && fullOk && ablOk;
+// --- the path the browser actually runs ----------------------------------------------
+// Everything above drives `step(w, n)`. The viewer drives `stepAll(n)`, which is a
+// different function with its own loop and its own world advance, and nothing had ever
+// compared them: a defect in the multi-worm path would have been invisible to every check
+// here while being the only path a visitor ever executes.
+//
+// With a single animal the two must be identical step for step, which makes this exact
+// rather than statistical. It is a cheap invariant and it covers the ordering -- one world
+// advance per step, not one per animal per step, which is the mistake the shape invites.
+function trajectory(useStepAll) {
+  E.resetWorld();
+  E.clearWorms();
+  E.setNoise(0);
+  E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+  const w = E.createWorm(0, 0.0, 0.0, 0.0);
+  for (let i = 0; i < 600; i++) useStepAll ? E.stepAll(1) : E.step(w, 1);
+  const n = F64().subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 49);
+  const v = F64().subarray(E.ptrV(w) >> 3, (E.ptrV(w) >> 3) + 302);
+  return { nodes: Array.from(n), V: Array.from(v), eggs: E.getEggsHeld(w) };
+}
+const viaStep = trajectory(false);
+const viaAll = trajectory(true);
+let wAll = 0;
+for (let i = 0; i < viaStep.nodes.length; i++) wAll = Math.max(wAll, Math.abs(viaStep.nodes[i] - viaAll.nodes[i]));
+for (let i = 0; i < viaStep.V.length; i++) wAll = Math.max(wAll, Math.abs(viaStep.V[i] - viaAll.V[i]));
+wAll = Math.max(wAll, Math.abs(viaStep.eggs - viaAll.eggs));
+console.log(`\nSTEP PATHS -- stepAll(1) against step(w,1), one animal, 600 steps`);
+console.log(`  worst disagreement            ${wAll.toExponential(3)}`);
+const allOk = wAll === 0;
+console.log(allOk ? '  PASS' : '  FAIL');
+
+const ok = mechOk && fullOk && ablOk && allOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 process.exit(ok ? 0 : 1);

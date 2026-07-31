@@ -211,14 +211,45 @@ try {
         check(vp.name, small.length === 0, `targets under 44px: ${small.join(', ')}`);
       }
 
-      // Every control has to have a name a screen reader can read out.
-      const unnamed = await page.evaluate(() =>
+      // Every control needs a name a screen reader can read out, and the name has to
+      // identify it. Those are different requirements and this check used to test only
+      // the first: stripped of its aria-label, `<button id="b-worm-add">+</button>` has
+      // the accessible name "+", which is non-empty and therefore passed -- while being
+      // the same name as the zoom-in button, which is the exact ambiguity the label was
+      // added to remove. A coverage audit caught it by deleting the label and watching
+      // nothing happen.
+      const names = await page.evaluate(() =>
         [...document.querySelectorAll('button, input')]
           .filter((e) => e.getBoundingClientRect().width > 0)
-          .filter((e) => !(e.getAttribute('aria-label') || e.textContent.trim()
-                           || (e.labels && e.labels.length)))
-          .map((e) => e.id || e.outerHTML.slice(0, 40)));
+          .map((e) => ({
+            id: e.id || e.outerHTML.slice(0, 40),
+            name: (e.getAttribute('aria-label')
+                   || (e.labels && e.labels.length ? e.labels[0].textContent : '')
+                   || e.textContent || '').trim(),
+          })));
+      const unnamed = names.filter((e) => !e.name).map((e) => e.id);
       check(vp.name, unnamed.length === 0, `controls with no accessible name: ${unnamed.join(', ')}`);
+
+      // And the name has to be words. A button whose entire accessible name is "+" or "-"
+      // or "x" is a button that has been labelled with its own glyph, which tells a screen
+      // reader nothing -- it is the icon, read aloud. Requiring a letter is the cheapest
+      // rule that separates "Zoom in" from "+", and it is what the two `+`/`-` pairs in the
+      // footer and the dish needed in the first place.
+      const glyphOnly = names.filter((e) => e.name && !/\p{L}/u.test(e.name))
+                             .map((e) => `${e.id}="${e.name}"`);
+      check(vp.name, glyphOnly.length === 0,
+            `controls named only by their glyph: ${glyphOnly.join(', ')}`);
+
+      // Uniqueness, over the controls that have a name at all. Two buttons that read out
+      // identically are two buttons nobody can tell apart without seeing the screen.
+      const seen = new Map();
+      for (const e of names) {
+        if (!e.name) continue;
+        seen.set(e.name.toLowerCase(), (seen.get(e.name.toLowerCase()) || []).concat(e.id));
+      }
+      const dupes = [...seen.entries()].filter(([, ids]) => ids.length > 1)
+        .map(([n, ids]) => `"${n}" x${ids.length} (${ids.join('/')})`);
+      check(vp.name, dupes.length === 0, `controls sharing an accessible name: ${dupes.join('; ')}`);
     }
 
     console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}  ` +
