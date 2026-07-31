@@ -1106,6 +1106,22 @@ class SensoryParams:
     # So the next attempt should not be another target set or another gain. It needs the
     # bend to cost the wave less: more headroom in the motor units, or the static component
     # applied where it does not compete with the oscillation for the same range.
+    #
+    # omega_wave_suppression tests the first of those routes. A real deep omega is not a
+    # bend superimposed on an otherwise normal gait: anterior undulation stands down for
+    # the turn. While the transient is live, this attenuates the head oscillator and the
+    # anterior B/A proprioceptive propagators whose receptive fields overlap the turn
+    # pool. It does not change omega_current, the tonic cord drive, or posterior
+    # propagation. Scaled by live turn amplitude, it is exactly inert between turns.
+    #
+    # Tested at 1.0 with six paired animals per condition, 200 s each (2026-07-30).
+    # It makes the turn shallower, not deeper. Off food the median reorientation fell
+    # 37.75 -> 15.62 deg (paired difference -22.1, 95% CI -34.4 to -12.4); on food it
+    # fell 42.63 -> 29.05 deg (-13.6, CI -22.3 to -9.6). The fraction over 120 deg
+    # fell to zero in both conditions. Net/path, absolute heading drift, and path speed
+    # did not move detectably. The travelling wave is helping carry the turn down the
+    # body rather than consuming headroom the static bend could use, so leave this off.
+    omega_wave_suppression: float = 0.0
 
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation

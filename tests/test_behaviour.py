@@ -655,6 +655,48 @@ def test_omega_drive_is_a_differential_not_a_push():
         "the drive is not balanced across the two pools"
 
 
+def test_omega_wave_suppression_is_inert_between_turns_and_anterior_during_one():
+    """The candidate must quiet the wave without changing the shipped gait.
+
+    At its default zero it is exactly inert. At full suppression it acts only while the
+    omega transient is live, and only on the head oscillator plus the anterior
+    proprioceptive motor pool whose receptive fields overlap the turn pool.
+    """
+    import dataclasses
+
+    base = Params()
+    treatment = dataclasses.replace(
+        base, sensory=dataclasses.replace(base.sensory, omega_wave_suppression=1.0))
+    off = Simulation(base, seed=0, world=bare_world(base))
+    on = Simulation(treatment, seed=0, world=bare_world(treatment))
+    assert base.sensory.omega_wave_suppression == 0.0
+    assert on.senses._omega_wave_body.any(), "no anterior proprioceptive cells were selected"
+
+    def current(sim, omega):
+        sim.senses.omega = omega
+        sim.senses.omega_sign = 1.0
+        nodes = sim.body.nodes()
+        curvature = np.linspace(-4.0, 4.0, sim.p.body.n_links - 1)
+        return sim.senses.sense(
+            sim.world, nodes, np.zeros((len(nodes), 2)),
+            curvature, sim.nervous.activation())
+
+    # Identical fresh simulations, and no live turn: the candidate is a strict no-op.
+    assert np.array_equal(current(off, 0.0), current(on, 0.0))
+
+    # Fresh again so the first calls did not advance adaptation by one step.
+    off = Simulation(base, seed=0, world=bare_world(base))
+    on = Simulation(treatment, seed=0, world=bare_world(treatment))
+    I0, I1 = current(off, 1.0), current(on, 1.0)
+    head = np.abs(on.senses.W_head).sum(axis=1) > 0
+    affected = on.senses._omega_wave_body | head
+    delta = I1 - I0
+    assert np.linalg.norm(delta[affected]) > 1e-3, "full suppression changed no wave drive"
+    assert np.allclose(delta[~affected], 0.0, atol=1e-10), (
+        "wave suppression leaked outside the head/anterior motor pool")
+    assert 0.0 < on.senses.readout["omega_wave_gain"] < 0.01
+
+
 def test_omega_turn_actually_turns_the_animal():
     """The drive must reorient the body, not merely bend the neck.
 
