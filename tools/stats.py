@@ -105,6 +105,34 @@ def paired_ci(before, after, conf: float = CONF, reps: int = BOOTSTRAP, seed: in
     return bootstrap_ci(d, np.mean, conf=conf, reps=reps, seed=seed)
 
 
+def two_sample_ci(a, b, conf: float = CONF, reps: int = BOOTSTRAP, seed: int = 0):
+    """(mean difference b - a, low, high) for two arms that share no seeds.
+
+    The unpaired sibling of `paired_ci`, and it exists for one case: comparing the Python
+    model against the WebAssembly port with the noise switched on. There the arms *cannot*
+    be paired, because the whole point is that the two draw their noise from different
+    generators -- numpy's PCG64 through a ziggurat against xoshiro256++ through
+    Box-Muller. Seed 3 does not name the same animal on both sides, so pairing on it would
+    be pairing on nothing.
+
+    The price is power. Between-animal variance cancels in `paired_ci` and does not cancel
+    here, so this needs many more seeds to resolve the same effect. Report `mde` next to a
+    null from this function; "the two agree" is only ever "the two agree to within what
+    this many seeds could have seen".
+
+    The arms may have different lengths; each is resampled independently.
+    """
+    x = np.asarray([v for v in np.atleast_1d(a) if np.isfinite(v)], dtype=float)
+    y = np.asarray([v for v in np.atleast_1d(b) if np.isfinite(v)], dtype=float)
+    if x.size < 2 or y.size < 2:
+        return float("nan"), float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    draws = (y[rng.integers(0, y.size, (reps, y.size))].mean(axis=1)
+             - x[rng.integers(0, x.size, (reps, x.size))].mean(axis=1))
+    lo, hi = np.quantile(draws, [(1 - conf) / 2, 1 - (1 - conf) / 2])
+    return float(y.mean() - x.mean()), float(lo), float(hi)
+
+
 def spread(values) -> float:
     """Standard error of the mean, for reporting how noisy a sample was."""
     v = np.asarray([x for x in np.atleast_1d(values) if np.isfinite(x)], dtype=float)

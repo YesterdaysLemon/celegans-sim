@@ -14,6 +14,41 @@ import { fileURLToPath } from 'url';
 // joining that onto anything gives "C:\C:\src\...", which is not a path anywhere.
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const at = (...p) => path.join(ROOT, ...p);
+
+const inputs = [
+  {
+    path: at('web', 'worm.wasm'),
+    display: 'web/worm.wasm',
+    command: 'cd wasm && npx asc assembly/index.ts --target release',
+  },
+  {
+    path: at('web', 'worm.model'),
+    display: 'web/worm.model',
+    command: 'PYTHONPATH=. python tools/export_model.py',
+  },
+  {
+    path: at('web', 'conform.json'),
+    display: 'web/conform.json',
+    command: 'PYTHONPATH=. python tools/conform.py > web/conform.json',
+  },
+];
+const missing = inputs.filter(input => !fs.existsSync(input.path));
+if (missing.length) {
+  for (const input of missing) {
+    console.error(`Missing ${input.display}; generate it with: ${input.command}`);
+  }
+  process.exit(2);
+}
+
+const modelMtime = fs.statSync(at('web', 'worm.model')).mtimeMs;
+const referenceMtime = fs.statSync(at('web', 'conform.json')).mtimeMs;
+if (referenceMtime < modelMtime) {
+  console.warn(
+    'Warning: web/conform.json is older than web/worm.model; regenerate it with: ' +
+    'PYTHONPATH=. python tools/conform.py > web/conform.json',
+  );
+}
+
 const wasmBuf = fs.readFileSync(at('web', 'worm.wasm'));
 const modelBuf = fs.readFileSync(at('web', 'worm.model'));
 const ref = JSON.parse(fs.readFileSync(at('web', 'conform.json'), 'utf8'));
@@ -109,7 +144,64 @@ console.log(`  worst egg-laying state        ${wEgl.toExponential(3)}   (vm, hel
 const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0 && wEgl < 1e-8;
 console.log(fullOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && fullOk;
+// --- with cells removed -----------------------------------------------------------------
+// Ablation is the largest piece of this runtime that nothing checked. It has its own branch
+// in eleven places -- the gap accumulation skips dead neighbours, gapTot is rebuilt,
+// synaptic release is zeroed, the dead cell's voltage is pinned at leak after the solve,
+// and activation() reports zero so a cell that is not present cannot vote in the direction
+// gate. None of it ran here until now, and an ablation that is only mostly applied still
+// produces a worm-shaped thing that wriggles.
+const ac = ref.ablated;
+E.resetWorld();
+E.clearWorms();
+E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+const w3 = E.createWorm(0, 0.0, 0.0, 0.0);
+
+// setAblated takes a pointer to i32 indices, so the list has to go into linear memory.
+const idxPtr = E.alloc(ac.ablated.length * 4);
+new Int32Array(E.memory.buffer, idxPtr, ac.ablated.length).set(ac.ablated);
+E.setAblated(w3, idxPtr, ac.ablated.length);
+
+// Cheapest possible check first, and the one whose failure explains all the others.
+let aliveBad = 0;
+for (const i of ac.ablated) if (E.isAlive(w3, i) !== 0) aliveBad++;
+
+let aXY = 0, aV = 0, aT = 0, aAct = 0, aGate = 0, deadNoisy = 0;
+prev = 0;
+for (const f of ac.frames) {
+  E.step(w3, f.step - prev);
+  prev = f.step;
+  const nx = F64().subarray(E.ptrNodesX(w3) >> 3, (E.ptrNodesX(w3) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(w3) >> 3, (E.ptrNodesY(w3) >> 3) + f.y.length);
+  const vv = F64().subarray(E.ptrV(w3) >> 3, (E.ptrV(w3) >> 3) + f.V.length);
+  const aa = F64().subarray(E.ptrAct(w3) >> 3, (E.ptrAct(w3) >> 3) + f.act.length);
+  const tt = F64().subarray(E.ptrTension(w3) >> 3, (E.ptrTension(w3) >> 3) + f.tension.length);
+  for (let i = 0; i < f.x.length; i++)
+    aXY = Math.max(aXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  for (let i = 0; i < f.V.length; i++) aV = Math.max(aV, Math.abs(vv[i] - f.V[i]));
+  for (let i = 0; i < f.act.length; i++) aAct = Math.max(aAct, Math.abs(aa[i] - f.act[i]));
+  for (let i = 0; i < f.tension.length; i++) aT = Math.max(aT, Math.abs(tt[i] - f.tension[i]));
+  if (E.getGateForward(w3) !== f.gate) aGate++;
+  // A dead cell must be silent, not merely disagreeing quietly: pinned at its leak
+  // potential and contributing nothing to the direction gate.
+  for (const i of ac.ablated) if (aa[i] !== 0.0) deadNoisy++;
+}
+
+console.log(`\nABLATED -- ${ac.names.join(', ')}; ${ac.steps} steps, noise off`);
+console.log(`  cells reported dead           ${ac.ablated.length - aliveBad} of ${ac.ablated.length}`);
+console.log(`  worst node disagreement       ${aXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${aV.toExponential(3)} mV`);
+console.log(`  worst activation              ${aAct.toExponential(3)}`);
+console.log(`  worst muscle tension          ${aT.toExponential(3)}`);
+console.log(`  direction gate disagreed on   ${aGate} of ${ac.frames.length} samples`);
+console.log(`  ablated cells still active    ${deadNoisy}`);
+const ablOk = aliveBad === 0 && deadNoisy === 0 && aXY < 1e-6 && aV < 1e-6
+           && aAct < 1e-8 && aT < 1e-8 && aGate === 0;
+console.log(ablOk ? '  PASS' : '  FAIL');
+
+const ok = mechOk && fullOk && ablOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 process.exit(ok ? 0 : 1);

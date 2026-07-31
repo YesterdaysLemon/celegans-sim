@@ -4,7 +4,9 @@
   "type": "module",
   "description": "CI tooling only. The viewer itself has no dependencies and no build step; nothing in here is served.",
   "scripts": {
+    "check:headers": "node tools/check_cache_headers.mjs",
     "check:web": "node tools/check_web.mjs",
+    "smoke:server": "node tools/smoke_server.mjs",
     "smoke:web": "node tools/smoke_web.mjs"
   },
   "devDependencies": {

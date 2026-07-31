@@ -93,8 +93,72 @@ def full_case():
     return out
 
 
+def ablated_case():
+    """The same loop again, with cells removed.
+
+    Ablation is the largest piece of either implementation that no check has ever looked
+    at. It has its own branch almost everywhere -- the gap-junction accumulation skips dead
+    neighbours, `gap_total` is rebuilt, synaptic release is zeroed, the dead cell's voltage
+    is pinned at its leak potential after the solve, and `activation` reports zero so that a
+    cell which is not present does not vote in the direction gate. Eleven separate `anyDead`
+    branches in the runtime, plus `rebuildGap`, none of them exercised.
+
+    It is also the piece where being wrong is quietest. An ablation that is only *mostly*
+    applied still produces a worm-shaped thing that wriggles; it just answers a different
+    question than the one the experiment asked. The comment on
+    `NervousSystem.set_ablated` records what that already cost once: ablating AVB without
+    also cutting its external drive drove it to +34.8 mV and made silencing the forward
+    command look like maximally activating it.
+
+    The set is chosen to hit every branch rather than to mean anything biologically: two
+    command interneurons, so the direction gate loses inputs; two motor neurons, so a
+    muscle loses drive; two cells with heavy gap coupling, so `rebuildGap` has something to
+    do; and one pharyngeal cell, which is coupled to the rest of the animal by a single
+    gap junction and nothing else.
+    """
+    import dataclasses
+    from worm.engine import Simulation
+    from worm.world import World
+
+    p = Params()
+    p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+    w = World(p.world, np.random.default_rng(0))
+    w.add_food_patch(-6.0, 4.0, 5.0, density=1.0, attractant=1.0, length_scale=9.0)
+    w.add_repellent_source(7.0, -3.0, strength=0.9, length_scale=5.0)
+    sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
+
+    names = ["AVBL", "AVAL", "DB03", "VB05", "AVEL", "RIML", "I2L"]
+    sim.set_ablated(names)
+    idx = [sim.conn.index[n] for n in names]
+
+    steps = 3000
+    out = {"steps": steps, "sample": 200, "ablated": idx, "names": names, "frames": []}
+    for i in range(steps):
+        # Captured *before* the step, not after. Both implementations compute the
+        # activation at the top of a step, from the voltage the previous step left behind,
+        # so that the wireless layer runs one step behind the wired one. The port's stored
+        # `act` after N steps is therefore f(V after N-1 steps). Sampling it after
+        # `sim.step()` here instead compares f(V_N) against f(V_{N-1}) and reports a 3e-3
+        # disagreement that is entirely this harness's -- which is what it did first time.
+        act = sim.nervous.activation()
+        sim.step()
+        if (i + 1) % 200 == 0:
+            nodes = sim.body.nodes()
+            out["frames"].append({
+                "step": i + 1,
+                "x": [round(float(v), 12) for v in nodes[:, 0]],
+                "y": [round(float(v), 12) for v in nodes[:, 1]],
+                "V": [round(float(v), 10) for v in sim.nervous.V],
+                "act": [round(float(v), 10) for v in act],
+                "tension": [round(float(v), 12) for v in sim.muscles.tension],
+                "gate": 1.0 if sim.senses.going_forward else 0.0,
+            })
+    return out
+
+
 def main():
-    json.dump({"body": body_case(), "full": full_case()}, sys.stdout)
+    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case()},
+              sys.stdout)
     return 0
 
 

@@ -1787,6 +1787,85 @@ worm" are different claims, and only one of them is interesting.
 
 ## The one problem worth solving first
 
+**Make an omega turn change the animal's direction.** The command circuit now reverses at
+the right off-food rate, but a reversal changes heading by only a few tens of degrees. A
+biased random walk cannot steer strongly if its reorientation event mostly retraces the
+same path.
+
+This is the current evidence, measured rather than inherited from an older note:
+
+| Measurement | Current model | What it decides |
+|---|---:|---|
+| Off-food median reorientation | 37.75 deg | The turn is still shallow |
+| Off-food fraction above 120 deg | 2.38% | Deep turns are rare, not merely hidden by the median |
+| On-food median reorientation | 42.63 deg | Food does not repair turn depth |
+| On-food fraction above 120 deg | 8.33% | Still far below the animal's roughly 35% deep-turn fraction |
+
+Those values are the baseline arm of six paired animals per condition, 200 s each, from
+`tools/compare.py ethogram`. The trajectory guards were net/path 0.406 off food and 0.332
+on food; absolute heading drift was 2.25 and 4.05 deg/s. Reporting those guards is
+load-bearing because the older ventral-only turn inflated reorientation by making the
+animal circle.
+
+### The wave-suppression route is decided, and it failed
+
+The next hypothesis after the dynamic-range diagnosis was to quiet anterior undulation
+while the omega transient was live. It was tested at the predeclared full-suppression
+value on the same seeds. It made the turn **shallower**:
+
+| Condition | Median, baseline -> suppressed | Paired difference (95% CI) |
+|---|---:|---:|
+| Off food | 37.75 -> 15.62 deg | -22.1 [-34.4, -12.4] deg |
+| On food | 42.63 -> 29.05 deg | -13.6 [-22.3, -9.6] deg |
+
+The fraction above 120 deg fell to zero in both conditions. Net/path, absolute heading
+drift, and path speed did not move detectably. The travelling wave is helping carry the
+turn down the body rather than consuming range a static bend could reclaim. Do not repeat
+this as another suppression gain or target-set sweep; the negative result is recorded
+beside `sensory.omega_wave_suppression`, which remains zero.
+
+**Start with the dimensional ceiling.** The mechanical body is two-dimensional even
+though a real deep omega brings the head alongside the tail out of plane. The next honest
+implementation project is an explicitly scoped three-dimensional body representation
+with a reorientation assay that still reports the spiral guards above. Do not hide that
+project inside another current increase: `omega_current` is already in its saturation
+regime, RIV gain failed, reflex suppression failed, and wave suppression now failed in the
+opposite direction.
+
+### Current gait baseline, so the turn project does not reopen a solved diagnosis
+
+`tools/scorecard.py` on 2026-07-30 measured five seeds from the same configuration:
+
+| Quantity | Current model |
+|---|---:|
+| Frequency on agar | 0.66 +/- 0.01 Hz |
+| Wavelength on agar | 0.86 +/- 0.02 L |
+| Net speed on agar | 0.309 +/- 0.051 mm/s |
+| Travelling-wave index | +0.87 +/- 0.04 |
+| Wave direction | 5/5 head -> tail |
+
+`tools/diagnose_loop.py` independently found 0.680 Hz, 0.87 L and TWI +0.827 in its
+single-seed diagnostic. The gait is too fast and too long, and its medium modulation is
+far too small (0.66 -> 0.85 Hz where the animal goes 0.30 -> 1.76), but the wave is no
+longer mostly passive or backwards. Those are quantitative gaps, not the old structural
+failure.
+
+`tools/reflex_gain.py --quick` reported gains 0.92, 1.73, 2.31, 1.81 and 2.86 from head
+to tail at the current parameters. That non-monotone ratio is not a verdict on wave
+quality: the tool now warns that its passive denominator becomes tiny posteriorly, which
+can make a standing oscillation look like large regeneration. The closed-loop TWI and
+absolute amplitudes decide; do not restore this ratio as the roadmap's primary evidence.
+
+---
+
+## Retired priority: the body wave is mostly passive
+
+> **Historical, superseded 2026-07-30. Do not start here.** This section is preserved as
+> the record of the earlier diagnosis and the experiments it motivated. Its 1.2 Hz,
+> 1.4 L, 0.03-0.11 mm/s and backwards-modulation baseline predates the converged current
+> model. Proprioceptive reach now changes wavelength, the wave travels head to tail in
+> every scorecard seed, and the current numbers are in the section above.
+
 **The body wave is mostly passive.** The head oscillates, the body follows because it is
 mechanically attached, and the proprioceptive reflex adds only a modest amount on top.
 Everything else that is wrong follows from this:
@@ -1942,21 +2021,18 @@ table's five rows fix themselves at once.
 
 ## Second tier
 
-- **Gait modulation direction.** Falls out of the above if the wave becomes reflex-driven.
-  Do not tune it directly — it is a symptom.
-- **Omega turns.** The reversal *statistics* are now measured (`tools/ethogram.py`): 3.3
-  reversals/min off food against the animal's 3.2–3.5, in episodes long enough to be
-  reversals rather than threshold flicker. What is missing is the turn. Median reorientation
-  is 18°, nothing exceeds 120°, against 35% of real reversals ending at 160–170°. RIV has
-  been ruled out as the driver and the reason measured — 99.5% of its output variance is
-  undulatory (`tools/omega.py`). The next candidate has to have reversal-locked variance,
-  and should fire at the reversal-to-forward *transition* rather than during the reversal.
-  **This is still the single highest-value item in the file**, because three taxis assays
-  have correct mechanisms and null outcomes waiting on it.
+- **Gait modulation magnitude.** Its direction is fixed: the current scorecard goes
+  0.66 Hz on agar to 0.85 Hz in buffer. The animal goes 0.30 to 1.76 Hz, so the remaining
+  problem is the size of the response, not its sign. Keep it subordinate to turn depth;
+  changing the shared gait can move every behavioural assay at once.
+- **Backward locomotion.** The A-class wave reverses direction, but curvature and net speed
+  remain poor after AVB is removed. This should not be cited as a working phenotype.
+- **Taxis magnitude.** Chemotaxis, thermotaxis and aerotaxis have mechanisms pointing the
+  right way but small outcomes. Re-run them after a turn-depth mechanism clears its own
+  paired gate; do not tune the assays around the current shallow turn.
 
 ## Third tier / nice to have
 
-- Three dimensions, so left/right muscle quadrants separate and omega turns are real.
 - A recorded-playback mode in the viewer — the transport bar has no scrubber because there
   is no history buffer. A ring buffer of a few thousand frames would let the media-player
   metaphor actually be one.
@@ -1999,38 +2075,21 @@ table's five rows fix themselves at once.
 
 ---
 
-## A ready-to-run first command for tomorrow
+## Ready-to-run baseline before changing the turn
 
-This is (a) from the plan above — the untested half of the promising experiment. Paste it
-and go; it takes about six minutes.
+The former "first command" swept head proprioceptive gain inside the now-retired passive
+wave plan. Do not use it as the next experiment. Before a three-dimensional turn branch
+changes the model, freeze the current gait and reorientation baselines with:
 
 ```bash
-PYTHONPATH=. .venv/bin/python -u - <<'EOF'
-from dataclasses import replace
-from worm.engine import Simulation
-from worm.params import Params
-from tools.diagnose_loop import analyse, bare_world
-print("%-6s %5s %8s %9s %11s %7s %8s %8s %8s" % (
-    "head","seed","freq","wavelen","direction","k_rms","k_max","speed","dvcorr"))
-for hg in (60.0, 25.0):
-    for seed in (0, 3, 7):
-        p = Params()
-        p = replace(p,
-            muscle=replace(p.muscle, peak_moment=3.2),
-            sensory=replace(p.sensory, proprio_gain=45.0, proprio_reach=0.30,
-                            head_proprio_gain=hg))
-        r = analyse(Simulation(p, seed=seed, world=bare_world(p)), seconds=18.0)
-        print("%-6.0f %5d %8.3f %9.2f %11s %7.2f %8.2f %8.4f %8.2f" % (
-            hg, seed, r["freq"], r["wavelength"], r["direction"],
-            r["kappa_rms"], r["kappa_max"], r["speed"], r["dv_corr"]), flush=True)
-EOF
+PYTHONPATH=. .venv/bin/python tools/scorecard.py
+PYTHONPATH=. .venv/bin/python tools/ethogram.py
 ```
 
-Read it as: does backing the head off make all three seeds go head-to-tail again, and does
-the wavelength stay near 0.65 L? If yes, move to scaling `peak_moment` down for `k_max`.
-If the seeds still disagree, the head and body reflexes are competing for the wave and the
-next question is whether the head reflex should be weakened much further or removed
-entirely once the body can sustain itself.
+After the change, use `tools/compare.py ethogram key=value` on identical seeds and require
+both median reorientation and the fraction above 120 degrees to improve with cluster-level
+paired intervals. Report net/path and absolute heading drift beside them. A result that
+only improves the median, or makes the animal circle, is not a deeper turn.
 
 ## Useful commands
 
@@ -2041,18 +2100,17 @@ PYTHONPATH=. .venv/bin/python tools/command_probe.py        # can anything reach
 PYTHONPATH=. .venv/bin/python tools/command_sweep.py        # ...and does the gait survive it
 PYTHONPATH=. .venv/bin/python tools/ethogram.py             # reversal statistics, on food and off
 PYTHONPATH=. .venv/bin/python tools/assays.py triage        # two minutes; run before the full assay
-PYTHONPATH=. .venv/bin/python tools/reflex_gain.py          # the key measurement
+PYTHONPATH=. .venv/bin/python tools/reflex_gain.py --quick  # historical wave diagnostic; ratio needs care
 PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no biology
 PYTHONPATH=. .venv/bin/python tools/head_mode.py            # which limit cycle, and why
 PYTHONPATH=. .venv/bin/python tools/habituation.py          # the only memory in the model
 PYTHONPATH=. .venv/bin/python tools/timestep_convergence.py # is the gait converged? (~4 min)
-PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # 33 tests, ~5 min
+PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # full regression suite
 .venv/bin/python run.py --headless 60
 ```
 
 Every tool takes `key=value` overrides for the parameters it cares about, e.g.
 `tools/kymo.py pg=180 moment=3.0 medium=buffer`.
 
-A full-suite run takes about two and a half minutes and each closed-loop probe is 30–50
-seconds of wall time, so batch parameter sweeps and run them in the background rather than
-one at a time.
+Closed-loop probes are CPU-heavy. Run sweeps in batches, do not overlap them with the test
+suite, and report completed jobs rather than estimating success from a partial run.

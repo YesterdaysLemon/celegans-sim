@@ -209,19 +209,19 @@ nine.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **4.51 ± 0.11 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **12.2 ± 0.1 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Curvature, r.m.s. | **4.53 ± 0.05 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **13.2 ± 1.2 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
 | Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
 | Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.275 ± 0.047 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.75 ± 0.10** | well above 0.5 | — |
-| Travelling-wave index | **+0.85 ± 0.03** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **0.67 ± 0.01 Hz** | 0.30 ± 0.02 Hz *(see below)* | Fang-Yen et al. 2010 |
-| Wavelength, agar | **0.83 ± 0.01 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Crawling speed (net) | **0.309 ± 0.051 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.82 ± 0.11** | well above 0.5 | — |
+| Travelling-wave index | **+0.87 ± 0.04** | +1 for a pure travelling wave | — |
+| Undulation frequency, agar | **0.66 ± 0.01 Hz** | 0.30 ± 0.02 Hz *(see below)* | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.86 ± 0.02 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
 Curvature, wave direction and the membrane potentials land on the measured values. The
 gait's *timing* does not: see below.
@@ -454,7 +454,7 @@ and left at zero.
 
 Stated plainly, because a simulation that oversells itself is worse than useless.
 
-- **The animal crawls at 0.275 mm/s where the table says 0.219, and the frequency target
+- **The animal crawls at 0.309 mm/s where the table says 0.219, and the frequency target
   it is also scored against is not reachable with either.** A travelling wave of frequency
   *f* and wavelength *L* runs along the body at *V = f·L*, and an inextensible body in a
   viscous medium cannot advance faster than its own wave — *U/V* < 1 strictly. The 0.219 is
@@ -466,10 +466,10 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   *U/V* near **0.50**. So 0.30 Hz with a 0.65 L wavelength implies at most 0.099 mm/s, and
   0.219 mm/s implies about 0.66 Hz.
 
-  The model is at *U/V* = 0.49 — that is, **it now extracts essentially all the thrust a
+  The model is at *U/V* ≈ 0.54 — that is, **it now extracts essentially all the thrust a
   sinusoidal wave of its own kinematics allows**, so speed is no longer a waveform problem.
   It overshoots 0.219 because its wave is a little fast and a little long: at *U/V* ≈ 0.5,
-  0.219 mm/s wants *f·L* ≈ 0.44 and the model sits at 0.56.
+  0.219 mm/s wants *f·L* ≈ 0.44 and the model sits at 0.57.
 - **The tap-withdrawal reflex does not work, so the memory below has nothing to act on.**
   Forward progress over the three seconds after a tap is +0.739 mm against +0.786 with no
   tap. The animal now reverses spontaneously — 4.67 times a minute in episodes of 0.69 s,
@@ -539,15 +539,15 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   survive. With a travelling wave, reach is the one thing that *does* set the wavelength:
   0.49 to 0.64 L as reach goes 0.08 to 0.30, with the frequency flat to within 1% across
   the same range.
-- **Gait modulation points the right way now, and is far too small.** 0.67 Hz on agar
+- **Gait modulation points the right way now, and is far too small.** 0.66 Hz on agar
   against 0.85 Hz in buffer, where the animal goes 0.30 Hz crawling to 1.76 Hz swimming.
-  The *sign* had been wrong since day two and is now right; the magnitude is a 27% change
+  The *sign* had been wrong since day two and is now right; the magnitude is a 29% change
   where the animal manages sixfold. What fixed the sign was removing a reversal flicker in
   the command layer, not any change to the mechanics — which is worth knowing, because the
   mechanics had been the suspect for eight days.
-- **The travelling-wave index is +0.61, against +0.996 for the same body driven by a
+- **The travelling-wave index is +0.87, against +0.996 for the same body driven by a
   prescribed perfect wave.** That control is the useful one: it says the mechanics can
-  carry a wave the nervous system is not yet producing, and the gap between +0.61 and
+  carry a wave the nervous system is not yet producing, and the gap between +0.87 and
   +0.996 is what the circuit still owes. Decomposing curvature over (time, arclength)
   separates the travelling component from the standing one, and a standing wave produces
   *exactly zero* net thrust however large its amplitude, which is why this is the measure
@@ -715,6 +715,8 @@ tools/compare.py        A/B two configurations on identical seeds, with paired i
 tools/scorecard.py      every headline number at once, across seeds, in three media
 tools/export_model.py   freeze the model into web/worm.model + the runtime's constants
 tools/conform.py        reference trajectories the WebAssembly port is checked against
+tools/parity.py         the same two implementations compared statistically, noise ON
+wasm/trajectories.mjs   raw trajectories out of the browser runtime, for parity.py
 tools/check_web.mjs     the viewer's module graph: cycles, unresolved imports, leftovers
 tools/smoke_web.mjs     the viewer in a real browser, desktop and mobile
 web/app.js              viewer bootstrap; the modules it composes are in web/viewer/
