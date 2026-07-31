@@ -2,22 +2,25 @@
 #
 # The viewer has no build step, which is deliberate -- a static file server is enough to
 # run the animal -- but it means nothing between "I typed it" and "it is a black rectangle
-# in someone's browser" ever looks at the code. These two jobs are that step.
+# in someone's browser" ever looks at the code. These jobs are that step.
 #
 # The Python model has its own suite in tests/, which is slow (25 minutes of simulation)
-# and is not run here; this workflow only fires on changes to web/ or wasm/.
+# and is not run here; the Python used below is only the server transport and the
+# reference side of the WebAssembly conformance check.
 
 name: viewer
 
 on:
   push:
     branches: [main]
-    paths: ['web/**', 'wasm/**', 'docker/nginx.conf', 'tools/check_cache_headers.mjs',
-            'tools/check_web.mjs', 'tools/smoke_web.mjs', 'package.json',
+    paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
+            'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
+            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'package.json',
             '.github/workflows/viewer.yml']
   pull_request:
-    paths: ['web/**', 'wasm/**', 'docker/nginx.conf', 'tools/check_cache_headers.mjs',
-            'tools/check_web.mjs', 'tools/smoke_web.mjs', 'package.json',
+    paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
+            'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
+            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'package.json',
             '.github/workflows/viewer.yml']
 
 jobs:
@@ -58,9 +61,31 @@ jobs:
         run: node tools/check_web.mjs
 
       # ubuntu-latest ships Chrome; puppeteer-core drives it rather than downloading its
-      # own, which keeps `npm ci` at a couple of seconds.
+# own, which keeps `npm ci` at a couple of seconds.
       - name: browser smoke test
         run: node tools/smoke_web.mjs
+        env:
+          CHROME: /usr/bin/google-chrome
+
+  server-transport:
+    name: the Python WebSocket reaches the viewer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: pip install -r requirements.txt
+      - run: npm ci --no-audit --no-fund
+
+      - name: Python server transport smoke test
+        run: node tools/smoke_server.mjs
         env:
           CHROME: /usr/bin/google-chrome
 
