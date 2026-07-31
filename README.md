@@ -259,8 +259,8 @@ ending about 35% of its reversals in an omega turn of 160–170°.
 
 A biased random walk steers by choosing *when* to change direction, so if changing direction
 does not change the direction there is nothing to bias. That was why three separate assays
-reported a correct mechanism and a null outcome, while nociception — the one behaviour that
-needs no reorientation — worked.
+reported a correct mechanism and a null outcome. Nociception looked like the exception —
+the one behaviour needing no reorientation — but it was not; see below.
 
 **RIV was the obvious candidate and it is the wrong cell.** It innervates ventral body
 muscle and nothing else (9 contacts ventral, 0 dorsal) and is 25% more active during
@@ -304,7 +304,7 @@ the distribution falls out: about a third of reversals past 120° against the an
 | chemotaxis index | +0.002 | **+0.070** (animal: +0.5 or better) |
 | thermotaxis | warm group did not turn round | **−2.96 mm towards cooler**, correctly |
 | aerotaxis | ascended the gradient | **descends it**, 16.5% → 14.2%, reaching 9.8% |
-| nociception | worked | still works |
+| nociception | *appeared* to work | see the correction below |
 
 None is yet at the animal's magnitude — the chemotaxis index is seven times short — so this
 opens the problem rather than closing it.
@@ -357,6 +357,36 @@ It ships at zero anyway, because the chemotaxis index falls +0.083 → +0.014 wi
 better mechanism and a worse outcome: the reversals being suppressed are the same ones
 carrying the taxis. Until the omega turn reorients as deeply as the animal's, spending
 reversals costs more than biasing them gains — which says exactly what to do next.
+
+### The correction: nociception never worked either
+
+Nociception was the one behaviour this project claimed was sound, and it was not. The assay
+scored the **mechanism** — more reversals while exposed than while clear, and a lower
+concentration at the end than at the start — and both were comfortably true. Neither is
+avoidance. An animal wanders away from anywhere given two minutes, so "ended up further out
+than it started" is diffusion unless you run the control, and there was no control.
+
+With one — the same animal, same seed, on plain agar:
+
+| | plain agar | with the drop | |
+|---|---|---|---|
+| final distance | 19.35 mm | **9.83 mm** | worse |
+| furthest reached | 22.50 mm | **11.25 mm** | worse |
+| time to clear 8 mm | 22.3 s | **438 s** | worse |
+| cleared 8 mm at all | 12/12 | **7/12** | |
+
+The drop does not repel the animal. **It traps it.** And the reason is the same one behind
+every other null: ASH raises the reversal rate, a reversal reorients by 38°, so the animal
+retraces the path it came in on. A stimulus that raises the reversal rate is a stimulus
+that pins the animal in place — reversals are a brake, not an escape.
+
+So there is no exception. Every sensory behaviour in this model is waiting on turn depth,
+including the one that looked like it was not.
+
+(There is a second, independent defect in the same pathway: the repellent is sensed
+**tonically**, on absolute concentration, while every other chemical sense here adapts. The
+repo already learned this with oxygen, where a purely tonic sense made the taxis point
+backwards. That is worth fixing on its own, but it is not what is causing this.)
 
 ### On food, and a bound that was missing
 

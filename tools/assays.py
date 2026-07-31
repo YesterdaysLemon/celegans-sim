@@ -53,7 +53,7 @@ from worm.engine import Simulation
 from worm.params import Params
 from worm.world import World
 
-from tools.stats import bootstrap_ci, fmt, mde, ratio_ci
+from tools.stats import bootstrap_ci, fmt, mde, paired_ci, ratio_ci, verdict
 
 SAMPLE_DT = 0.05          # s between trajectory samples
 SETTLE = 6.0              # s discarded at the start, while the gait establishes
@@ -412,6 +412,11 @@ def thermotaxis(rows):
 
 
 # -------------------------------------------------------------------------- nociception
+def _noci_control(p):
+    """The same plate with no drop on it: the control this assay was missing."""
+    return World(p.world, np.random.default_rng(0))
+
+
 def _noci_plate(p):
     """One small repellent drop, and nothing to hold the animal near it.
 
@@ -424,50 +429,93 @@ def _noci_plate(p):
     return w
 
 
-def _noci_job(seed):
+def _noci_job(job):
+    """One animal, started at the centre of the drop -- or of nothing, for the control.
+
+    The control is the whole point. This assay used to score only the *mechanism*: more
+    reversals while exposed than while clear, and a lower concentration at the end than at
+    the start. Both were true, and both stayed true while the animal was being held in
+    place by the drop, because an animal wanders away from anywhere given two minutes. The
+    question is whether it leaves a drop *faster than it leaves plain agar*, and that
+    cannot be answered without running plain agar.
+    """
+    seed, with_drop = job
     ang = (seed % 8) * (2 * np.pi / 8)
-    tr = run_trial(_noci_plate, (0.0, 0.0, float(ang)), 120.0, seed)
+    plate = _noci_plate if with_drop else _noci_control
+    tr = run_trial(plate, (0.0, 0.0, float(ang)), 120.0, seed)
     rev = reversals(tr)
     r = tr["repellent"]
     peak = float(r.max())
-    # Time-weighted exposure, and how much of the run was spent above a tenth of peak.
     exposed = r > 0.1 * max(peak, 1e-9)
-    # Reversal rate while exposed vs not: the avoidance signature.
     ev = np.diff(rev.astype(int)) > 0
     e = exposed[1:]
     rate_in = ev[e].sum() / max(e.sum() * SAMPLE_DT, 1e-9) * 60.0
     rate_out = ev[~e].sum() / max((~e).sum() * SAMPLE_DT, 1e-9) * 60.0
-    return dict(seed=seed, peak=peak, frac_exposed=float(exposed.mean()),
+
+    # Where it got to. The drop is centred on the origin, so distance from the origin is
+    # distance from the thing it is supposed to be escaping.
+    d = np.hypot(tr["x"], tr["y"])
+    clear = np.flatnonzero(d > 8.0)
+    return dict(seed=seed, with_drop=with_drop, peak=peak,
+                frac_exposed=float(exposed.mean()),
                 rate_in=rate_in, rate_out=rate_out,
-                r_end=float(r[-1]), r_start=float(r[0]))
+                r_end=float(r[-1]), r_start=float(r[0]),
+                final=float(d[-1]), dmax=float(d.max()),
+                t_clear=float(tr["t"][clear[0]] - tr["t"][0]) if len(clear) else 999.0,
+                cleared=bool(len(clear)))
 
 
 def nociception(rows):
-    """See the module docstring and the printed note. Kept brief on purpose."""
-    print("NOCICEPTION -- brief encounters with a repellent drop, 120 s, no barrier")
+    """Does a noxious drop make the animal leave, or does it just make it thrash?
+
+    This assay used to answer the first question with evidence for the second. It scored
+    the *mechanism* -- more reversals while exposed than while clear, and a lower
+    concentration at the end than at the start -- and both were comfortably true while the
+    animal was in fact being *held* by the drop. An animal wanders away from anywhere given
+    two minutes, so "it ended up further out than it started" is not avoidance; it is
+    diffusion. Only a paired control says which.
+    """
+    drop = {r["seed"]: r for r in rows if r["with_drop"]}
+    plain = {r["seed"]: r for r in rows if not r["with_drop"]}
+    keys = sorted(set(drop) & set(plain))
+    print("NOCICEPTION -- dropped at the centre of a noxious drop, 120 s, no barrier")
+    print("  paired against the same animal on plain agar, which is the only way to tell")
+    print("  avoidance from wandering\n")
+    if not keys:
+        print("  no paired animals completed")
+        return rows
+
+    g = [drop[k] for k in keys]
+    print("  MECHANISM -- ASH drives reversal, and it does")
+    ri = np.array([r["rate_in"] for r in g])
+    ro = np.array([r["rate_out"] for r in g])
+    print("    peak repellent met:            %.3f" % np.mean([r["peak"] for r in g]))
+    print("    reversals/min while exposed:   %s" % fmt(*bootstrap_ci(ri), spec="%.2f"))
+    print("    reversals/min while clear:     %s" % fmt(*bootstrap_ci(ro), spec="%.2f"))
+    print("    difference:                    %s" % fmt(*bootstrap_ci(ri - ro), spec="%+.2f"))
+
     print()
-    print("  A note on how this is built. The model has no representation of affect: ASH")
-    print("  input is a current that decays with a 0.35 s time constant, there is no")
-    print("  accumulator, no persistent state, and no learning, so there is nothing here")
-    print("  that could carry an aversive state forward. That is an argument about this")
-    print("  implementation, not about the general question, so the assay is built to be")
-    print("  cheap-to-be-careful anyway: a single drop the animal can always walk away")
-    print("  from, no trapping geometry, 120 s rather than the 200 s used elsewhere, and")
-    print("  no repeated dosing. It measures avoidance, which needs one encounter.")
+    print("  OUTCOME -- and whether any of that gets the animal out")
+    for lab, key, spec, better in (("final distance mm", "final", "%+.2f", True),
+                                   ("furthest reached mm", "dmax", "%+.2f", True),
+                                   ("time to clear 8 mm", "t_clear", "%+.1f", False)):
+        x = np.array([plain[k][key] for k in keys])
+        y = np.array([drop[k][key] for k in keys])
+        d, lo, hi = paired_ci(x, y)
+        v = verdict(d, lo, hi)
+        if v in ("better", "worse") and not better:
+            v = "better" if v == "worse" else "worse"
+        print("    %-20s plain %6.2f  drop %6.2f   %-24s %s"
+              % (lab, x.mean(), y.mean(), fmt(d, lo, hi, spec), v))
+    cp = sum(1 for k in keys if plain[k]["cleared"])
+    cd = sum(1 for k in keys if drop[k]["cleared"])
+    print("    cleared 8 mm at all:      plain %d/%d      drop %d/%d" % (cp, len(keys), cd, len(keys)))
+
     print()
-    ri = np.array([r["rate_in"] for r in rows])
-    ro = np.array([r["rate_out"] for r in rows])
-    fe = np.array([r["frac_exposed"] for r in rows])
-    print("  peak repellent met:        %.3f" % np.mean([r["peak"] for r in rows]))
-    print("  time spent exposed:        %.0f%%" % (100 * fe.mean()))
-    print("  reversals/min while exposed:     %s" % fmt(*bootstrap_ci(ri), spec="%.2f"))
-    print("  reversals/min while clear:       %s" % fmt(*bootstrap_ci(ro), spec="%.2f"))
-    print("  difference (exposed - clear):    %s"
-          % fmt(*bootstrap_ci(ri - ro), spec="%+.2f"))
-    print("  repellent at end vs start:  %.3f -> %.3f"
-          % (np.mean([r["r_start"] for r in rows]), np.mean([r["r_end"] for r in rows])))
-    print("\n  avoidance = more reversals while exposed, and a lower concentration at the")
-    print("  end than at the peak. ASH drives reversal within 1-2 s in a real animal.")
+    print("  Avoidance means leaving a drop FASTER than leaving plain agar. If the drop")
+    print("  makes the animal end up closer, the reversals are a brake and not an escape:")
+    print("  a reversal that does not reorient retraces the path it came in on, so a")
+    print("  stimulus that raises the reversal rate pins the animal where it is.")
     return rows
 
 
@@ -527,7 +575,9 @@ ASSAYS = {
     "thermotaxis": (_thermo_job,
                     lambda: [(s, x) for x in (-18.0, 6.0) for s in range(8)],
                     thermotaxis),
-    "nociception": (_noci_job, lambda: list(range(12)), nociception),
+    "nociception": (_noci_job,
+                    lambda: [(s, d) for d in (False, True) for s in range(12)],
+                    nociception),
 }
 ORDER = ["triage", "chemotaxis", "aerotaxis", "thermotaxis", "nociception"]
 

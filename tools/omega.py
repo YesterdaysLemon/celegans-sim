@@ -2,8 +2,11 @@
 
 The omega turn was the missing half of this model's steering. Three taxis assays reported
 a correct mechanism and a null outcome -- the pirouette ratio moved the right way, the
-turning bias pointed the right way -- while nociception, the one behaviour needing no
-reorientation, worked. A biased random walk needs a decision to reverse *and* a reversal
+turning bias pointed the right way -- while nociception appeared to be the exception, the
+one behaviour needing no reorientation. It was not: that assay scored the mechanism and had
+no control, and with one it turns out a noxious drop makes the animal end up *closer* to it
+(9.83 mm against 19.35 on plain agar) and take twenty times longer to leave. There is no
+exception; see the README. A biased random walk needs a decision to reverse *and* a reversal
 that points the animal somewhere new. The model had the first and not the second: median
 reorientation 21 degrees, nothing above 120, against a real animal ending roughly 35% of
 its reversals in a 160-170 degree turn.
