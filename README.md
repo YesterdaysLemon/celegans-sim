@@ -252,6 +252,19 @@ does not depend on the timestep.
 **Spontaneous reversals**, at 3.3 a minute against the animal's 3.2–3.5 off food, in
 episodes long enough to be reversals rather than threshold flicker.
 
+**Egg-laying, and it is clustered.** HSN and the VCs drive vulval muscle; the uterus fills
+from what the pharynx actually transported, so an animal that does not eat does not make
+eggs. Five animals for an hour each give **11.0 eggs/hour with an interval CV of 1.79** —
+60% of intervals under a minute and 20% over two. Both tails populated is bimodality, and
+it is the one shape a timer cannot produce; nothing in the model schedules a phase, so the
+gaps are a depleting resource behind a Schmitt trigger. Off food the animal retains its
+eggs, and a serotonin bath rescues laying in an HSN-ablated animal, which is what places
+serotonin downstream of HSN rather than through it.
+
+One caveat kept in front rather than buried: the *median* interval is 6.0 s, which is
+exactly the refractory period, so the fast half of that bimodality is a parameter. What
+emerges is the slow half.
+
 ### The omega turn, and what it unlocked
 
 For most of this model's life the animal reversed but did not **reorient**: median heading
@@ -578,8 +591,14 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   0.60 s transport delay in the head reflex which is what brings the undulation frequency
   into the animal's band. Nothing that slow exists in a real stretch receptor; see the note
   on it in `params.py` for what it is standing in for and why it has not been earned yet.
-- **No pharyngeal pumping, no egg laying, no defecation cycle.** The 20 pharyngeal neurons
-  are simulated but drive nothing.
+- **No defecation cycle.** Pharyngeal pumping and egg laying now work — see below — but
+  the defecation motor programme, which is one of the animal's other two rhythms, is absent.
+- **Egg-laying overshoots its own ablation phenotype.** HSN-ablated animals here lay
+  *nothing*; the real ones are egg-laying defective but not incapable. Retention and
+  bloating are right, the residual rate is not, and it is structural rather than a bad
+  constant: with HSN gone the vulval muscle spans four hundredths above its median and
+  never comes within 0.05 of threshold, so no value produces a graded regime. It needs
+  stochastic vulval-muscle calcium, which the model does not have.
 - **Two dimensions.** Left and right muscle quadrants merge, so no roll and no true
   three-dimensional omega turn.
 - **The connectome is one animal.** White et al. sectioned a single hermaphrodite in 1986;
@@ -612,9 +631,16 @@ runtime**. Everything expensive that happens once at construction stays in Pytho
 exported as a block of arrays; the WASM implements only the step functions.
 
 `tools/conform.py` and `wasm/conform.mjs` check the two implementations against each other
-step by step with the noise off, and they agree to the precision the reference file stores
-— 5e-13 mm on node positions, 5e-11 mV on membrane potentials, and the direction gate never
-disagrees. The Docker build runs that check and **fails if the port has drifted**.
+step by step with the noise off, in **four cases** — the mechanics alone, the whole loop on
+a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, and
+the browser's own `stepAll` path against the single-worm one. They agree to the precision
+the reference file stores: 5e-13 mm on node positions, 5e-11 mV on membrane potentials, the
+direction gate never disagrees, and ablated cells are silent rather than merely quiet. The
+Docker build runs that check and **fails if the port has drifted**.
+
+Three of those four cases exist because a coverage audit found the earlier ones passing
+without covering anything. `tools/audit.py` breaks things on purpose and reports which
+check notices; `wasm/README.md` has the account.
 
 One worm runs at **2.36× real time** in the browser and two at 1.20× — faster than the
 numpy it was ported from — and the whole animal is **~55 kB gzipped**. Both numbers come
@@ -719,6 +745,12 @@ tools/parity.py         the same two implementations compared statistically, noi
 wasm/trajectories.mjs   raw trajectories out of the browser runtime, for parity.py
 tools/check_web.mjs     the viewer's module graph: cycles, unresolved imports, leftovers
 tools/smoke_web.mjs     the viewer in a real browser, desktop and mobile
+tools/smoke_server.mjs  the ?server transport, against a live Python model
+tools/check_cache_headers.mjs  every served asset has a deliberate cache policy
+tools/audit.py          break each check on purpose and see which one notices
+worm/egglaying.py       vulval muscle, the uterus, and the resource that clusters it
+tools/egglaying.py      rate, retention, the HSN and serotonin phenotypes
+wasm/egglaying.mjs      the hour-long clustering runs, on the runtime
 web/app.js              viewer bootstrap; the modules it composes are in web/viewer/
 web/local.js            the WebAssembly engine: model loading, stepping budget, frames
 wasm/assembly/index.ts  the runtime — the same model, in the browser

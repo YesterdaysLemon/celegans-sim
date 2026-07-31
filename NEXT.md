@@ -46,6 +46,71 @@ up. That is not a reason to avoid it; it is a reason to keep `tools/conform.py` 
 assay suite pointed at whatever comes out. "It evolved a high fitness" and "it evolved a
 worm" are different claims, and only one of them is interesting.
 
+> ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
+>
+> **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
+> pharynx was anatomically isolated and needed a reason to exist; these eight are wired
+> deep into the somatic network -- 86 chemical contacts out, 27 in, 4 gap junctions, and
+> HSN has been in `serotonin_sources` since the modulator layer was built -- and needed
+> somewhere to *send* their output. Vulval muscle is not among the 95 body-wall cells,
+> exactly as pharyngeal muscle was not.
+>
+> The uterus fills from what the pharynx transported, so feeding is load-bearing for this
+> rather than adjacent. Measured over five animals for an hour each: **11.0 eggs/hour, CV
+> 1.79**, 60% of intervals under a minute and 20% over two. Both tails populated is the one
+> shape a timer cannot make, and nothing schedules a phase -- the gaps are a depleting
+> resource behind a Schmitt trigger.
+>
+> Two things it does not do, both written next to the parameters. The median interval is
+> 6.0 s, which is exactly `refractory`, so the *fast* half of that bimodality is a number I
+> chose; only the slow half emerges. And HSN-ablated animals lay **nothing**, where the real
+> phenotype is defective-but-not-incapable. Measuring the drive showed why: with HSN gone
+> the vulval muscle spans four hundredths above its median and never comes within 0.05 of
+> threshold, so there is no fluctuation for a threshold to catch and any constant flips the
+> animal from never to often. That needs stochastic vulval-muscle calcium, which the model
+> does not have -- a mechanism, not a better number.
+>
+> **A modulator bug it exposed.** Ablating a modulator source could *raise* that modulator.
+> The level was a mean over the *surviving* sources, so removing a cell whose activation sat
+> below its siblings' pushed the mean up: killing HSN took serotonin 0.120 -> **0.219**. The
+> sign of every modulator-source ablation depended on where that cell happened to sit
+> relative to its siblings. Dead sources now stay in the denominator at resting release;
+> with nothing ablated it is arithmetically identical, so no existing result moved. The
+> pharynx's five phenotypes still point the right way, and NSM now gets there by the correct
+> route.
+>
+> ### And then the checks were audited, which was worse
+>
+> `tools/audit.py` applies a deliberate defect, runs the battery, and records who caught it.
+> Every mutation imitates a bug this repository has actually shipped. **Four holes on the
+> first run**, and the first one is the one to remember:
+>
+> The egg-laying conformance comparison **had never compared anything**. The runtime side
+> read `f.egl`; the Python side never emitted it, because the edit meant to add it anchored
+> on text that existed only on another branch and silently matched nothing. A guard then
+> turned missing data into a pass, so it printed a perfect `0.000e+0` from comparing zero
+> fields -- and that was reported, in the pull request that added it, as bit-identical
+> agreement.
+>
+> Also: three of the four egg variables were constant anyway, because the conformance animal
+> starts off the lawn and never eats. `stepAll` -- the only path a browser visitor runs --
+> had never been executed by any check. Ablation only ever happened at t=0, so every line
+> that clears *live* state was a no-op, while the viewer's Ablate button kills cells
+> mid-swim.
+>
+> Three of those four are the same failure: **a check that runs, passes, and covers less
+> than its own comment claims.** That is now this project's most repeated bug, ahead of
+> anything in the model. The empty conformance dish that hid the missing field diffusion,
+> the lawn-less plate that hid the food skirt, and these are all one mistake.
+>
+> Three of the ten mutations also came back as false alarms -- the mutation was wrong, not
+> the coverage -- and establishing that cost the same work as finding the real holes. A tool
+> that cannot tell *"you missed this"* from *"you asked the wrong question"* gets ignored
+> within a month.
+>
+> **The rule that falls out, and it is cheap now:** a check is not real until you have
+> watched it fail. `tools/audit.py --only <name>` takes seconds.
+>
 > ## Day twenty. The repellent stops trapping, and the browser's plate starts ageing.
 >
 > Two things, one of which was only found because of the other.

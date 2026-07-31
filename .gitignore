@@ -22,3 +22,5 @@ node_modules/
 # on demand like web/conform.json.
 web/traj-wasm.bin
 web/traj-wasm.json
+# Event times from wasm/egglaying.mjs, for tools/egglaying.py clustering.
+web/egg-events.json

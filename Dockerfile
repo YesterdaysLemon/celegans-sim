@@ -32,7 +32,7 @@ RUN python tools/conform.py > web/conform.json \
  && node wasm/conform.mjs \
  && rm web/conform.json                        # the build fails above if the port drifted
 RUN python tools/manifest.py                   # content hashes, so immutable caching is safe
-RUN rm -f web/README.md web/traj-wasm.*        # developer files are not web assets
+RUN rm -f web/README.md web/traj-wasm.* web/egg-events.json   # not web assets
 
 # ---- stage 2: nothing but the files ---------------------------------------------------
 FROM nginx:alpine
