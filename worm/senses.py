@@ -122,6 +122,7 @@ class Senses:
         self.odour_adapt = None
         self.t_adapt = None
         self.o2_adapt = None
+        self.rep_adapt = None
         self.touch_state = np.zeros(2)
         self.poke = np.zeros(2)          # (anterior, posterior) externally driven touch
         # Habituation. One resource per touch field, full at 1.0. See SensoryParams.
@@ -169,6 +170,7 @@ class Senses:
         self._odour_rate = 1.0 - self._odour_decay
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
         self._o2_rate = 1.0 - np.exp(-dt / p.oxygen_tau_adapt)
+        self._rep_rate = 1.0 - np.exp(-dt / p.repellent_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
         self._touch_rate = 1.0 - self._touch_decay
 
@@ -214,7 +216,15 @@ class Senses:
         I[self.awc] -= p.chemo_gain * 0.6 * do      # OFF cell: excited by odour removal
 
         rep = float(world.sample(world.repellent, nose[0], nose[1]))
-        I[self.ash] += p.chemo_gain * 1.6 * rep
+        if self.rep_adapt is None:
+            self.rep_adapt = rep
+        drep = rep - self.rep_adapt
+        self.rep_adapt += (rep - self.rep_adapt) * self._rep_rate
+        # Tonic and differential, as for oxygen. The tonic part sets how much the animal
+        # reverses near a drop at all; the differential part is what makes those reversals
+        # happen while it is heading *into* the drop rather than out of it, which is the
+        # only version that gets it anywhere. See SensoryParams.repellent_d_gain.
+        I[self.ash] += p.chemo_gain * 1.6 * rep + p.repellent_d_gain * drep
         I[self.adl] += p.chemo_gain * 0.8 * rep
         I[self.ask] -= p.chemo_gain * 0.3 * rep
 

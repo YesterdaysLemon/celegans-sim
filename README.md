@@ -238,10 +238,11 @@ which is a sharp check that the self-consistent threshold solve and the integrat
 
 ### What works
 
-**Nociception.** Dropped near a repellent the animal reverses 3.81 times a minute while
-exposed against 1.72 while clear, and leaves: the concentration it sits in falls from 0.264
-to 0.027 over two minutes. That is avoidance — a sensory signal changing behaviour in the
-right direction, with no part of it scripted.
+**Nociception.** Dropped at the centre of a noxious drop the animal ends **34.0 mm** out
+against **19.4 mm** for the same animal, same seed, on plain agar — a paired difference of
++14.7 mm [+8.0, +21.1]. That is avoidance measured against its own control, which is the
+only way the claim means anything; the first version of this assay had none and reported
+the opposite of the truth. See [the correction](#the-correction-nociception-never-worked-either--and-then-the-fix-for-it).
 
 **Habituation.** Repeated taps deplete a mechanoreceptor resource, rest refills it, and a
 shorter interval habituates deeper — three properties of Rankin's tap habituation out of
@@ -304,7 +305,7 @@ the distribution falls out: about a third of reversals past 120° against the an
 | chemotaxis index | +0.002 | **+0.070** (animal: +0.5 or better) |
 | thermotaxis | warm group did not turn round | **−2.96 mm towards cooler**, correctly |
 | aerotaxis | ascended the gradient | **descends it**, 16.5% → 14.2%, reaching 9.8% |
-| nociception | *appeared* to work | see the correction below |
+| nociception | *appeared* to work; in fact trapped the animal | **+14.7 mm further out than its own control** — see below |
 
 None is yet at the animal's magnitude — the chemotaxis index is seven times short — so this
 opens the problem rather than closing it.
@@ -358,7 +359,7 @@ better mechanism and a worse outcome: the reversals being suppressed are the sam
 carrying the taxis. Until the omega turn reorients as deeply as the animal's, spending
 reversals costs more than biasing them gains — which says exactly what to do next.
 
-### The correction: nociception never worked either
+### The correction: nociception never worked either — and then the fix for it
 
 Nociception was the one behaviour this project claimed was sound, and it was not. The assay
 scored the **mechanism** — more reversals while exposed than while clear, and a lower
@@ -375,18 +376,42 @@ With one — the same animal, same seed, on plain agar:
 | time to clear 8 mm | 22.3 s | **438 s** | worse |
 | cleared 8 mm at all | 12/12 | **7/12** | |
 
-The drop does not repel the animal. **It traps it.** And the reason is the same one behind
-every other null: ASH raises the reversal rate, a reversal reorients by 38°, so the animal
-retraces the path it came in on. A stimulus that raises the reversal rate is a stimulus
-that pins the animal in place — reversals are a brake, not an escape.
+The drop did not repel the animal. **It trapped it.** ASH raised the reversal rate, a
+reversal reorients by 38°, so the animal retraced the path it came in on. A stimulus that
+raises the reversal rate is a stimulus that pins the animal in place — reversals are a
+brake, not an escape.
 
-So there is no exception. Every sensory behaviour in this model is waiting on turn depth,
-including the one that looked like it was not.
+**What fixed it was not turn depth.** The repellent was sensed **tonically**, on absolute
+concentration, while every other chemical sense here adapts. This repo had already learned
+that lesson once, with oxygen, where a purely tonic sense made the taxis point backwards.
+Giving ASH the same treatment — an adapting baseline, a tonic term plus a derivative term
+on the deviation, structurally identical to the oxygen path — turns the sign of the result
+over. Same 12 paired seeds:
 
-(There is a second, independent defect in the same pathway: the repellent is sensed
-**tonically**, on absolute concentration, while every other chemical sense here adapts. The
-repo already learned this with oxygen, where a purely tonic sense made the taxis point
-backwards. That is worth fixing on its own, but it is not what is causing this.)
+| | plain agar | with the drop | paired difference | |
+|---|---|---|---|---|
+| final distance | 19.35 mm | **34.02 mm** | +14.67 [+8.04, +21.06] | better |
+| furthest reached | 22.50 mm | **34.38 mm** | +11.88 [+6.14, +17.43] | better |
+| time to clear 8 mm | 22.3 s | 20.2 s | −2.0 [−5.5, +1.4] | no effect |
+| cleared 8 mm at all | 12/12 | **12/12** | | |
+
+Read that carefully, because it is not the result the old assay was reaching for. The
+animal does not get out **faster** — time-to-clear is unchanged, and the interval says so.
+It gets out **further, and stays out**. Heading into the drop, the derivative term is
+positive and drives ASH; heading out of it, the same term is negative and *suppresses*
+ASH, so the animal does not turn round and wander back in. That asymmetry is the whole
+mechanism, and it is invisible to a tonic sense, which by construction cannot tell the two
+directions apart.
+
+It also inverts the mechanism panel the old assay was proud of: reversals while exposed are
+now 0.22/min against 0.58/min while clear, a difference whose interval spans zero. Fewer
+reversals while exposed is what a working differential sense looks like, because most of
+the exposed time is now spent leaving. The behaviour got better as the number the old assay
+scored got worse, which is the argument for scoring outcomes against a control rather than
+scoring mechanisms.
+
+This is the first sensory behaviour in the model to clear its own control. The other three
+are still waiting on turn depth.
 
 ### On food, and a bound that was missing
 

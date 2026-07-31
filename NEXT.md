@@ -46,6 +46,39 @@ up. That is not a reason to avoid it; it is a reason to keep `tools/conform.py` 
 assay suite pointed at whatever comes out. "It evolved a high fitness" and "it evolved a
 worm" are different claims, and only one of them is interesting.
 
+> ## Day twenty. The repellent stops trapping, and the browser's plate starts ageing.
+>
+> Two things, one of which was only found because of the other.
+>
+> **ASH now senses the derivative.** The repellent was the last purely tonic chemical sense
+> in the model, and a tonic sense cannot tell approaching from leaving. Same shape as the
+> oxygen path — an adapting baseline at `repellent_tau_adapt = 2 s`, a tonic term plus
+> `repellent_d_gain = 4000` on the deviation. Against the paired plain-agar control the
+> drop now puts the animal **+14.67 mm [+8.04, +21.06]** further out instead of 9.5 mm
+> closer, and 12/12 clear it instead of 7/12.
+>
+> The interesting part is *how* it works, because it is not how the assay was written to
+> look. Time-to-clear is unchanged — the animal does not escape faster. It escapes
+> **further**, because heading out of the drop makes `drep` negative, which suppresses ASH,
+> which suppresses the reversal that would have taken it back in. The old mechanism panel
+> now reads 0.22 reversals/min while exposed against 0.58 while clear — the number the
+> original assay celebrated went *down* while the behaviour became correct. Outcomes
+> against a control, not mechanisms.
+>
+> **The browser's dish was chemically frozen.** `World.step` diffuses and decays the
+> attractant and repellent every 20 ms and was never ported. It survived the conformance
+> test for a year of days because the conformance plate was an empty dish, and a field of
+> zeros diffuses to zeros. Putting a lawn and a drop on that plate — done for the sensory
+> paths, not for this — turned it into a run that agreed to 1e-15 through step 40 and then
+> stepped off a cliff at step 41. 41 steps is 0.0205 s. `field_dt` is 0.02.
+>
+> A second, self-inflicted lesson from the same afternoon: `web/conform.json` was a
+> *tracked* file. It is a recording of what the Python did on the day it was made, so a
+> stale one does not weaken the check, it inverts it — the port gets measured against a
+> model that no longer exists and fails with a 17 mV disagreement that looks exactly like a
+> porting bug. It is now untracked and must be regenerated every time, which is what the
+> Dockerfile already did.
+>
 > ## Day nineteen. The pharynx eats.
 >
 > Twenty neurons were simulated in full and drove nothing. Measured in this reconstruction

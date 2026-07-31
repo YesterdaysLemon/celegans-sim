@@ -486,7 +486,7 @@ def nociception(rows):
         return rows
 
     g = [drop[k] for k in keys]
-    print("  MECHANISM -- ASH drives reversal, and it does")
+    print("  MECHANISM -- how much of the exposure is spent reversing")
     ri = np.array([r["rate_in"] for r in g])
     ro = np.array([r["rate_out"] for r in g])
     print("    peak repellent met:            %.3f" % np.mean([r["peak"] for r in g]))
@@ -512,10 +512,11 @@ def nociception(rows):
     print("    cleared 8 mm at all:      plain %d/%d      drop %d/%d" % (cp, len(keys), cd, len(keys)))
 
     print()
-    print("  Avoidance means leaving a drop FASTER than leaving plain agar. If the drop")
-    print("  makes the animal end up closer, the reversals are a brake and not an escape:")
-    print("  a reversal that does not reorient retraces the path it came in on, so a")
-    print("  stimulus that raises the reversal rate pins the animal where it is.")
+    print("  Avoidance means the drop puts the animal FURTHER out than plain agar does,")
+    print("  by the same animal's own wandering. If it ends up closer, the reversals are a")
+    print("  brake and not an escape: a reversal that does not reorient retraces the path")
+    print("  it came in on, so a stimulus that raises the reversal rate pins the animal")
+    print("  where it is -- which is exactly what a purely tonic ASH did here.")
     return rows
 
 

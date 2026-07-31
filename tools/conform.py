@@ -68,8 +68,14 @@ def full_case():
 
     p = Params()
     p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
-    sim = Simulation(p, seed=0, world=World(p.world, np.random.default_rng(0)),
-                     placement=(0.0, 0.0, 0.0))
+    # A plate with something on it. A bare world leaves most of the sensory layer reading
+    # zero -- and a term that is only ever multiplied by zero is not being checked. The
+    # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
+    # the repellent one, including its adapting baseline.
+    w = World(p.world, np.random.default_rng(0))
+    w.add_food_patch(-6.0, 4.0, 5.0, density=1.0, attractant=1.0, length_scale=9.0)
+    w.add_repellent_source(7.0, -3.0, strength=0.9, length_scale=5.0)
+    sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     steps = 4000
     out = {"steps": steps, "sample": 200, "frames": []}
     for i in range(steps):

@@ -206,7 +206,7 @@ def export(path=OUT, params=None):
     b.f("prop_adapt_rate", sen._prop_adapt_rate)
     b.f("chem_decay", sen._chem_decay).f("odour_decay", sen._odour_decay)
     b.f("odour_rate", sen._odour_rate).f("therm_decay", sen._therm_decay)
-    b.f("o2_rate", sen._o2_rate)
+    b.f("o2_rate", sen._o2_rate).f("rep_rate", sen._rep_rate)
     b.f("touch_decay", sen._touch_decay).f("touch_rate", sen._touch_rate)
     b.f("omega_decay", sen._omega_decay).f("omega_ref_n", sen._omega_ref_n)
     b.f("hab_use", sen._hab_use).f("hab_recover", sen._hab_recover)
@@ -215,7 +215,7 @@ def export(path=OUT, params=None):
     b.i("gate_latched", 1 if p.sensory.gate_latched else 0)
     sp = p.sensory
     for k in ("chemo_gain", "thermo_gain", "cultivation_temp", "oxygen_gain",
-              "oxygen_preferred", "oxygen_d_gain", "repellent_gain", "food_gain",
+              "oxygen_preferred", "oxygen_d_gain", "repellent_d_gain", "food_gain",
               "proprio_gain", "head_proprio_gain", "tonic_forward", "tonic_backward",
               "cord_drive", "gate_slope", "gate_bias", "gate_hysteresis",
               "turn_bias_limit", "touch_gain", "omega_current", "omega_ventral_fraction",
@@ -256,7 +256,8 @@ def export(path=OUT, params=None):
 
     # -- world ---------------------------------------------------------------------------
     wp = p.world
-    for k in ("radius", "diffusion", "decay", "ingestion_rate", "field_dt",
+    for k in ("radius", "diffusion_attractant", "diffusion_repellent",
+              "decay_attractant", "ingestion_rate", "field_dt",
               "temp_cold", "temp_warm", "o2_ambient", "o2_depth", "o2_length_scale"):
         if hasattr(wp, k):
             b.f("world_" + k, getattr(wp, k))

@@ -59,6 +59,12 @@ export function setPayload(ptr: usize): void { B = ptr; }
   return v < lo ? lo : (v > hi ? hi : v);
 }
 
+// 1 inside edge0, falling smoothly to 0 by edge1. The lawn's edge.
+@inline function smoothstep(e0: f64, e1: f64, x: f64): f64 {
+  const t = clamp((x - e0) / (e1 - e0 + 1e-12), 0.0, 1.0);
+  return 1.0 - t * t * (3.0 - 2.0 * t);
+}
+
 /* ------------------------------------------------------------------------- linear algebra
  * The body is the expensive part of a step: assembling a (n+2)^2 drag metric out of
  * several n x n products and then solving it. Everything here is dense and small
@@ -154,6 +160,56 @@ class World {
   attractant: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   repellent: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   o2: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  scratch: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  facc: f64 = 0.0;
+
+  /* The chemical fields diffuse and decay. This was missing entirely -- the browser's
+   * plate was frozen -- and it is the kind of omission a conformance test on an empty
+   * dish cannot see, because a field of zeros diffuses to zeros. It showed up as an
+   * exact-agreement run that diverged on step 41 and nowhere else: 41 steps is 0.0205 s,
+   * and field_dt is 0.02. */
+  stepFields(dt: f64): void {
+    this.facc += dt;
+    while (this.facc >= G.WORLD_FIELD_DT) {
+      this.facc -= G.WORLD_FIELD_DT;
+      this.diffuse(this.attractant, G.WORLD_DIFFUSION_ATTRACTANT,
+                   G.WORLD_DECAY_ATTRACTANT, G.WORLD_FIELD_DT);
+      this.diffuse(this.repellent, G.WORLD_DIFFUSION_REPELLENT,
+                   G.WORLD_DECAY_ATTRACTANT, G.WORLD_FIELD_DT);
+    }
+  }
+
+  diffuse(c: StaticArray<f64>, D: f64, decay: f64, dt: f64): void {
+    const g = this.g;
+    if (D <= 0.0) {
+      const k = 1.0 - decay * dt;
+      for (let i = 0; i < g * g; i++) unchecked(c[i] *= k);
+      return;
+    }
+    // Five-point Laplacian with wrap-around, matching numpy's np.roll exactly -- the
+    // dish mask below is what keeps the wrap from meaning anything physical.
+    const inv = 1.0 / (this.h * this.h);
+    for (let i = 0; i < g; i++) {
+      const up = ((i - 1 + g) % g) * g, dn = ((i + 1) % g) * g, row = i * g;
+      for (let j = 0; j < g; j++) {
+        const lf = (j - 1 + g) % g, rt = (j + 1) % g;
+        const v = unchecked(c[row + j]);
+        const lap = (unchecked(c[up + j]) + unchecked(c[dn + j])
+                   + unchecked(c[row + lf]) + unchecked(c[row + rt]) - 4.0 * v) * inv;
+        let out = v + dt * (D * lap - decay * v);
+        if (out < 0.0) out = 0.0;
+        unchecked(this.scratch[row + j] = out);
+      }
+    }
+    for (let i = 0; i < g; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = 0; j < g; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        const k = i * g + j;
+        unchecked(c[k] = Math.sqrt(x * x + y * y) <= this.extent ? unchecked(this.scratch[k]) : 0.0);
+      }
+    }
+  }
   sample(f: StaticArray<f64>, x: f64, y: f64): f64 {
     const fx = (x + this.extent) / this.h - 0.5;
     const fy = (y + this.extent) / this.h - 0.5;
@@ -195,6 +251,16 @@ class World {
       for (let b2 = lo_j; b2 <= hi_j; b2++) unchecked(this.food[a * this.g + b2] *= k);
     return take;
   }
+  /* A bacterial lawn, matching World.add_food_patch exactly.
+   *
+   * The three fields have *different* shapes, and getting that wrong is not cosmetic.
+   * Bacteria stop at the lawn edge -- a smoothstep from three quarters of the radius to
+   * the radius, and zero beyond. Only the diffusible attractant gets an exponential
+   * skirt, because that is the steady state of a chemical leaking out of a finite source.
+   * Giving food the skirt too, which this did, meant an animal seven millimetres outside
+   * a five millimetre lawn read food 0.78 where the Python read 0.0: it thought it was on
+   * a lawn almost everywhere in the dish, ate, pumped, and stayed. The conformance test
+   * could not see it, because it ran on an empty plate where every field is zero. */
   addPatch(cx: f64, cy: f64, r: f64, density: f64, att: f64, ls: f64): void {
     for (let i = 0; i < this.g; i++) {
       const y = -this.extent + (<f64>i + 0.5) * this.h;
@@ -202,21 +268,29 @@ class World {
         const x = -this.extent + (<f64>j + 0.5) * this.h;
         const dx = x - cx, dy = y - cy;
         const d = Math.sqrt(dx * dx + dy * dy);
-        const inside = d <= r ? 1.0 : Math.exp(-(d - r) / ls);
         const k = i * this.g + j;
-        if (density > 0.0) {
-          const v = density * inside;
-          if (v > unchecked(this.food[k])) unchecked(this.food[k] = v);
-          // A lawn respires, and the deficit has a longer skirt than the bacteria because
-          // oxygen is resupplied from the air above the agar as well as laterally.
-          const o = G.WORLD_O2_DEPTH * (d <= r ? 1.0
-                    : Math.exp(-(d - r) / G.WORLD_O2_LENGTH_SCALE));
-          if (o > unchecked(this.o2[k])) unchecked(this.o2[k] = o);
-        }
-        if (att > 0.0) {
-          const v = att * inside;
-          if (v > unchecked(this.attractant[k])) unchecked(this.attractant[k] = v);
-        }
+        const skirt = Math.exp(-(d > r ? d - r : 0.0) / ls);
+        unchecked(this.food[k] += density * smoothstep(r * 0.75, r, d));
+        unchecked(this.attractant[k] += att * skirt);
+        unchecked(this.o2[k] += G.WORLD_O2_DEPTH * density
+                  * Math.exp(-(d > r ? d - r : 0.0) / G.WORLD_O2_LENGTH_SCALE));
+      }
+    }
+    this.maskDish();
+  }
+
+  /* Nothing exists outside the plate. Python applies this after every source. */
+  maskDish(): void {
+    for (let i = 0; i < this.g; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = 0; j < this.g; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        if (Math.sqrt(x * x + y * y) <= this.extent) continue;
+        const k = i * this.g + j;
+        unchecked(this.food[k] = 0.0);
+        unchecked(this.attractant[k] = 0.0);
+        unchecked(this.repellent[k] = 0.0);
+        unchecked(this.o2[k] = 0.0);
       }
     }
   }
@@ -226,11 +300,11 @@ class World {
       for (let j = 0; j < this.g; j++) {
         const x = -this.extent + (<f64>j + 0.5) * this.h;
         const dx = x - cx, dy = y - cy;
-        const v = strength * Math.exp(-Math.sqrt(dx * dx + dy * dy) / ls);
         const k = i * this.g + j;
-        if (v > unchecked(this.repellent[k])) unchecked(this.repellent[k] = v);
+        unchecked(this.repellent[k] += strength * Math.exp(-Math.sqrt(dx * dx + dy * dy) / ls));
       }
     }
+    this.maskDish();
   }
 }
 
@@ -312,6 +386,7 @@ class Worm {
   headHist: StaticArray<f64> = new StaticArray<f64>((G.HEAD_DELAY_N + 1) * G.N_JOINTS);
   headHistI: i32 = 0;
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
+  repAdapt: f64 = 0.0;
   adaptReady: bool = false;
   touchA: f64 = 0.0; touchP: f64 = 0.0;
   availA: f64 = 1.0; availP: f64 = 1.0;
@@ -741,7 +816,7 @@ class Worm {
     const food = world.sample(world.food, nx, ny);
     if (!this.adaptReady) {
       this.cAdapt = c; this.odourAdapt = c; this.tAdapt = G.SEN_CULTIVATION_TEMP;
-      this.o2Adapt = o2; this.adaptReady = true;
+      this.o2Adapt = o2; this.repAdapt = rep; this.adaptReady = true;
     }
     this.sensedAtt = c; this.sensedRep = rep; this.sensedT = T;
     this.sensedO2 = o2; this.sensedFood = food;
@@ -756,7 +831,14 @@ class Worm {
     this.addTo(G.OFF_idx_awa, G.LEN_idx_awa, G.SEN_CHEMO_GAIN * 0.6 * dodour);
     this.addTo(G.OFF_idx_awc, G.LEN_idx_awc, -G.SEN_CHEMO_GAIN * 0.6 * dodour);
 
-    this.addTo(G.OFF_idx_ash, G.LEN_idx_ash, G.SEN_CHEMO_GAIN * 1.6 * rep);
+    // Tonic and differential, as for oxygen. The tonic part sets how much the animal
+    // reverses near a drop at all; the differential part is what makes those reversals
+    // happen while it is heading *into* the drop rather than out of it. Without it the
+    // drop does not repel the animal, it traps it.
+    const drep = rep - this.repAdapt;
+    this.repAdapt += (rep - this.repAdapt) * G.REP_RATE;
+    this.addTo(G.OFF_idx_ash, G.LEN_idx_ash,
+               G.SEN_CHEMO_GAIN * 1.6 * rep + G.SEN_REPELLENT_D_GAIN * drep);
     this.addTo(G.OFF_idx_adl, G.LEN_idx_adl, G.SEN_CHEMO_GAIN * 0.8 * rep);
     this.addTo(G.OFF_idx_ask, G.LEN_idx_ask, -G.SEN_CHEMO_GAIN * 0.3 * rep);
 
@@ -1075,13 +1157,18 @@ export function stepBodyOnly(w: i32, dt: f64, steps: i32): void {
 }
 
 export function setNoise(on: i32): void { noiseOn = on != 0; }
+// One animal, and the plate goes with it -- this is the conformance path, where there is
+// only ever one worm and it has to match a Python Simulation exactly. Do not use it to
+// step several worms in a loop: the plate would age once per animal per step. Use stepAll.
 export function step(w: i32, n: i32): void {
   const wm = worms[w];
-  for (let i = 0; i < n; i++) wm.step();
+  for (let i = 0; i < n; i++) { wm.step(); world.stepFields(G.DT); }
 }
 export function stepAll(n: i32): void {
   for (let i = 0; i < n; i++) {
     for (let k = 0; k < worms.length; k++) worms[k].step();
+    // The plate is shared, so it advances once per step and not once per animal.
+    world.stepFields(G.DT);
   }
 }
 export function ptrAct(w: i32): usize { return changetype<usize>(worms[w].act); }
