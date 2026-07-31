@@ -75,6 +75,14 @@ def full_case():
     w = World(p.world, np.random.default_rng(0))
     w.add_food_patch(-6.0, 4.0, 5.0, density=1.0, attractant=1.0, length_scale=9.0)
     w.add_repellent_source(7.0, -3.0, strength=0.9, length_scale=5.0)
+    # Food under the animal from the first step, and this is the third time the same
+    # lesson has had to be learned here. The plate above gives the animal gradients to
+    # sense but nothing to *eat*: starting seven millimetres off the lawn it never pumps,
+    # never ingests, never fills its uterus and never lays, so three of egg-laying's four
+    # state variables were constant for the whole run and the comparison covered one. Same
+    # shape as the empty dish that hid the missing field diffusion, and as the lawn-less
+    # plate that hid the food skirt. A term that never moves is not being checked.
+    w.add_food_patch(0.0, 0.0, 3.0, density=1.0, attractant=0.6, length_scale=6.0)
     sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     steps = 4000
     out = {"steps": steps, "sample": 200, "frames": []}
@@ -89,6 +97,13 @@ def full_case():
                 "V": [round(float(v), 10) for v in sim.nervous.V],
                 "tension": [round(float(v), 12) for v in sim.muscles.tension],
                 "gate": 1.0 if sim.senses.going_forward else 0.0,
+                # Egg-laying carries four pieces of state and three of them are slow, so a
+                # port that got the vulval muscle right and the resource wrong would look
+                # correct for minutes. All four are compared.
+                "egl": [round(float(sim.egglaying.vm), 10),
+                        round(float(sim.egglaying.eggs), 10),
+                        round(float(sim.egglaying.resource), 10),
+                        float(sim.egglaying.laid)],
             })
     return out
 
@@ -128,11 +143,22 @@ def ablated_case():
     sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
 
     names = ["AVBL", "AVAL", "DB03", "VB05", "AVEL", "RIML", "I2L"]
-    sim.set_ablated(names)
     idx = [sim.conn.index[n] for n in names]
+    # Ablate MID-RUN, not at t=0, and that distinction is the whole point of this case.
+    # Ablating before the first step silences cells whose state is still at its initial
+    # value, so every line that exists to *clear* live state -- the release variable, the
+    # voltage, the adaptation -- is a no-op and cannot be got wrong. Deleting those lines
+    # one at a time changed nothing and no check noticed, which is exactly what the viewer
+    # does not do: its Ablate button kills a cell in an animal that has been swimming for
+    # minutes, with a live release variable and a live voltage to clear.
+    warm = 800
+    for _ in range(warm):
+        sim.step()
+    sim.set_ablated(names)
 
     steps = 3000
-    out = {"steps": steps, "sample": 200, "ablated": idx, "names": names, "frames": []}
+    out = {"steps": steps, "sample": 200, "ablated": idx, "names": names,
+           "warm": warm, "frames": []}
     for i in range(steps):
         # Captured *before* the step, not after. Both implementations compute the
         # activation at the top of a step, from the voltage the previous step left behind,
