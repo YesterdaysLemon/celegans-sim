@@ -812,6 +812,53 @@ class SensoryParams:
     # is what decides where it ends up.
     oxygen_d_gain: float = 900.0     # pA per unit O2 per second, on the adapted deviation
     oxygen_tau_adapt: float = 3.0    # s   baseline the differential part is measured from
+
+    # The noxious drop, and the same lesson a second time.
+    #
+    # Every chemical sense in senses.py adapts and reports a deviation -- except this one,
+    # which was read straight off the absolute concentration. That is exactly the shape
+    # oxygen had before oxygen_d_gain, and it fails the same way for the same reason: a
+    # tonic sense says "you are somewhere bad", never "you are heading somewhere worse",
+    # and a biased random walk can only steer on the second.
+    #
+    # What it cost is worth writing down, because the tonic version did not merely fail to
+    # repel. Dropped at the centre of a drop and paired against the same animal on plain
+    # agar, the tonic model ended up *closer* to the drop than to nothing at all -- 9.83 mm
+    # against 19.35 -- and took 438 s to clear 8 mm against 22. Five animals in twelve
+    # never cleared it at all.
+    #
+    # The mechanism is not subtle once the differential is missing. ASH raises the reversal
+    # rate (2.83 -> 10.00 a minute across the concentration range, measured), and a reversal
+    # backs the animal along its own body. Reversing while heading *into* the drop moves it
+    # out; reversing while heading *out* moves it back in. A tonic drive cannot tell those
+    # apart, so it fires on both and the net effect is a brake -- the animal that reverses
+    # most travels least, and it stays where the concentration is highest.
+    #
+    # Both terms are kept, as with oxygen: ASH is a genuinely tonic receptor and the tonic
+    # part is what makes the animal reverse at all near a drop, while the differential part
+    # is what decides which way it ends up going.
+    # Calibrated on escape rather than on reversal counts, because reversal counts were
+    # what hid the problem in the first place. Dropped at the centre and paired against
+    # the same animal on plain agar, final distance from the drop:
+    #
+    #   d_gain |  plain / drop  | paired difference        | never escaped
+    #        0 |  26.20 /  8.03 | -18.18 [-27.22, -10.45]  |  3/8
+    #      200 |  26.20 / 10.96 | -15.24 [-24.05,  -3.44]  |  3/8
+    #      600 |  26.20 / 29.43 |  +3.23 [ -5.11, +11.36]  |  0/8
+    #     1500 |  26.20 / 30.30 |  +4.10 [ -6.40, +15.63]  |  0/8
+    #     4000 |  26.20 / 35.97 |  +9.77 [ +3.28, +18.27]  |  0/8   <- adopted
+    #
+    # 600 is enough to stop the drop trapping anyone; 4000 is where the drop actually
+    # drives the animal further out than empty agar does, which is the only version that
+    # deserves to be called avoidance. It is a large number next to oxygen_d_gain's 900,
+    # and it is large for a reason that is visible in the same table: the deviation it
+    # multiplies is small and short-lived, because an animal crossing a 5 mm length scale
+    # at a third of a millimetre a second is only in a *changing* concentration briefly.
+    #
+    # It cannot disturb anything else. drep is identically zero wherever there is no drop,
+    # and the only assay plate carrying one is nociception's.
+    repellent_d_gain: float = 4000.0  # pA per unit repellent per second, on the deviation
+    repellent_tau_adapt: float = 2.0  # s  baseline the differential part is measured from
     # Per uN of smoothed indentation force.
     #
     # This was 34 pA/uN against a receptor state that accumulated one whole force per step

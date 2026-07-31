@@ -25,7 +25,10 @@ const inst = new WebAssembly.Instance(mod, {
 });
 const E = inst.exports;
 
-const ptr = E.alloc(payload.length);
+// The payload holds f64 arrays, so it has to start on an 8-byte boundary or the views
+// the runtime builds over it are misaligned.
+const raw = E.alloc(payload.length + 8);
+const ptr = (raw + 7) & ~7;
 new Uint8Array(E.memory.buffer).set(payload, ptr);
 E.setPayload(ptr);
 E.initWorld();
@@ -63,8 +66,15 @@ const mechOk = worstXY < 1e-9 && worstK < 1e-7;
 console.log(mechOk ? '  PASS' : '  FAIL');
 
 // --- the whole loop --------------------------------------------------------------------
+// The same plate the Python built. This has to be kept in step with conform.py by hand,
+// and it is worth the nuisance: the first version of this test ran both sides on an empty
+// dish, where every sensory field reads zero -- so it passed while the WASM's food field
+// had an exponential skirt the Python's does not, and an animal seven millimetres outside
+// a five millimetre lawn thought it was standing on one.
 const fc = ref.full;
 E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
 const w2 = E.createWorm(0, 0.0, 0.0, 0.0);
 let wXY = 0, wV = 0, wT = 0, gateBad = 0;
 prev = 0;

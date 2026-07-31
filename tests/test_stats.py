@@ -148,9 +148,15 @@ def test_every_assay_reporter_survives_its_own_rows():
         peak=0.3, frac_exposed=0.5, rate_in=5.0, rate_out=0.5, r_end=0.1, r_start=0.2,
         c_min=0.1, c_max=0.5, dc_max=0.05, frac_rev=0.02, gate_f=0.9, gate_b=0.1,
         drive=0.5,
+        with_drop=True, final=12.0, dmax=14.0, t_clear=30.0, cleared=True,
     )
     for name, (_job, _jobs, report) in ASSAYS.items():
-        # Thermotaxis splits its rows into two starting groups, so give it both or its
-        # reporter averages an empty slice and the test passes on a warning.
-        rows = [dict(fields, seed=i, start_x=(-18.0 if i % 2 else 6.0)) for i in range(4)]
+        # Two shapes have to be satisfied at once. Thermotaxis splits its rows into two
+        # starting groups, so give it both or its reporter averages an empty slice and the
+        # test passes on a warning. Nociception is paired -- every seed appears twice, once
+        # with the drop and once on plain agar -- and with only one arm present it finds no
+        # pairs and returns before reaching the format strings this test exists to exercise.
+        rows = [dict(fields, seed=i, start_x=(-18.0 if i % 2 else 6.0), with_drop=d,
+                     final=12.0 if d else 10.0)
+                for i in range(4) for d in (True, False)]
         report(rows)          # must not raise
