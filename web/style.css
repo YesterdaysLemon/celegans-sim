@@ -115,6 +115,15 @@ header {
   background: var(--series-3);
   box-shadow: 0 0 7px var(--series-3);
 }
+/* The egg lamp is not a flash -- it is lit for the whole active phase, which lasts a
+   couple of minutes. A steady state, so it does not need the reduced-motion treatment the
+   pump lamp does. */
+#egg-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gridline);
+  transition: background 200ms linear;
+}
+#egg-dot.on { background: var(--series-6); box-shadow: 0 0 7px var(--series-6); }
 
 /* ------------------------------------------------------------------ dish ------ */
 #dish {
@@ -216,6 +225,7 @@ header {
 .sw.food  { background: var(--series-3); }
 .sw.att   { background: var(--series-1); }
 .sw.rep   { background: var(--critical); }
+.sw.egg   { background: #e2dcbe; }
 .sw.grid  { background: var(--baseline); }
 .sw.trail { background: var(--text-secondary); }
 

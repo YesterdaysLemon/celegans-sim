@@ -25,6 +25,7 @@ import numpy as np
 from . import dataset
 from .body import Body
 from .modulators import Modulators
+from .egglaying import EggLaying
 from .pharynx import Pharynx
 from .muscle import Muscles
 from .nervous import NervousSystem
@@ -67,6 +68,7 @@ class Simulation:
         self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt,
                                      g_rest=self.nervous.g_rest)
         self.pharynx = Pharynx(self.conn, self.p.pharynx, self.p.neural.dt)
+        self.egglaying = EggLaying(self.conn, self.p.egglaying, self.p.neural.dt)
 
         self.dt = self.p.neural.dt
         self.t = 0.0
@@ -141,6 +143,17 @@ class Simulation:
                                   alive=self.nervous.alive)
         if moved > 0.0:
             self.food_eaten += self.world.eat(head[0], head[1], moved)
+
+        # Egg-laying. Fed by what the pharynx actually transported, so the two systems are
+        # coupled the way they are in the animal: eggs are made out of food. The vulva is
+        # halfway down the body, which is where the egg is put -- an egg trail is a record
+        # of where the animal was while it was laying, and that is worth being able to see.
+        laid = self.egglaying.step(activation, moved,
+                                   self.modulators.level["serotonin"], food_here,
+                                   alive=self.nervous.alive)
+        if laid > 0.0:
+            vulva = self._nodes[len(self._nodes) // 2]
+            self.world.lay_egg(vulva[0], vulva[1])
 
         self.world.step(self.dt)
         self.t += self.dt
@@ -236,5 +249,6 @@ class Simulation:
             "direction": self.direction(),
             "food_eaten": round(self.food_eaten, 4),
             "pharynx": {k: round(float(v), 5) for k, v in self.pharynx.readout().items()},
+            "egglaying": {k: round(float(v), 5) for k, v in self.egglaying.readout().items()},
             "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
         }

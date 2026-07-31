@@ -116,7 +116,7 @@ E.setNoise(0);
 E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
 E.addRepellent(7.0, -3.0, 0.9, 5.0);
 const w2 = E.createWorm(0, 0.0, 0.0, 0.0);
-let wXY = 0, wV = 0, wT = 0, gateBad = 0;
+let wXY = 0, wV = 0, wT = 0, gateBad = 0, wEgl = 0;
 prev = 0;
 for (const f of fc.frames) {
   E.step(w2, f.step - prev);
@@ -130,13 +130,18 @@ for (const f of fc.frames) {
   for (let i = 0; i < f.V.length; i++) wV = Math.max(wV, Math.abs(vv[i] - f.V[i]));
   for (let i = 0; i < f.tension.length; i++) wT = Math.max(wT, Math.abs(tt[i] - f.tension[i]));
   if (E.getGateForward(w2) !== f.gate) gateBad++;
+  if (f.egl) {
+    const got = [E.getVulvalMuscle(w2), E.getEggsHeld(w2), E.getEglResource(w2), E.getEggsLaid(w2)];
+    for (let i = 0; i < 4; i++) wEgl = Math.max(wEgl, Math.abs(got[i] - f.egl[i]));
+  }
 }
 console.log(`\nWHOLE LOOP -- neurons, muscle, senses, body; ${fc.steps} steps, noise off`);
 console.log(`  worst node disagreement       ${wXY.toExponential(3)} mm`);
 console.log(`  worst membrane potential      ${wV.toExponential(3)} mV`);
 console.log(`  worst muscle tension          ${wT.toExponential(3)}`);
 console.log(`  direction gate disagreed on   ${gateBad} of ${fc.frames.length} samples`);
-const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0;
+console.log(`  worst egg-laying state        ${wEgl.toExponential(3)}   (vm, held, resource, laid)`);
+const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0 && wEgl < 1e-8;
 console.log(fullOk ? '  PASS' : '  FAIL');
 
 // --- with cells removed -----------------------------------------------------------------

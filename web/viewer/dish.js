@@ -43,6 +43,10 @@ export function drawDish() {
     ctx.fill(); ctx.stroke();
   }
 
+  // Eggs, under the trails and under the animals: they were put there first, and an egg
+  // drawn over the worm that laid it reads as something the worm is carrying.
+  if (S.layers.eggs && S.eggs && S.eggs.n) drawEggs(ctx, X, Y, scale);
+
   if (S.layers.trail) {
     for (const tr of S.trails) {
       if (!tr || tr.length < 2) continue;
@@ -167,6 +171,26 @@ function drawFields(ctx, X, Y, scale) {
   ctx.drawImage(fieldCanvas, X(-R), Y(R), 2 * R * scale, 2 * R * scale);
 }
 
+// An egg is about 50 x 30 um, so at any sensible zoom it is a couple of pixels. Drawn at
+// a floor of 1.4 px it stays visible when the whole dish is in frame -- which is the view
+// where a scatter of eggs actually says something, because it is the record of where the
+// animal has been laying rather than a picture of one egg.
+function drawEggs(ctx, X, Y, scale) {
+  const T = theme(), e = S.eggs;
+  const r = Math.max(1.4, 0.025 * scale);
+  ctx.fillStyle = T.egg[0];
+  ctx.strokeStyle = T.egg[1];
+  ctx.lineWidth = r > 3 ? 1 : 0.6;
+  for (let i = 0; i < e.n; i++) {
+    const cx = X(e.x[i]), cy = Y(e.y[i]);
+    ctx.beginPath();
+    // An ellipse, because an egg is one, and the long axis reads at high zoom.
+    ctx.ellipse(cx, cy, r * 1.45, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (r > 2) ctx.stroke();
+  }
+}
+
 let grainPat = null, grainCtx = null;
 function drawGrain(ctx, w, h) {
   // createPattern is not free, and the tile never changes.
@@ -204,6 +228,14 @@ function drawMinimap(ctx, w, h, R, f) {
     ctx.fillStyle = p.kind === 'food' ? 'rgba(25,158,112,0.55)' : 'rgba(208,59,59,0.5)';
     ctx.beginPath(); ctx.arc(cx + p.x * s, cy - p.y * s, Math.max(1.5, p.r * s), 0, Math.PI * 2);
     ctx.fill();
+  }
+  if (S.layers.eggs && S.eggs && S.eggs.n) {
+    ctx.fillStyle = T.dark ? 'rgba(120,105,70,0.75)' : 'rgba(240,235,215,0.75)';
+    for (let i = 0; i < S.eggs.n; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + S.eggs.x[i] * s, cy - S.eggs.y[i] * s, 1.0, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   if (S.trail.length > 1) {
     ctx.strokeStyle = T.dark ? 'rgba(43,39,34,0.55)' : 'rgba(195,194,183,0.5)';

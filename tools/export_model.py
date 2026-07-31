@@ -121,6 +121,7 @@ def export(path=OUT, params=None):
     sim = Simulation(p, seed=0)
     conn = sim.conn
     nrv, mus, sen, mod, ph = sim.nervous, sim.muscles, sim.senses, sim.modulators, sim.pharynx
+    egl = sim.egglaying
     body = sim.body
     b = Blob()
 
@@ -233,6 +234,9 @@ def export(path=OUT, params=None):
         "db": sen.db, "vb": sen.vb, "da": sen.da, "va": sen.va,
         "omega_v": sen._omega_v, "omega_d": sen._omega_d,
         "mc": ph.mc, "m3": ph.m3, "m4": ph.m4, "i2": ph.i2,
+        # VC06 is absent from egl.vc on purpose -- it has no synapses and no gap junctions
+        # in this reconstruction, so reading it would be reading the noise generator.
+        "egl_hsn": egl.hsn, "egl_vc": egl.vc,
     }
     for k, v in sets.items():
         b.arr("idx_" + k, np.asarray(v, dtype=np.int32), "i4")
@@ -253,6 +257,18 @@ def export(path=OUT, params=None):
               "octopamine_to_mc", "max_rate", "pump_duration", "m3_duration_gain",
               "volume_per_pump", "m4_transport", "m4_gain", "lumen_capacity"):
         b.f("ph_" + k, getattr(pp, k))
+
+    # -- egg-laying -----------------------------------------------------------------------
+    ep = p.egglaying
+    for k in ("myogenic", "hsn_gain", "serotonin_gain", "vc_gain", "vm_tau",
+              "vm_threshold", "off_food_floor", "eggs_per_food", "uterus_capacity",
+              "eggs_initial", "resource_tau", "resource_cost", "resource_off",
+              "resource_on", "refractory"):
+        b.f("egl_" + k, getattr(ep, k))
+    b.i("egl_rest_samples", ep.rest_samples)
+    # The browser keeps eggs in a fixed ring rather than a growing list: a tab left
+    # open overnight lays thousands, and the plate is a picture, not a record.
+    b.i("max_eggs", 4096)
 
     # -- world ---------------------------------------------------------------------------
     wp = p.world

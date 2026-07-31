@@ -1749,6 +1749,136 @@ class PharynxParams:
 
 
 @dataclass(frozen=True)
+class EggLayingParams:
+    """Egg-laying. See worm/egglaying.py for the circuit and what each term is for.
+
+    The behaviour these numbers exist to produce is *clustered*, not merely paced.
+    Waggoner et al. (1998) timed it: active phases of roughly two minutes containing
+    several events about twenty seconds apart, separated by inactive phases of roughly
+    twenty minutes. A mean rate of four or five eggs an hour is trivial to hit and says
+    nothing about whether there is a circuit; the interval distribution is the claim.
+    """
+
+    # --- who drives ------------------------------------------------------------------
+    # The floor: what the vulval muscle does with no drive at all. An HSN-ablated animal
+    # is egg-laying *defective*, not incapable, so this cannot be zero -- the same role,
+    # for the same reason, that myogenic_rate plays for the pharyngeal pump.
+    #
+    # KNOWN OVERSHOOT, and the reason is structural rather than a bad value here.
+    #
+    # An HSN-ablated animal in this model lays *nothing*: five animals, sixty simulated
+    # minutes each, zero eggs, uterus pinned at capacity in all five. The real phenotype is
+    # egg-laying *defective* -- retention and bloating, which this does reproduce, plus a
+    # much reduced but nonzero rate, which it does not.
+    #
+    # Raising this floor from 0.25 to 0.33 did not help, and measuring the drive explains
+    # why. With HSN gone the vulval muscle activation over ten minutes runs
+    #
+    #     min 0.081   p50 0.458   p90 0.474   p99 0.485   max 0.494
+    #
+    # against a vm_threshold of 0.55. That distribution is almost flat: above the median it
+    # spans four hundredths, and its maximum over ten minutes never comes within 0.05 of
+    # firing. vm is a low-pass filter of the drive with a 0.35 s constant, and the surviving
+    # inputs -- the myogenic floor and a serotonin level averaged over its own 20 s tau --
+    # have no fast structure left to pass. So there is nothing for a threshold to catch
+    # intermittently: any value of this parameter flips the ablated animal from never to
+    # often, with no graded regime between.
+    #
+    # A graded ablation phenotype therefore needs a mechanism this model does not have, not
+    # a better constant. The candidate is the right one biologically: vulval muscle calcium
+    # transients are themselves stochastic, so the decision to lay is not a deterministic
+    # function of the network state the way it is here. Adding that is a real change and
+    # should be made for that reason, not to rescue a number. Left at the original 0.25.
+    myogenic: float = 0.25
+    # HSN is the driver, and it enters as its ABSOLUTE activation rather than as a
+    # deviation from its own resting level. That distinction is the phenotype: written as
+    # a deviation -- the way the pharynx's modulators are written, which is correct for a
+    # modulator of a myogenic rate -- HSN contributes zero mean drive and ablating it
+    # changes nothing. The first run of tools/egglaying.py had HSN-ablated animals laying
+    # *more* than intact ones, which is how this was found.
+    # 0.55 x a resting activation near 0.53 puts the intact animal comfortably over
+    # vm_threshold and the ablated one under it, where laying waits on a fluctuation.
+    hsn_gain: float = 0.55           # per unit HSN activation
+    # The humoral arm. HSN is serotonergic, and exogenous serotonin induces laying *in
+    # HSN-ablated animals*, which places its action downstream of HSN rather than through
+    # it. Modelled as a separate term for exactly that reason: with hsn_gain removed this
+    # one still reaches the muscle. HSN has been in ModulatorParams.serotonin_sources
+    # since the modulator layer was built, so the loop closes through machinery that was
+    # already here.
+    # Sized for the BATH, not for the endogenous level. Exogenous serotonin is applied at
+    # a concentration that saturates the response; the pool an intact animal maintains is
+    # around 0.1 and should contribute a nudge, not the whole drive. Set at 6.0 first,
+    # against a level of 0.018 read off a twelve-minute probe, which turned out to be
+    # unrepresentative -- over two minutes on a lawn the level is 0.12, and 6.0 x 0.12
+    # saturated the muscle on its own and swamped every other term including HSN's.
+    serotonin_gain: float = 0.80     # per unit serotonin level
+    # The VCs are a brake, not a driver: VC-ablated animals lay slightly *more*. Small,
+    # because the effect is small -- and smaller than it first looks, for a reason visible
+    # in the wiring rather than in the pharmacology. HSN synapses onto the VCs (HSNR onto
+    # VC02 and VC03, HSNL onto VC05), so ablating HSN also silences its own brake. At a
+    # gain of 1.0 that disinhibition very nearly cancelled the drive HSN had just stopped
+    # supplying, and HSN-ablated animals came out laying *more* than intact ones -- the
+    # second time this circuit produced that result, by a completely different route from
+    # the first.
+    vc_gain: float = 0.15            # per unit VC activation above rest
+    # VC06 is excluded in worm/egglaying.py by name rather than by weight. It has zero
+    # synapses and zero gap junctions in this reconstruction, and measured on food its
+    # activation swing is 0.88 -- the largest of the eight, and entirely background noise.
+
+    # --- the muscle ------------------------------------------------------------------
+    vm_tau: float = 0.35             # s    vulval muscle activation time constant
+    vm_threshold: float = 0.55       # activation at which the vulva opens
+
+    # --- food ------------------------------------------------------------------------
+    # Off food the animal retains eggs. Multiplicative rather than additive because no
+    # amount of HSN drive makes a starved animal lay freely; not zero, because retention
+    # is not abolition and a starved animal eventually lays.
+    off_food_floor: float = 0.12     # fraction of the drive that survives with no food
+
+    # --- the uterus ------------------------------------------------------------------
+    # Eggs are made out of food, which is the entire coupling to the pharynx: an animal
+    # that does not eat does not make eggs. `ingested` is in patch-density units and a fed
+    # animal moves about 4.4 of them per 12 minutes, measured, so this is a conversion
+    # rather than anything from the literature. Set so production modestly exceeds laying
+    # -- a laying hermaphrodite carries ten to fifteen eggs in utero, so the uterus sitting
+    # near capacity on food is the correct state and not a symptom. What distinguishes the
+    # arms is what happens to that stock: off food it neither fills nor drains, and with
+    # HSN gone it fills and stays full, which is the retention half of the Egl phenotype.
+    eggs_per_food: float = 0.70      # eggs per unit ingested (~15/hour on a lawn)
+    uterus_capacity: float = 15.0    # eggs; a blocked animal becomes bloated, not infinite
+    # KNOWN SIMPLIFICATION: there is no brood limit. A self-fertilising hermaphrodite makes
+    # about 300 sperm during L4 and then switches its germline to oocytes permanently, so
+    # its ~300-egg brood is *sperm*-limited -- it runs out of sperm, not of food or of
+    # oocytes. Here eggs are made from food without end, so an animal kept on a lawn lays
+    # forever. That is wrong on any run longer than a few hours of simulated time, and it
+    # is the first thing to fix if this is ever used for a population: a lifetime brood cap
+    # is what makes generations finite. (Mated with a male the real animal exceeds 1000,
+    # because male sperm outcompete self sperm and are not limiting -- but modelling that
+    # needs males, and males need a tail, spicules and their own motor program.)
+    eggs_initial: float = 3.0        # a young adult starts with some ready to go
+
+    # --- what makes phases -----------------------------------------------------------
+    # A depleting resource with its own recovery constant -- the same Tsodyks-Markram
+    # idiom worm/senses.py uses for tap habituation, and for the same reason: it produces
+    # history-dependence from one equation instead of from a schedule. An active phase
+    # spends the resource; recovery takes minutes; the phase ends when what is left cannot
+    # support another event. Nothing here counts events or times a phase.
+    # Two thresholds, not one: a Schmitt trigger, the same shape the direction gate uses.
+    # With a single threshold there is no inactive phase worth the name -- the phase ends
+    # the instant the resource dips below it, leaving the resource *at* the threshold, so
+    # it climbs back over within a step or two and laying resumes. The quiet period is
+    # produced by having to recover all the way to `resource_on` before another phase can
+    # begin. From 0.44, that climb takes about -tau*ln((1-on)/(1-0.44)) seconds.
+    resource_tau: float = 900.0      # s    recovery time constant; quiet phase ~20 min
+    resource_cost: float = 0.14      # spent per egg; (on - off)/cost sets events per phase
+    resource_off: float = 0.45       # the active phase ends below this
+    resource_on: float = 0.85        # and cannot begin again until back above this
+    refractory: float = 6.0          # s    minimum spacing between events
+
+    rest_samples: int = 4000         # steps averaged to find each pool's resting level
+
+
+@dataclass(frozen=True)
 class Params:
     neural: NeuralParams = field(default_factory=NeuralParams)
     muscle: MuscleParams = field(default_factory=MuscleParams)
@@ -1757,6 +1887,7 @@ class Params:
     sensory: SensoryParams = field(default_factory=SensoryParams)
     modulator: ModulatorParams = field(default_factory=ModulatorParams)
     pharynx: PharynxParams = field(default_factory=PharynxParams)
+    egglaying: EggLayingParams = field(default_factory=EggLayingParams)
     medium: MediumParams = field(default_factory=lambda: MEDIA["agar"])
 
     def with_medium(self, name: str) -> "Params":

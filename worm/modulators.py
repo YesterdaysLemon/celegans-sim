@@ -100,11 +100,29 @@ class Modulators:
         """
         for name in self.NAMES:
             idx = self.sources[name]
-            if alive is not None:
-                idx = idx[alive[idx]]
-            # No source left means no signal, which is not the same as a signal of zero.
-            target = (float(np.mean(activation[idx])) - self.baseline
-                      if len(idx) else 0.0)
+            if len(idx) == 0:
+                continue
+            if alive is None:
+                target = float(np.mean(activation[idx])) - self.baseline
+            else:
+                # A dead source contributes its *resting* release -- a deviation of zero --
+                # and stays in the denominator. It is not dropped from the average.
+                #
+                # Dropping it makes the level a mean over the survivors, and that is not a
+                # quantity a neuron can affect by dying: removing a source whose activation
+                # sits below its siblings' *raises* the mean. Killing HSN, whose activation
+                # is 0.521 against a serotonin source mean of 0.62, drove serotonin from
+                # 0.120 to 0.219 -- up, on removing one of the cells that makes it. Every
+                # ablation of a modulator source had an effect whose sign depended on where
+                # that cell happened to sit relative to its siblings.
+                #
+                # Keeping it in the denominator at zero deviation makes the level scale with
+                # the fraction of sources still alive, so removal can only ever shrink the
+                # signal. With nothing ablated this is arithmetically identical to the line
+                # it replaces, so no existing result moves; only ablations change, and only
+                # in the direction they should have been going.
+                dev = np.where(alive[idx], activation[idx] - self.baseline, 0.0)
+                target = float(np.mean(dev))
             self.level[name] += (target - self.level[name]) * self._rate[name]
 
     # ------------------------------------------------------------------------- effects

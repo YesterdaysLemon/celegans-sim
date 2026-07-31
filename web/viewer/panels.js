@@ -284,8 +284,14 @@ const SENSE_ROWS = [
   // so a rising bar with a normal pump rate is what an M4-ablated animal looks like.
   ['Pump rate',  'pumpNorm',   0, 1.0, 'var(--series-3)'],
   ['Lumen',      'lumenNorm',  0, 1.0, 'var(--series-4)'],
+  // Egg-laying. The vulval muscle is the output; the uterus is what it has to work with.
+  // Both are here rather than in the header because they are state of the animal, and the
+  // header is for what it is doing.
+  ['Vulval muscle', 'vulva',   0, 1.0, 'var(--series-5)'],
+  ['Eggs held',  'eggsNorm',   0, 1.0, 'var(--series-6)'],
 ];
 const SENSE_FMT = {
+  eggsNorm: v => (v * 15).toFixed(0),
   oxygen: v => (100 * v).toFixed(1) + '%',
   temperature: v => v.toFixed(1) + '°C',
   habituation: v => (100 * v).toFixed(0) + '%',

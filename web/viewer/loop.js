@@ -9,7 +9,7 @@ import { S, el } from './state.js';
 import { drawDish, follow } from './dish.js';
 import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
          invalidateLayout } from './panels.js';
-import { updateFreq, updateStats, updatePump } from './stats.js';
+import { updateFreq, updateStats, updatePump, updateEggs } from './stats.js';
 import { buildWormSel } from './controls.js';
 
 let fieldClock = 0;
@@ -77,9 +77,11 @@ function localTick(now) {
 
   const sensed = Object.assign({}, f0.sensed, {
     pumpNorm: f0.pumpRate / 6.0, lumenNorm: f0.lumen / 0.05,
+    vulva: f0.vulva, eggsNorm: f0.eggsHeld / 15.0,
   });
   drawSenses(sensed);
   updatePump(f0.pumpRate, f0.pumping);
+  updateEggs(f0.eggsLaid, f0.eggsHeld, f0.eglActive);
 
   pushKymo(f0.kappa, f0.t);
   S.selected.forEach((idx, k) => {
@@ -89,6 +91,12 @@ function localTick(now) {
   });
   updateFreq(f0.kappa[Math.floor(f0.kappa.length / 2)], f0.t);
   updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running);
+
+  // Eggs arrive a handful an hour, so this is cheap, but it is read every frame anyway
+  // because the alternative -- caching it on a clock like the fields -- would make a newly
+  // laid egg appear up to a second after the animal laid it, and the whole point of
+  // drawing them is that you see it happen.
+  S.eggs = eng.eggs();
 
   // The fields change slowly; rebuilding the image every frame is wasted work.
   if (now - fieldClock > 1000) {
