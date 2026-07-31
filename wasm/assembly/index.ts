@@ -160,6 +160,13 @@ class World {
   attractant: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   repellent: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   o2: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
+  // Eggs, as flat x,y pairs. The first thing on this plate that persists: fields decay
+  // and the worm forgets, but an egg stays where it was put. Capped so a long-running tab
+  // cannot grow without bound -- the oldest go, which is the right end to lose.
+  eggX: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS);
+  eggY: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS);
+  nEggs: i32 = 0;
+  eggHead: i32 = 0;
   scratch: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   facc: f64 = 0.0;
 
@@ -168,6 +175,13 @@ class World {
    * dish cannot see, because a field of zeros diffuses to zeros. It showed up as an
    * exact-agreement run that diverged on step 41 and nowhere else: 41 steps is 0.0205 s,
    * and field_dt is 0.02. */
+  layEgg(x: f64, y: f64): void {
+    unchecked(this.eggX[this.eggHead] = x);
+    unchecked(this.eggY[this.eggHead] = y);
+    this.eggHead = (this.eggHead + 1) % G.MAX_EGGS;
+    if (this.nEggs < G.MAX_EGGS) this.nEggs++;
+  }
+
   stepFields(dt: f64): void {
     this.facc += dt;
     while (this.facc >= G.WORLD_FIELD_DT) {
@@ -399,6 +413,15 @@ class Worm {
   phPhase: f64 = 0.0; phOpen: f64 = 0.0; phPumping: bool = false;
   phRate: f64 = 0.0; phDur: f64 = 0.0; phPumps: i32 = 0;
   lumen: f64 = 0.0; ingested: f64 = 0.0; eaten: f64 = 0.0;
+  // Egg-laying. See worm/egglaying.py for the circuit; the shapes here follow it exactly.
+  eglVm: f64 = 0.0;
+  eglEggs: f64 = G.EGL_EGGS_INITIAL;
+  eglResource: f64 = 1.0;
+  eglInPhase: bool = true;
+  eglRefractory: f64 = 0.0;
+  eglLaid: i32 = 0;
+  eglVcRest: f64 = 0.0;
+  eglRestN: i32 = 0;
   sensedFood: f64 = 0.0; sensedAtt: f64 = 0.0; sensedRep: f64 = 0.0;
   sensedO2: f64 = 0.0; sensedT: f64 = 0.0;
 
@@ -778,15 +801,24 @@ class Worm {
   }
   modLevel(level: f64, off: usize, len: i32, rate: f64): f64 {
     if (len == 0) return level;
-    // Without the mask an ablated source does not fall silent, it signals the *opposite*:
-    // levels are deviations from a resting release of 0.5 and a dead cell reads 0.0.
-    let acc: f64 = 0.0; let live = 0;
+    // Levels are deviations from a resting release of 0.5, and a dead cell's activation
+    // reads 0.0, so an unmasked ablated source does not fall silent -- it signals the
+    // *opposite*. A dead source therefore contributes a deviation of zero.
+    //
+    // It stays in the denominator while doing so. Dropping it instead makes the level a
+    // mean over the survivors, which is not a quantity a neuron can affect by dying:
+    // removing a source whose activation sits below its siblings' *raises* the mean.
+    // Killing HSN, at 0.521 against a serotonin source mean of 0.62, drove serotonin from
+    // 0.120 to 0.219 -- up, on removing one of the cells that makes it. With nothing
+    // ablated this is arithmetically identical to dropping them, so no unablated result
+    // moves.
+    let acc: f64 = 0.0;
     for (let i = 0; i < len; i++) {
       const c = mi(off, i);
-      if (this.anyDead && !unchecked(this.alive[c])) continue;
-      acc += unchecked(this.act[c]); live++;
+      if (this.anyDead && !unchecked(this.alive[c])) continue;   // deviation of zero
+      acc += unchecked(this.act[c]) - 0.5;
     }
-    const target = live > 0 ? acc / <f64>live - 0.5 : 0.0;
+    const target = acc / <f64>len;
     return level + (target - level) * rate;
   }
   turnBias(): f64 { return G.MOD_SEROTONIN_TURNING * this.modSER - G.MOD_PDF_ROAMING * this.modPDF; }
@@ -1080,7 +1112,83 @@ class Worm {
     const food = world.sample(world.food, unchecked(this.nodesX[0]), unchecked(this.nodesY[0]));
     const moved = this.stepPharynx(food);
     if (moved > 0.0) this.eaten += world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), moved);
+    // The uterus fills from what the pharynx actually transported, so an animal that does
+    // not eat does not make eggs. The vulva is halfway down the body.
+    if (this.stepEggLaying(moved, food) > 0.0) {
+      const mid = G.N_LINKS >> 1;
+      world.layEgg(unchecked(this.nodesX[mid]), unchecked(this.nodesY[mid]));
+    }
     this.t += G.DT;
+  }
+
+  /* Vulval muscle, the uterus that feeds it, and the resource that clusters it.
+   * Mirrors worm/egglaying.py line for line; the reasoning is all in that file. */
+  stepEggLaying(ingestedDelta: f64, onFood: f64): f64 {
+    const dt = G.DT;
+
+    if (this.eglRestN < G.EGL_REST_SAMPLES) {
+      this.eglRestN++;
+      const k = 1.0 / <f64>this.eglRestN;
+      let acc: f64 = 0.0;
+      for (let i = 0; i < G.LEN_idx_egl_vc; i++) acc += unchecked(this.act[mi(G.OFF_idx_egl_vc, i)]);
+      const mean = G.LEN_idx_egl_vc > 0 ? acc / <f64>G.LEN_idx_egl_vc : 0.0;
+      this.eglVcRest += (mean - this.eglVcRest) * k;
+    }
+
+    // HSN as ABSOLUTE activation -- it is the driver, and a deviation term contributes no
+    // mean drive, so ablating it would change nothing. The VCs as a deviation, because
+    // they modulate. See EggLayingParams for what that distinction cost to find.
+    let hAcc: f64 = 0.0; let hLive = 0;
+    for (let i = 0; i < G.LEN_idx_egl_hsn; i++) {
+      const c = mi(G.OFF_idx_egl_hsn, i);
+      if (this.anyDead && !unchecked(this.alive[c])) continue;
+      hAcc += unchecked(this.act[c]); hLive++;
+    }
+    const aHsn = hLive > 0 ? hAcc / <f64>hLive : 0.0;
+
+    let vAcc: f64 = 0.0; let vLive = 0;
+    for (let i = 0; i < G.LEN_idx_egl_vc; i++) {
+      const c = mi(G.OFF_idx_egl_vc, i);
+      if (this.anyDead && !unchecked(this.alive[c])) continue;
+      vAcc += unchecked(this.act[c]); vLive++;
+    }
+    const dVc = vLive > 0 ? vAcc / <f64>vLive - this.eglVcRest : 0.0;
+
+    let eggs = this.eglEggs + G.EGL_EGGS_PER_FOOD * ingestedDelta;
+    this.eglEggs = eggs > G.EGL_UTERUS_CAPACITY ? G.EGL_UTERUS_CAPACITY : eggs;
+
+    const drive = G.EGL_MYOGENIC + G.EGL_HSN_GAIN * aHsn
+                + G.EGL_SEROTONIN_GAIN * this.modSER - G.EGL_VC_GAIN * dVc;
+    const gate = G.EGL_OFF_FOOD_FLOOR + (1.0 - G.EGL_OFF_FOOD_FLOOR) * clamp(onFood, 0.0, 1.0);
+    const target = clamp(drive, 0.0, 1.0) * gate;
+    this.eglVm += (target - this.eglVm) * (dt / G.EGL_VM_TAU);
+
+    this.eglResource += (1.0 - this.eglResource) * (1.0 - Math.exp(-dt / G.EGL_RESOURCE_TAU));
+    if (this.eglRefractory > 0.0) {
+      this.eglRefractory -= dt;
+      if (this.eglRefractory < 0.0) this.eglRefractory = 0.0;
+    }
+
+    // Two thresholds, not one. A single one leaves the resource sitting *at* the bar when
+    // a phase ends, so it climbs back over within a step or two and there is no quiet
+    // period. See EggLayingParams.
+    if (this.eglInPhase) {
+      if (this.eglResource < G.EGL_RESOURCE_OFF) this.eglInPhase = false;
+    } else if (this.eglResource >= G.EGL_RESOURCE_ON) {
+      this.eglInPhase = true;
+    }
+
+    if (this.eglRefractory <= 0.0 && this.eglEggs >= 1.0
+        && this.eglVm >= G.EGL_VM_THRESHOLD && this.eglInPhase) {
+      this.eglEggs -= 1.0;
+      this.eglLaid++;
+      this.eglRefractory = G.EGL_REFRACTORY;
+      this.eglResource -= G.EGL_RESOURCE_COST;
+      if (this.eglResource < 0.0) this.eglResource = 0.0;
+      this.eglVm = 0.0;
+      return 1.0;
+    }
+    return 0.0;
   }
 
   contact(): void {
@@ -1178,6 +1286,14 @@ export function getPumpRate(w: i32): f64 { return worms[w].phRate; }
 export function getPumping(w: i32): f64 { return worms[w].phPumping ? 1.0 : 0.0; }
 export function getLumen(w: i32): f64 { return worms[w].lumen; }
 export function getEaten(w: i32): f64 { return worms[w].eaten; }
+export function getEggsHeld(w: i32): f64 { return worms[w].eglEggs; }
+export function getEggsLaid(w: i32): f64 { return <f64>worms[w].eglLaid; }
+export function getVulvalMuscle(w: i32): f64 { return worms[w].eglVm; }
+export function getEglActive(w: i32): f64 { return worms[w].eglInPhase ? 1.0 : 0.0; }
+export function getEglResource(w: i32): f64 { return worms[w].eglResource; }
+export function eggCount(): i32 { return world.nEggs; }
+export function ptrEggX(): usize { return changetype<usize>(world.eggX); }
+export function ptrEggY(): usize { return changetype<usize>(world.eggY); }
 export function getGateForward(w: i32): f64 { return worms[w].goingForward ? 1.0 : 0.0; }
 export function getOmega(w: i32): f64 { return worms[w].omega * worms[w].omegaSign; }
 export function getSensed(w: i32, which: i32): f64 {

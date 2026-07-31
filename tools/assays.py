@@ -206,7 +206,14 @@ def pooled(fn, jobs, procs=10, timeout=2400):
               % (source, fn.__name__))
     env = dict(os.environ, PYTHONPATH=os.environ.get("PYTHONPATH", "."))
 
-    out, queue, running = [], list(enumerate(jobs)), {}
+    # Keyed by job index, not appended, so results come back in the order the jobs were
+    # given. They used to arrive in completion order, which is a quiet trap: a caller that
+    # zips the results against its own list of labels gets a plausible table with every row
+    # attributed to the wrong arm. Every assay here groups by a key inside the row and was
+    # never affected, but the ad-hoc harness written while debugging egg-laying was, and it
+    # cost an afternoon chasing a serotonin bath that had been working the whole time.
+    # Failures are still simply absent, so `[r for r in rows if r]` is unchanged.
+    out, queue, running = {}, list(enumerate(jobs)), {}
     done = 0
     deadline = time.monotonic() + timeout
     while queue or running:
@@ -223,7 +230,7 @@ def pooled(fn, jobs, procs=10, timeout=2400):
             done += 1
             stdout, stderr = proc.communicate()
             if proc.returncode == 0 and stdout.strip():
-                out.append(json.loads(stdout))
+                out[i] = json.loads(stdout)
                 print("    [%d/%d]" % (done, len(jobs)), file=sys.stderr, flush=True)
             else:
                 tail = stderr.decode("utf8", "replace").strip().splitlines()[-1:] or [""]
@@ -236,7 +243,7 @@ def pooled(fn, jobs, procs=10, timeout=2400):
                   file=sys.stderr, flush=True)
             break
         time.sleep(0.2)
-    return out
+    return [out[i] for i in sorted(out)]
 
 
 # ------------------------------------------------------------------------ chemotaxis

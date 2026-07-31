@@ -33,6 +33,14 @@ export async function instantiate(module, imports = {}) {
       // assembly/index/ptrTension(i32) => usize
       return exports.ptrTension(w) >>> 0;
     },
+    ptrEggX() {
+      // assembly/index/ptrEggX() => usize
+      return exports.ptrEggX() >>> 0;
+    },
+    ptrEggY() {
+      // assembly/index/ptrEggY() => usize
+      return exports.ptrEggY() >>> 0;
+    },
     ptrNodesX(w) {
       // assembly/index/ptrNodesX(i32) => usize
       return exports.ptrNodesX(w) >>> 0;

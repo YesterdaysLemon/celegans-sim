@@ -259,6 +259,10 @@ export class LocalEngine {
       pumpRate: E.getPumpRate(w),
       pumping: E.getPumping(w),
       lumen: E.getLumen(w),
+      eggsHeld: E.getEggsHeld(w),
+      eggsLaid: E.getEggsLaid(w),
+      vulva: E.getVulvalMuscle(w),
+      eglActive: E.getEglActive(w),
       sensed: {
         attractant: E.getSensed(w, 0), temperature: E.getSensed(w, 1),
         oxygen: E.getSensed(w, 2), food: E.getSensed(w, 3),
@@ -268,6 +272,19 @@ export class LocalEngine {
       },
       running: this.running ? 1 : 0,
       achieved: this.achieved,
+    };
+  }
+
+  /* Every egg on the plate, as a flat x,y list. Read straight out of linear memory: the
+   * runtime keeps them in a fixed ring, so this is a view rather than a copy until the
+   * caller wants one. Shared by all the animals, because the dish is. */
+  eggs() {
+    const E = this.E, n = E.eggCount();
+    if (!n) return null;
+    return {
+      n,
+      x: new Float64Array(E.memory.buffer, E.ptrEggX(), n),
+      y: new Float64Array(E.memory.buffer, E.ptrEggY(), n),
     };
   }
 

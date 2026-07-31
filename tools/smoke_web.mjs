@@ -148,10 +148,17 @@ try {
 
     // Every layer toggle stays reachable at every width. This is the regression that
     // prompted the check: they used to be display:none below 1080px.
-    const layers = await page.evaluate(() =>
-      [...document.querySelectorAll('[data-layer]')]
-        .filter((e) => e.getBoundingClientRect().width > 0).length);
-    check(vp.name, layers === 5, `${layers} of 5 layer toggles visible`);
+    //
+    // Counted against however many the page declares, not against a fixed number. The
+    // invariant is "none of them is hidden", and hardcoding the count meant that adding a
+    // layer failed the check for the one reason it is not looking for.
+    const layers = await page.evaluate(() => {
+      const all = [...document.querySelectorAll('[data-layer]')];
+      return { total: all.length, shown: all.filter((e) => e.getBoundingClientRect().width > 0).length };
+    });
+    check(vp.name, layers.total > 0, 'no layer toggles in the page at all');
+    check(vp.name, layers.shown === layers.total,
+          `${layers.shown} of ${layers.total} layer toggles visible`);
 
     // Nothing may push the page sideways.
     const overflow = await page.evaluate(() =>
@@ -216,7 +223,7 @@ try {
 
     console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}  ` +
                 `${errors.length} console errors, ${failed.length} failed requests, ` +
-                `${layers}/5 layers, ${overflow}px overflow`);
+                `${layers.shown}/${layers.total} layers, ${overflow}px overflow`);
     await page.close();
   }
 } finally {

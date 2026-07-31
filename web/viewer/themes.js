@@ -49,6 +49,7 @@ const THEMES = {
     gridMinor: 'rgba(195,194,183,0.055)',
     trail: 'rgba(195,194,183,0.30)',
     obstacle: ['#3a3936', 'rgba(255,255,255,0.12)'],
+    egg: ['rgba(226,220,190,0.85)', 'rgba(255,255,255,0.35)'],
     // Field tints, alpha and gamma per layer. Gamma > 1 keeps the low end near the
     // surface: a chemical gradient covers the whole plate at some concentration, so a
     // flatter mapping just washes the dish out and hides the structure.
@@ -66,6 +67,7 @@ const THEMES = {
     gridMinor: 'rgba(43,39,34,0.08)',
     trail: 'rgba(43,39,34,0.22)',
     obstacle: ['#cbbfa6', '#2b2722'],
+    egg: ['#fdf6e3', '#2b2722'],
     fields: {
       attractant: { tint: [120, 176, 240], alpha: 0.55, gamma: 1.3 },
       food:       { tint: [124, 196, 122], alpha: 0.80, gamma: 0.75 },
@@ -81,6 +83,7 @@ const THEMES = {
     gridMinor: 'rgba(40,35,28,0.04)',
     trail: 'rgba(60,54,44,0.22)',
     obstacle: ['#6d6659', 'rgba(30,26,20,0.5)'],
+    egg: ['rgba(238,232,214,0.92)', 'rgba(90,80,62,0.55)'],
     fields: {
       attractant: { tint: [150, 170, 190], alpha: 0.30, gamma: 1.6 },
       food:       { tint: [226, 220, 190], alpha: 0.85, gamma: 0.8 },

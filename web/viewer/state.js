@@ -14,7 +14,7 @@ export const SERIES = [C('--series-1'), C('--series-2'), C('--series-3'),
 export const S = {
   meta: null, frame: null, field: null,
   theme: 'digital',
-  layers: { food: true, attractant: true, repellent: true, grid: true, trail: true },
+  layers: { food: true, attractant: true, repellent: true, eggs: true, grid: true, trail: true },
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
   cam: 'follow',                        // 'follow' | 'free'
   trail: [],
@@ -26,6 +26,7 @@ export const S = {
   pumpFlash: 0, lastPumping: 0,
   connected: false,
   engine: null,        // the local WASM engine, when running client-side
+  eggs: null,          // every egg on the plate; shared, because the dish is
   worms: [],           // every animal's frame, for the dish
   trails: [],          // one track per animal
   focus: 0,            // which animal the camera and the panels are about

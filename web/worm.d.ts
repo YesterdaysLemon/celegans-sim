@@ -159,6 +159,51 @@ declare namespace __AdaptedExports {
    */
   export function getEaten(w: number): number;
   /**
+   * assembly/index/getEggsHeld
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEggsHeld(w: number): number;
+  /**
+   * assembly/index/getEggsLaid
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEggsLaid(w: number): number;
+  /**
+   * assembly/index/getVulvalMuscle
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getVulvalMuscle(w: number): number;
+  /**
+   * assembly/index/getEglActive
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEglActive(w: number): number;
+  /**
+   * assembly/index/getEglResource
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEglResource(w: number): number;
+  /**
+   * assembly/index/eggCount
+   * @returns `i32`
+   */
+  export function eggCount(): number;
+  /**
+   * assembly/index/ptrEggX
+   * @returns `usize`
+   */
+  export function ptrEggX(): number;
+  /**
+   * assembly/index/ptrEggY
+   * @returns `usize`
+   */
+  export function ptrEggY(): number;
+  /**
    * assembly/index/getGateForward
    * @param w `i32`
    * @returns `f64`

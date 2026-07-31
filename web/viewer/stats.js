@@ -61,6 +61,18 @@ export function updatePump(pumpRate, pumping) {
     stillness.matches ? pumpRate > 0.2 : S.pumpFlash > 0.35);
 }
 
+// Eggs laid, and whether the animal is in an active phase. The phase is worth showing
+// because it is the part that is not obvious from watching: laying comes in bouts of a
+// couple of minutes separated by twenty quiet ones, so an animal that has not laid for a
+// while is not broken, it is between phases.
+export function updateEggs(laid, held, active) {
+  const el_ = el('s-eggs');
+  if (!el_) return;
+  el_.innerHTML = `${laid.toFixed(0)}<small>&nbsp;held ${held.toFixed(0)}</small>`;
+  const dot = el('egg-dot');
+  if (dot) dot.classList.toggle('on', active > 0.5);
+}
+
 // The legend explains whatever the dish is currently saying, which is different in each
 // mode: digital colours the body by curvature, the other two do not.
 export function buildLegend() {
