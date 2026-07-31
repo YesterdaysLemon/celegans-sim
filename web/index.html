@@ -54,10 +54,10 @@
         <button data-cam="free" aria-pressed="false" title="Stay put; drag to pan">Free</button>
         <button id="b-centre" class="ghost" title="Centre on the animal">Centre</button>
       </div>
-      <div class="zoomrow">
-        <button id="b-zout" class="ghost sq" title="Zoom out">&minus;</button>
-        <button id="b-zin" class="ghost sq" title="Zoom in">+</button>
-        <span class="readout" id="o-zoom">6.5 mm</span>
+      <div class="zoomrow" role="group" aria-label="Zoom">
+        <button id="b-zout" class="ghost sq" aria-label="Zoom out">&minus;</button>
+        <button id="b-zin" class="ghost sq" aria-label="Zoom in">+</button>
+        <span class="readout" id="o-zoom" aria-live="off">6.5 mm</span>
       </div>
     </div>
 
@@ -67,7 +67,10 @@
   <aside id="rail">
     <section class="panel" data-panel="neurons" style="--basis:170px">
       <button class="phead"><span class="chev"></span><h2>Nervous system</h2><span class="hint" id="neuron-hint">hover a neuron</span></button>
-      <div class="pbody"><canvas id="c-neurons"></canvas></div>
+      <!-- Focusable, because 302 cells behind a hover is 302 cells nobody without a mouse
+           can read. Arrow keys walk the grid; Enter plots, or ablates in ablate mode. -->
+      <div class="pbody"><canvas id="c-neurons" tabindex="0" role="application"
+           aria-label="Nervous system: 302 neurons, head to tail. Arrow keys to inspect, Enter to plot."></canvas></div>
     </section>
 
     <section class="panel" data-panel="muscle" style="--basis:104px">
@@ -92,46 +95,47 @@
   </aside>
 
   <footer>
-    <div class="group">
+    <div class="group" role="group" aria-label="Playback">
       <button class="play" id="b-play" aria-pressed="true">Pause</button>
       <button id="b-reset">Reset</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Rate</span>
-      <input type="range" id="r-rate" min="-2" max="2.2" step="0.05" value="0">
+    <div class="group" role="group" aria-label="Speed">
+      <label class="cap" for="r-rate">Rate</label>
+      <input type="range" id="r-rate" min="-2" max="2.2" step="0.05" value="0"
+             aria-valuetext="1.0&times; real time">
       <span class="readout" id="o-rate">1.0&times;</span>
     </div>
 
-    <div class="group">
-      <span class="cap">Medium</span>
+    <div class="group" role="group" aria-label="Medium">
+      <span class="cap" aria-hidden="true">Medium</span>
       <button data-medium="agar" aria-pressed="true">Agar</button>
-      <button data-medium="viscous">Viscous</button>
-      <button data-medium="buffer">Buffer</button>
+      <button data-medium="viscous" aria-pressed="false">Viscous</button>
+      <button data-medium="buffer" aria-pressed="false">Buffer</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Touch</span>
-      <button id="b-poke-a">Head</button>
-      <button id="b-poke-p">Tail</button>
+    <div class="group" role="group" aria-label="Touch">
+      <span class="cap" aria-hidden="true">Touch</span>
+      <button id="b-poke-a" aria-label="Touch the head">Head</button>
+      <button id="b-poke-p" aria-label="Touch the tail">Tail</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Neurons</span>
+    <div class="group" role="group" aria-label="Neurons">
+      <span class="cap" aria-hidden="true">Neurons</span>
       <button id="b-ablate" aria-pressed="false">Ablate</button>
       <button id="b-restore" disabled>Restore</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Worms</span>
-      <span class="seg" id="worm-sel"></span>
-      <button id="b-worm-add" title="Add a worm to the dish">+</button>
-      <button id="b-worm-del" title="Remove the last worm">&minus;</button>
+    <div class="group" role="group" aria-label="Worms">
+      <span class="cap" aria-hidden="true">Worms</span>
+      <span class="seg" id="worm-sel" role="group" aria-label="Focused worm"></span>
+      <button id="b-worm-add" aria-label="Add a worm to the dish">+</button>
+      <button id="b-worm-del" aria-label="Remove the last worm">&minus;</button>
     </div>
 
-    <div class="group">
-      <span class="cap">Panels</span>
-      <button id="b-rail" aria-pressed="true">Shown</button>
+    <div class="group" role="group" aria-label="Panels">
+      <span class="cap" aria-hidden="true">Panels</span>
+      <button id="b-rail" aria-pressed="true" aria-label="Measurement panels">Shown</button>
     </div>
 
     <div class="legend" id="legend"></div>

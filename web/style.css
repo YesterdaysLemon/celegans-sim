@@ -355,14 +355,29 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
 @media (max-width: 1080px) {
   #app {
     grid-template-columns: minmax(0, 1fr);
+    /* Transport before the panels. Stacked, the rail is five panels tall, which put
+       Pause, Rate, Medium and Touch about 1500 px down the page -- past everything, on a
+       device where "scroll to it" is the whole interaction. The controls that change what
+       the simulation is doing belong within reach of the thing they change. */
     grid-template-rows: auto minmax(260px, 46vh) auto auto;
-    grid-template-areas: "head" "dish" "side" "foot";
+    grid-template-areas: "head" "dish" "foot" "side";
     height: auto; min-height: 100%;
   }
   #app.norail { grid-template-columns: minmax(0, 1fr); }
   #app.norail aside { display: none; }
-  html, body { overflow: auto; }
-  .floating.tr { display: none; }
+  /* Let the *document* scroll, not the body box. With html and body both pinned to 100%
+     the overflow became an internal scroll on <body>: it worked, but window.scrollY never
+     moved and iOS treats a body-height scroller as a second, laggier scroll surface. */
+  html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: visible; }
+  /* The layer toggles used to be display:none here, which removed the only way to see or
+     hide the chemical fields on exactly the devices with the least screen to spare. They
+     stay; they just stop being a tall column pinned to the right edge and become a
+     wrapping row tucked under the view switcher. */
+  .floating.tr {
+    top: 52px; left: 10px; right: 10px;
+    align-items: flex-start;
+  }
+  .chips { flex-direction: row; flex-wrap: wrap; align-items: center; }
   /* Stacked, the rail has no fixed height to share out, so panels take their natural
      size and the page scrolls. Sharing a fraction of nothing collapsed all five to a
      hairline. */
@@ -371,6 +386,72 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
   .panel[data-panel="muscle"] { --mobile: 130px; }
   .panel[data-panel="senses"] { --mobile: 176px; }
   .panel.collapsed { height: auto; }
+}
+
+/* Nothing may push the page sideways. A stat card or a legend that overflows turns every
+   vertical scroll into a fight with a horizontal one. */
+@media (max-width: 1080px) {
+  header, footer { max-width: 100%; }
+  .stats { margin-left: 0; }
+  .legend { margin-left: 0; }
+  .group + .group { border-left: 0; padding-left: 0; }
+}
+
+/* --- touch ----------------------------------------------------------------------- */
+/* Sized for a finger, not a cursor: 44 px is the smallest target most people can hit
+   reliably, and several of these controls were 22.
+   Two triggers, not one. `pointer: coarse` is the honest signal, but it is not the only
+   one that matters and it is not always told the truth -- an emulated 390 px viewport
+   reports a fine pointer, and so does a touchscreen laptop. The stacked layout below
+   1080 px is the touch-oriented layout whoever is using it has been given, so it gets
+   touch-sized targets either way. The desktop layout above 1080 px is untouched. */
+@media (pointer: coarse), (max-width: 1080px) {
+  button, .seg button, .chip {
+    min-height: 44px; min-width: 44px;
+    padding-top: 10px; padding-bottom: 10px;
+  }
+  .seg button, .chip { padding-left: 14px; padding-right: 14px; }
+  .zoomrow .sq { width: 44px; height: 44px; font-size: 17px; }
+  .zoomrow { padding: 2px 10px 2px 2px; gap: 8px; }
+  #worm-sel button { min-width: 44px; }
+  #b-worm-add, #b-worm-del { min-width: 44px; }
+  .phead { padding: 14px 11px; min-height: 44px; }
+  input[type="range"] { height: 44px; width: 140px; }
+  .chips { gap: 6px; }
+  /* Three mouse gestures, described on the layout that has no mouse -- and at this width
+     the line runs straight through the zoom controls. */
+  .dish-hint { display: none; }
+}
+
+/* --- keyboard -------------------------------------------------------------------- */
+/* Every interactive thing here is either a <button> or a <canvas tabindex=0>, and the
+   panel headers use `all: unset`, which throws the focus ring away with everything else.
+   One rule, applied to all of them, so tabbing through the viewer is followable. */
+:where(button, [tabindex], input, .phead):focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+#dish :where(button):focus-visible { outline-color: #fff; }
+#dish[data-plate="light"] :where(button):focus-visible { outline-color: #2b2722; }
+/* The neuron panel takes focus as a whole and moves a cursor inside itself, so the ring
+   goes round the panel body rather than round one 3 px cell. */
+#c-neurons:focus-visible { outline-offset: -2px; }
+
+/* --- reduced motion -------------------------------------------------------------- */
+/* The pump lamp is the one piece of this interface that flickers by design: once per
+   pharyngeal pump, up to four times a second on food. That is exactly the kind of thing
+   this preference exists to switch off. It keeps its two states -- pumping or not -- and
+   loses the flash. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  #pump-dot { box-shadow: none !important; }
+  #pump-dot.on { box-shadow: none; }
 }
 
 /* --- what it senses -------------------------------------------------------------- */

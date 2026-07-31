@@ -35,7 +35,17 @@ function buildLayout(w, h) {
     const c = i % cols, rr = Math.floor(i / cols);
     pts[i] = { x: padL + dx * (c + 0.5), y: padT + dy * (rr + 0.5), r };
   });
-  return { pts };
+  return { pts, cols };
+}
+
+// Step a keyboard cursor through the grid the panel is actually drawn in, so Down really
+// does go down a row rather than 20 cells along the connectome.
+export function neuronStep(i, dx, dy) {
+  if (!layout) return null;
+  const n = layout.pts.length, cols = layout.cols || 1;
+  const from = i == null ? 0 : i;
+  const next = from + dx + dy * cols;
+  return next >= 0 && next < n ? next : from;
 }
 
 export function drawNeurons() {

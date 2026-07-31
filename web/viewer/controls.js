@@ -10,7 +10,7 @@
 import { S, el } from './state.js';
 import { theme } from './themes.js';
 import { setCam, zoom, worldAt } from './dish.js';
-import { neuronAt, invalidateLayout } from './panels.js';
+import { neuronAt, neuronCentre, neuronStep, invalidateLayout } from './panels.js';
 import { buildLegend } from './stats.js';
 import { send } from './transport.js';
 
@@ -44,6 +44,9 @@ export function buildWormSel() {
     const b = document.createElement('button');
     b.textContent = String(i + 1);
     b.setAttribute('aria-pressed', String(i === S.focus));
+    // "1" is not a name. The label is what a screen reader reads; the digit is what the
+    // eye reads.
+    b.setAttribute('aria-label', `Focus worm ${i + 1}`);
     b.title = `Focus the camera and the panels on worm ${i + 1}`;
     b.addEventListener('click', () => focusWorm(i));
     host.appendChild(b);
@@ -293,4 +296,45 @@ function wireNeuronPanel() {
   };
 
   nc.addEventListener('click', (e) => activate(neuronAt(nc, e.clientX, e.clientY)));
+
+  // The keyboard drives the same cursor the mouse does -- S.hover -- so the highlight the
+  // renderer already draws is the focus indicator, and there is no second notion of
+  // "which neuron is selected" to keep in step.
+  const STEP = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+  // Tabbing in has to land somewhere. Without this the panel takes focus showing nothing,
+  // and the first arrow press looks like it jumped rather than moved.
+  nc.addEventListener('focus', () => {
+    if (!S.meta) return;
+    if (S.hover == null) S.hover = 0;
+    announce(S.hover);
+  });
+
+  const announce = (i) => {
+    const at = neuronCentre(nc, i);
+    if (at && S.frame) showTip(at, describe(i));
+    // The canvas is one focus stop, so its accessible name has to carry which cell the
+    // cursor is on; a screen reader has no way to see the ring.
+    const n = S.meta.neurons[i];
+    nc.setAttribute('aria-label',
+      `${n.name}, ${n.cls}, ${n.kind}${n.modality ? ', ' + n.modality : ''}. ` +
+      `Neuron ${i + 1} of ${S.meta.neurons.length}. Enter to ${S.ablateMode ? 'ablate' : 'plot'}.`);
+    el('neuron-hint').textContent = S.ablateMode ? 'Enter to ablate' : 'Enter to plot';
+  };
+
+  nc.addEventListener('keydown', (e) => {
+    if (!S.meta) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (S.hover != null) { e.preventDefault(); activate(S.hover); }
+      return;
+    }
+    const d = STEP[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const i = neuronStep(S.hover, d[0], d[1]);
+    if (i == null) return;
+    S.hover = i;
+    announce(i);
+  });
+  nc.addEventListener('blur', () => { S.hover = null; hideTip(); });
 }

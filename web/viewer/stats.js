@@ -45,11 +45,20 @@ export function updateStats(t, speed, food, dir, achieved, running) {
 // The pharyngeal pump lamp. The flash fires on the *rising edge* of a pump rather than
 // while one is open: a pump lasts 150 ms and frames arrive at 30 Hz, so lighting the lamp
 // for the whole open interval would have it on more often than off and read as a glow.
+//
+// On food that is a lamp strobing about four times a second, which is precisely what
+// prefers-reduced-motion is for. Under that preference the lamp keeps the information --
+// is this animal feeding -- and drops the strobe, showing a steady state instead. CSS
+// alone could not do this: the flicker is in the data, not in a transition.
+const stillness = window.matchMedia
+  ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+
 export function updatePump(pumpRate, pumping) {
   if (pumping > 0.5 && S.lastPumping <= 0.5) S.pumpFlash = 1;
   S.lastPumping = pumping;
   el('s-pump').innerHTML = `${(pumpRate * 60).toFixed(0)}<small>/min</small>`;
-  el('pump-dot').classList.toggle('on', S.pumpFlash > 0.35);
+  el('pump-dot').classList.toggle('on',
+    stillness.matches ? pumpRate > 0.2 : S.pumpFlash > 0.35);
 }
 
 // The legend explains whatever the dish is currently saying, which is different in each
