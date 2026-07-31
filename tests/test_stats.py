@@ -131,6 +131,17 @@ def test_current_params_is_the_shipped_model_by_default():
     assert current_params().sensory.omega_current == Params().sensory.omega_current
 
 
+def test_paired_cluster_interval_resamples_animals_not_turns():
+    from tools.compare import _paired_cluster_ci
+
+    before = [{"turn_mech": [10.0, 20.0]}, {"turn_mech": [30.0]}]
+    after = [{"turn_mech": [15.0, 25.0]}, {"turn_mech": [35.0]}]
+    a, b, difference, lo, hi = _paired_cluster_ci(
+        before, after, np.mean, reps=1000, seed=7)
+    assert a == 20.0 and b == 25.0 and difference == 5.0
+    assert lo == 5.0 and hi == 5.0
+
+
 def test_every_assay_reporter_survives_its_own_rows():
     """Formatting changes are the classic way to break a report after the run finishes.
 

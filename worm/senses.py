@@ -148,6 +148,16 @@ class Senses:
         if p.omega_current > 0.0 and not (len(self._omega_v) and len(self._omega_d)):
             raise ValueError("omega pools matched nothing in this connectome: %r / %r"
                              % (p.omega_ventral, p.omega_dorsal))
+        # The body part whose wave is quieted during a turn is defined by anatomy rather
+        # than a second fitted extent: every A/B proprioceptive motor neuron whose existing
+        # receptive-field reach overlaps the most posterior member of the omega pool. The
+        # head reflex is handled separately below because it is a different map.
+        omega_cells = np.unique(np.concatenate((self._omega_v, self._omega_d)))
+        omega_extent = max((_output_position(conn, int(i)) for i in omega_cells), default=0.0)
+        prop_targets = (np.abs(self.W_b).sum(axis=1) + np.abs(self.W_a).sum(axis=1)) > 0
+        output_pos = np.array([_output_position(conn, i) for i in range(conn.n)])
+        self._omega_wave_body = prop_targets & (
+            output_pos <= omega_extent + p.proprio_reach + 1e-12)
 
         # Scalar for the lumped reflex, one per neuron for the distributed one.
         self.head_signal = np.zeros(conn.n) if p.head_distributed else 0.0
@@ -339,6 +349,7 @@ class Senses:
             self._rev_steps += 1
             self.omega = 0.0        # no turn while still reversing
         self.omega *= self._omega_decay
+        wave_gain = max(0.0, 1.0 - p.omega_wave_suppression * abs(self.omega))
         if p.omega_current > 0.0 and self.omega > 1e-4:
             # A differential, not a push: releasing the dorsal antagonist is worth an
             # order of magnitude more than driving the ventral side harder, which
@@ -379,7 +390,10 @@ class Senses:
             wb, wa = self.W_b @ k, self.W_a @ k
         raw = wb * gate_fwd + wa * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
-        I += np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
+        prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
+        if wave_gain < 1.0:
+            prop_I[self._omega_wave_body] *= wave_gain
+        I += prop_I
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.
@@ -403,6 +417,7 @@ class Senses:
         head_gain = p.head_proprio_gain
         if p.omega_reflex_suppression and abs(self.omega) > 1e-4:
             head_gain *= max(0.0, 1.0 - p.omega_reflex_suppression * abs(self.omega))
+        head_gain *= wave_gain
         if p.head_distributed:
             I += (np.tanh(self.head_signal) * head_gain * self.g_scale_head)
         else:
@@ -416,6 +431,7 @@ class Senses:
             "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
             "omega": float(self.omega * self.omega_sign),
+            "omega_wave_gain": float(wave_gain),
             **({} if mods is None else mods.readout()),
         }
         return I
