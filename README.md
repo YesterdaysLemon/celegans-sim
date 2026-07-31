@@ -561,8 +561,11 @@ step by step with the noise off, and they agree to the precision the reference f
 — 5e-13 mm on node positions, 5e-11 mV on membrane potentials, and the direction gate never
 disagrees. The Docker build runs that check and **fails if the port has drifted**.
 
-One worm runs at 0.87× real time in the browser, two at 0.43×, and the whole animal is
-~70 kB gzipped (51 kB model + 19 kB wasm).
+One worm runs at **2.36× real time** in the browser and two at 1.20× — faster than the
+numpy it was ported from — and the whole animal is **~55 kB gzipped**. Both numbers come
+from storing the connectome sparsely: every matrix is between 0.3% and 2.5% non-zero, so
+the dense version was doing 556,000 mul-adds a step to accumulate about 4,500 that were
+not zero.
 
 ```bash
 docker build -t celegans-sim . && docker run --rm -p 8080:8080 celegans-sim

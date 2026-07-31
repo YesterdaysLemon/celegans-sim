@@ -36,6 +36,20 @@ export function setPayload(ptr: usize): void { B = ptr; }
 @inline function m(off: usize, i: i32): f64 { return load<f64>(B + off + (<usize>i << 3)); }
 @inline function mi(off: usize, i: i32): i32 { return load<i32>(B + off + (<usize>i << 2)); }
 
+/* Sparse matrix-vector product, compressed sparse row.
+ *
+ * Every connectome matrix here is between 0.3% and 2.5% non-zero, so the dense version
+ * spent 556,000 mul-adds a step accumulating about 4,500 that were not zero. */
+@inline function spmv(pOff: usize, iOff: usize, vOff: usize, rows: i32,
+                      x: StaticArray<f64>, out: StaticArray<f64>): void {
+  for (let r = 0; r < rows; r++) {
+    let acc: f64 = 0.0;
+    const e = mi(pOff, r + 1);
+    for (let k = mi(pOff, r); k < e; k++) acc += m(vOff, k) * unchecked(x[mi(iOff, k)]);
+    unchecked(out[r] = acc);
+  }
+}
+
 @inline function sigmoid(x: f64): f64 {
   if (x >= 0) return 1.0 / (1.0 + Math.exp(-x));
   const e = Math.exp(x);
@@ -261,6 +275,14 @@ class Worm {
   Vn: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   Vold: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   gapv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  gapAcc: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  rel: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  wbv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  wav: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  wbf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  waf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  whv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  kh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
   // muscle
   mV: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
   mCa: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
@@ -331,17 +353,20 @@ class Worm {
       unchecked(this.Vold[i] = unchecked(this.V[i]));
     }
 
-    // release = s * D when depression is on; G_syn and GE_syn are (N,N) row-major.
+    // G_syn and GE_syn are the same matrix scaled per element, so one pass over the
+    // shared pattern produces both.
+    for (let c = 0; c < n; c++) {
+      let rel = unchecked(this.sv[c]);
+      if (G.ANY_DEPRESS) rel *= unchecked(this.Dv[c]);
+      unchecked(this.rel[c] = rel);
+    }
     for (let r = 0; r < n; r++) {
       let a1: f64 = 0.0, a2: f64 = 0.0;
-      const rowS = B + G.OFF_G_syn + (<usize>(r * n) << 3);
-      const rowE = B + G.OFF_GE_syn + (<usize>(r * n) << 3);
-      for (let c = 0; c < n; c++) {
-        let rel = unchecked(this.sv[c]);
-        if (G.ANY_DEPRESS) rel *= unchecked(this.Dv[c]);
-        const o = <usize>c << 3;
-        a1 += load<f64>(rowS + o) * rel;
-        a2 += load<f64>(rowE + o) * rel;
+      const e = mi(G.OFF_syn_ptr, r + 1);
+      for (let k = mi(G.OFF_syn_ptr, r); k < e; k++) {
+        const rv = unchecked(this.rel[mi(G.OFF_syn_idx, k)]);
+        a1 += m(G.OFF_syn_val, k) * rv;
+        a2 += m(G.OFF_syn_val2, k) * rv;
       }
       unchecked(this.gs[r] = a1); unchecked(this.Es[r] = a2);
     }
@@ -360,11 +385,9 @@ class Worm {
       unchecked(this.Vn[i] = V);
     }
     for (let it = 0; it < G.GAP_ITERS; it++) {
+      spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, this.Vn, this.gapAcc);
       for (let r = 0; r < n; r++) {
-        let acc: f64 = 0.0;
-        const row = B + G.OFF_G_gap + (<usize>(r * n) << 3);
-        for (let c = 0; c < n; c++) acc += load<f64>(row + (<usize>c << 3)) * unchecked(this.Vn[c]);
-        const vInf = (unchecked(this.fx[r]) + acc) / unchecked(this.gtot[r]);
+        const vInf = (unchecked(this.fx[r]) + unchecked(this.gapAcc[r])) / unchecked(this.gtot[r]);
         unchecked(this.gapv[r] = vInf + (unchecked(this.Vold[r]) - vInf) * unchecked(this.dec[r]));
       }
       for (let r = 0; r < n; r++) unchecked(this.Vn[r] = unchecked(this.gapv[r]));
@@ -401,17 +424,21 @@ class Worm {
   /* ---------------------------------------------------------------------- muscle ----- */
   stepMuscle(): void {
     const mm = G.N_MUSCLES, n = G.N_NEURONS, dt = G.DT;
+    for (let c = 0; c < n; c++) {
+      let sp = unchecked(this.sv[c]);
+      if (G.ANY_PHASIC) {
+        sp = clamp(G.MUS_S_EQ + m(G.OFF_mus_phasic_gain, c) * (sp - G.MUS_S_EQ), 0.0, 1.0);
+      }
+      unchecked(this.rel[c] = sp);
+    }
     for (let r = 0; r < mm; r++) {
       let a1: f64 = 0.0, a2: f64 = 0.0;
-      const row = B + G.OFF_mus_G + (<usize>(r * n) << 3);
-      for (let c = 0; c < n; c++) {
-        let sp = unchecked(this.sv[c]);
-        if (G.ANY_PHASIC) {
-          sp = clamp(G.MUS_S_EQ + m(G.OFF_mus_phasic_gain, c) * (sp - G.MUS_S_EQ), 0.0, 1.0);
-        }
-        const g = load<f64>(row + (<usize>c << 3));
-        a1 += g * sp;
-        a2 += g * sp * m(G.OFF_mus_E_pre, c);
+      const e = mi(G.OFF_mus_ptr, r + 1);
+      for (let k = mi(G.OFF_mus_ptr, r); k < e; k++) {
+        const c = mi(G.OFF_mus_idx, k);
+        const gv = m(G.OFF_mus_val, k) * unchecked(this.rel[c]);
+        a1 += gv;
+        a2 += gv * m(G.OFF_mus_E_pre, c);
       }
       unchecked(this.mg[r] = a1); unchecked(this.me[r] = a2);
     }
@@ -783,29 +810,20 @@ class Worm {
     const J = G.N_JOINTS;
     for (let j = 0; j < J; j++) unchecked(this.kn[j] = clamp(unchecked(this.kappa[j]) / 5.0, -2.0, 2.0));
     const short = this.wavelengthShortening();
+    spmv(G.OFF_wb_ptr, G.OFF_wb_idx, G.OFF_wb_val, n, this.kn, this.wbv);
+    spmv(G.OFF_wa_ptr, G.OFF_wa_idx, G.OFF_wa_val, n, this.kn, this.wav);
+    if (short > 1e-6) {
+      // Basal slowing: shorten the wave rather than weaken the drive, because the
+      // frequency is mechanics-set and will not move.
+      spmv(G.OFF_wbf_ptr, G.OFF_wbf_idx, G.OFF_wbf_val, n, this.kn, this.wbf);
+      spmv(G.OFF_waf_ptr, G.OFF_waf_idx, G.OFF_waf_val, n, this.kn, this.waf);
+      for (let r = 0; r < n; r++) {
+        unchecked(this.wbv[r] = (1.0 - short) * unchecked(this.wbv[r]) + short * unchecked(this.wbf[r]));
+        unchecked(this.wav[r] = (1.0 - short) * unchecked(this.wav[r]) + short * unchecked(this.waf[r]));
+      }
+    }
     for (let r = 0; r < n; r++) {
-      let wb: f64 = 0.0, wa: f64 = 0.0;
-      const rb = B + G.OFF_W_b + (<usize>(r * J) << 3);
-      const ra = B + G.OFF_W_a + (<usize>(r * J) << 3);
-      for (let j = 0; j < J; j++) {
-        const kv = unchecked(this.kn[j]); const o = <usize>j << 3;
-        wb += load<f64>(rb + o) * kv;
-        wa += load<f64>(ra + o) * kv;
-      }
-      if (short > 1e-6) {
-        // Basal slowing: shorten the wave rather than weaken the drive, because the
-        // frequency is mechanics-set and will not move.
-        let wbf: f64 = 0.0, waf: f64 = 0.0;
-        const rbf = B + G.OFF_W_b_food + (<usize>(r * J) << 3);
-        const raf = B + G.OFF_W_a_food + (<usize>(r * J) << 3);
-        for (let j = 0; j < J; j++) {
-          const kv = unchecked(this.kn[j]); const o = <usize>j << 3;
-          wbf += load<f64>(rbf + o) * kv;
-          waf += load<f64>(raf + o) * kv;
-        }
-        wb = (1.0 - short) * wb + short * wbf;
-        wa = (1.0 - short) * wa + short * waf;
-      }
+      const wb = unchecked(this.wbv[r]), wa = unchecked(this.wav[r]);
       const raw = wb * fwd + wa * bwd;
       unchecked(this.propAdapt[r] += (raw - unchecked(this.propAdapt[r])) * G.PROP_ADAPT_RATE);
       unchecked(this.Iext[r] += Math.tanh(raw - unchecked(this.propAdapt[r]))
@@ -828,24 +846,21 @@ class Worm {
       const f = 1.0 - G.SEN_OMEGA_REFLEX_SUPPRESSION * Math.abs(this.omega);
       headGain *= f > 0.0 ? f : 0.0;
     }
+    for (let j = 0; j < J; j++) {
+      unchecked(this.kh[j] = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j])
+                                                : unchecked(this.kn[j]));
+    }
     if (G.HEAD_DISTRIBUTED) {
+      spmv(G.OFF_whead_ptr, G.OFF_whead_idx, G.OFF_whead_val, n, this.kh, this.whv);
       for (let r = 0; r < n; r++) {
-        let raw: f64 = 0.0;
-        const row = B + G.OFF_W_head + (<usize>(r * J) << 3);
-        for (let j = 0; j < J; j++) {
-          const kv = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j]) : unchecked(this.kn[j]);
-          raw += load<f64>(row + (<usize>j << 3)) * kv;
-        }
+        const raw = unchecked(this.whv[r]);
         unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
         unchecked(this.Iext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
                   * m(G.OFF_g_scale_head, r));
       }
     } else {
       let raw: f64 = 0.0;
-      for (let j = 0; j < J; j++) {
-        const kv = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j]) : unchecked(this.kn[j]);
-        raw += m(G.OFF_head_window, j) * kv;
-      }
+      for (let j = 0; j < J; j++) raw += m(G.OFF_head_window, j) * unchecked(this.kh[j]);
       unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
       const v = Math.tanh(unchecked(this.headSignal[0])) * headGain;
       for (let r = 0; r < n; r++) {

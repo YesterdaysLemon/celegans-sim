@@ -279,12 +279,24 @@ function drawGrid(ctx, X, Y, w, h) {
 // actually choosing between -- a lawn to sit on and a drop to avoid -- could never be
 // seen together.
 const CHAN = { attractant: 0, food: 1, repellent: 2 };
+let fieldKey = '';
 function drawFields(ctx, X, Y, scale) {
   const n = S.field.n, T = theme();
   const on = Object.keys(CHAN).filter((k) => S.layers[k]);
   if (!on.length) return;
   if (!fieldCanvas) fieldCanvas = document.createElement('canvas');
   if (fieldCanvas.width !== n) { fieldCanvas.width = fieldCanvas.height = n; }
+  // Rebuilding a 128x128 image per channel every frame is 50k operations for a picture
+  // that changes about once a second. Rebuild only when the field, the visible layers or
+  // the palette actually change.
+  const key = `${S.field.stamp || 0}|${on.join(',')}|${S.theme}`;
+  if (key === fieldKey) {
+    const R0 = S.meta.world.radius;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(fieldCanvas, X(-R0), Y(R0), 2 * R0 * scale, 2 * R0 * scale);
+    return;
+  }
+  fieldKey = key;
   const fc = fieldCanvas.getContext('2d');
   const img = fc.createImageData(n, n);
   const src = S.field.data;
@@ -311,9 +323,11 @@ function drawFields(ctx, X, Y, scale) {
   ctx.drawImage(fieldCanvas, X(-R), Y(R), 2 * R * scale, 2 * R * scale);
 }
 
+let grainPat = null, grainCtx = null;
 function drawGrain(ctx, w, h) {
-  const tile = getNoise();
-  const pat = ctx.createPattern(tile, 'repeat');
+  // createPattern is not free, and the tile never changes.
+  if (!grainPat || grainCtx !== ctx) { grainPat = ctx.createPattern(getNoise(), 'repeat'); grainCtx = ctx; }
+  const pat = grainPat;
   ctx.save();
   ctx.globalAlpha = 0.55;
   ctx.fillStyle = pat;
@@ -445,12 +459,16 @@ function drawWormRealistic(ctx, G, f) {
   ctx.save();
   ctx.lineJoin = ctx.lineCap = 'round';
 
-  // Contact shadow: the animal sits on the agar rather than floating over it.
+  // Contact shadow: the animal sits on the agar rather than floating over it. Two
+  // offset fills rather than a blur -- canvas filters are re-created per call and cost
+  // several milliseconds a frame, which is a lot to spend on a shadow.
   ctx.save();
   ctx.translate(1.5, 2.0);
-  bodyPath(ctx, G, 1.06);
-  ctx.fillStyle = 'rgba(30,26,18,0.32)';
-  ctx.filter = 'blur(2px)';
+  bodyPath(ctx, G, 1.10);
+  ctx.fillStyle = 'rgba(30,26,18,0.16)';
+  ctx.fill();
+  bodyPath(ctx, G, 1.04);
+  ctx.fillStyle = 'rgba(30,26,18,0.20)';
   ctx.fill();
   ctx.restore();
 
@@ -698,6 +716,12 @@ function pushKymo(kappa, t) {
 function renderKymo() {
   const k = S.kymo;
   if (!k) return null;
+  // 600 x 47 is 28k pixels, and rebuilding all of them every animation frame is most of
+  // the panel cost for a picture that only changes when a new column is pushed. The
+  // buffer advances a handful of columns a second; the rest of the time this is a redraw
+  // of pixels that already say the right thing.
+  if (k.drawnHead === k.head && k.drawnFilled === k.filled) return k.canvas;
+  k.drawnHead = k.head; k.drawnFilled = k.filled;
   const d = k.img.data;
   for (let r = 0; r < k.rows; r++) {
     for (let x = 0; x < KYMO_W; x++) {
@@ -1329,7 +1353,11 @@ function localTick(now) {
   updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running);
 
   // The fields change slowly; rebuilding the image every frame is wasted work.
-  if (now - fieldClock > 1000) { S.field = eng.fieldImage(); fieldClock = now; }
+  if (now - fieldClock > 1000) {
+    S.field = eng.fieldImage();
+    S.field.stamp = now;              // invalidates the field-image cache in drawFields
+    fieldClock = now;
+  }
 }
 
 /* ----------------------------------------------------------------------- loop ----- */

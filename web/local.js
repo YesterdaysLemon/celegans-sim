@@ -14,10 +14,19 @@
 const MODEL_URL = 'worm.model';
 const WASM_URL = 'worm.wasm';
 
-// Keep the wall clock and the simulated clock in step, but never try to catch up more
-// than a moment's worth: a backgrounded tab returns with a huge elapsed time, and
-// sprinting through thirty seconds of simulation to "catch up" just locks the page.
-const MAX_CATCHUP = 0.25;   // s of simulated time per animation frame
+/* How long stepping may take per animation frame, in milliseconds of *wall* time.
+ *
+ * This must be a wall-clock budget and not a cap on simulated time, and the difference is
+ * not subtle. The first version capped the backlog at 0.25 s of simulation. On a machine
+ * that runs two worms at 0.43x real time, 0.25 s of simulation costs 0.58 s to compute --
+ * so every frame spent 580 ms stepping before drawing anything, which made the next
+ * frame's elapsed time larger still. It settled at two frames a second and stayed there.
+ *
+ * With a wall budget the renderer always gets its turn: the animal runs at whatever
+ * fraction of real time the machine can manage, the viewer says so honestly in SIM RATE,
+ * and the page stays at 60 fps regardless. */
+const BUDGET_MS = 7;
+const CHUNK = 20;           // steps between clock checks; checking every step is not free
 
 export class LocalEngine {
   constructor() {
@@ -149,12 +158,19 @@ export class LocalEngine {
     this._last = nowMs;
     if (!this.running) { this.achieved = 0; return 0; }
     this._acc += wall * this.rate;
-    if (this._acc > MAX_CATCHUP) this._acc = MAX_CATCHUP;
-    const steps = Math.floor(this._acc / this.dt);
-    if (steps <= 0) return 0;
-    this._acc -= steps * this.dt;
+    const chunkT = this.dt * CHUNK;
     const t0 = performance.now();
-    this.E.stepAll(steps);
+    let steps = 0;
+    while (this._acc >= chunkT) {
+      this.E.stepAll(CHUNK);
+      this._acc -= chunkT;
+      steps += CHUNK;
+      if (performance.now() - t0 >= BUDGET_MS) break;
+    }
+    if (steps === 0) return 0;
+    // Whatever could not be afforded is *dropped*, not owed. Carrying the debt forward is
+    // what turned a slow machine into a slideshow.
+    if (this._acc > chunkT) this._acc = 0;
     const spent = (performance.now() - t0) / 1000;
     this._window.steps += steps;
     this._window.t += Math.max(spent, 1e-6);

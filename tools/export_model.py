@@ -63,6 +63,37 @@ class Blob:
         self.offset += a.nbytes
         return self
 
+    def csr(self, name, M, extra=None):
+        """Write a matrix in compressed sparse row form, and optionally a second matrix
+        that shares its sparsity pattern.
+
+        Every connectome matrix here is between 0.3% and 2.5% non-zero -- 2279 chemical
+        synapses in a 302x302 grid, 552 gap junctions, 45 non-zeros in the head reflex map.
+        Multiplying them densely does 556,000 mul-adds a step to accumulate about 4,500
+        that are not zero, which is most of the runtime spent on arithmetic that cannot
+        change the answer.
+
+        G_syn and GE_syn are the same matrix scaled per element, so they share one index
+        array between two value arrays rather than storing the pattern twice.
+        """
+        M = np.asarray(M)
+        rows, cols = M.shape
+        ptr = np.zeros(rows + 1, dtype=np.int32)
+        idx, val, val2 = [], [], []
+        for r in range(rows):
+            nz = np.flatnonzero(M[r])
+            idx.extend(nz.tolist())
+            val.extend(M[r, nz].tolist())
+            if extra is not None:
+                val2.extend(np.asarray(extra)[r, nz].tolist())
+            ptr[r + 1] = len(idx)
+        self.arr(name + "_ptr", ptr, "i4")
+        self.arr(name + "_idx", np.asarray(idx, dtype=np.int32), "i4")
+        self.arr(name + "_val", np.asarray(val, dtype=np.float64))
+        if extra is not None:
+            self.arr(name + "_val2", np.asarray(val2, dtype=np.float64))
+        return self
+
     def f(self, name, v):
         self.meta["scalars"][name] = float(v)
         return self
@@ -111,7 +142,9 @@ def export(path=OUT, params=None):
     b.arr("neuron_inh", conn.inhibitory, "u1")
 
     # -- nervous system: everything the step reads --------------------------------------
-    b.arr("G_syn", nrv.G_syn).arr("GE_syn", nrv.GE_syn).arr("G_gap", nrv.G_gap)
+    # Sparse: see Blob.csr. G_syn and GE_syn share one pattern between two value arrays.
+    b.csr("syn", nrv.G_syn, extra=nrv.GE_syn)
+    b.csr("gap", nrv.G_gap)
     b.arr("gap_total", nrv.gap_total)
     b.arr("g_leak", nrv.g_leak).arr("E_leak", nrv.E_leak)
     b.arr("g_ca", nrv.g_ca).arr("g_adapt", nrv.g_adapt)
@@ -129,7 +162,8 @@ def export(path=OUT, params=None):
     b.i("any_depress", 1 if nrv._any_depress else 0)
 
     # -- muscle -------------------------------------------------------------------------
-    b.arr("mus_G", mus.G).arr("mus_E_pre", mus.E_pre)
+    b.csr("mus", mus.G)
+    b.arr("mus_E_pre", mus.E_pre)
     b.arr("mus_G_gap", mus.G_gap).arr("mus_gap_total", mus.gap_total)
     b.arr("mus_phasic_gain", mus.phasic_gain)
     b.arr("mus_row_mask_d", mus._row_mask_d, "u1").arr("mus_row_mask_v", mus._row_mask_v, "u1")
@@ -161,9 +195,10 @@ def export(path=OUT, params=None):
     b.s("medium_default", "agar")
 
     # -- senses: the precomputed maps ---------------------------------------------------
-    b.arr("W_b", sen.W_b).arr("W_a", sen.W_a)
-    b.arr("W_b_food", sen.W_b_food).arr("W_a_food", sen.W_a_food)
-    b.arr("W_head", sen.W_head).arr("W_head_sign", sen.W_head_sign)
+    b.csr("wb", sen.W_b).csr("wa", sen.W_a)
+    b.csr("wbf", sen.W_b_food).csr("waf", sen.W_a_food)
+    b.csr("whead", sen.W_head)
+    b.arr("W_head_sign", sen.W_head_sign)
     b.arr("head_window", sen._head_window)
     b.arr("g_scale_prop", sen.g_scale_prop).arr("g_scale_head", sen.g_scale_head)
     b.i("head_delay_n", sen._head_delay_n)

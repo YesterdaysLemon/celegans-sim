@@ -55,15 +55,25 @@ body, senses, modulators, pharynx, world.
 
 ## What it costs
 
-| | |
-|---|---|
-| one worm | 0.87× real time (numpy manages 1.01×; its BLAS is very good at 302² matvecs) |
-| two worms | 0.43× |
-| over the wire | **~70 kB gzipped** — 51 kB model + 19 kB wasm |
+| worms | real time | (before sparse matrices) |
+|---|---|---|
+| 1 | **2.36×** | 0.87× |
+| 2 | **1.20×** | 0.43× |
+| 4 | 0.60× | 0.22× |
+| 8 | 0.30× | — |
 
-The model file is 3.08 MB raw and gzips to 51 kB because the connectome is sparse. The
-302×302 matrices are anatomy and shared between animals, so a second worm duplicates only
-state — which is why two in one dish costs what it does and no more.
+The browser is now faster than the Python it was ported from (numpy manages 1.01×).
+
+**Sparse matrices are why.** Every connectome matrix is between 0.3% and 2.5% non-zero —
+2279 chemical synapses in a 302×302 grid, 552 gap junctions, 45 non-zeros in the head
+reflex map. Dense multiplication spent 556,000 mul-adds a step to accumulate about 4,500
+that were not zero. In compressed sparse row form the same step is 2.7× faster and the
+model file went from 3.08 MB to **0.31 MB**.
+
+Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19 kB wasm.
+
+The 302² matrices are anatomy and shared between animals, so a second worm duplicates only
+state; that is why two in one dish costs what it does and no more.
 
 ## Build
 
