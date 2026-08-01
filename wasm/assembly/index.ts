@@ -327,6 +327,9 @@ let world: World = new World();
 // ------------------------------------------------------------------------------- worm --
 
 class Worm {
+  // Stable identity, assigned by createWorm and never reused. Not the array slot: see
+  // the note above `worms` at the bottom of this file.
+  id: i32 = -1;
   rng: Rng = new Rng(0);
   bx: f64 = 0.0; by: f64 = 0.0;
   theta: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
@@ -1224,7 +1227,27 @@ class Worm {
 // all: see the note at the top of this file.
 let noiseOn: bool = true;
 
+/* The population, and why a handle is not an array index.
+ *
+ * `worms` is kept dense so `stepAll` can walk it without a gap test, but an animal's
+ * identity is its `id` and not its position. Those were the same thing until now --
+ * `createWorm` returned `worms.length - 1` -- and that is exactly the representation a
+ * generational loop cannot use. Selection culls the *unfit*, not the most recently
+ * created, and removing anyone but the tail renumbers every animal after them while
+ * every accessor here takes a handle. The viewer would go on reading what it thought was
+ * worm 3 and get whichever animal had been shuffled into slot 3.
+ *
+ * So ids are handed out monotonically and never reused. A stale handle then names an
+ * animal that is gone rather than aliasing a live one, which is the difference between a
+ * loud failure and a silently wrong experiment.
+ */
 let worms: Worm[] = [];
+let wormById: Map<i32, Worm> = new Map<i32, Worm>();
+let nextWormId: i32 = 0;
+
+// Resolve a handle. Aborts on an unknown id, which is deliberate: the alternative is
+// returning some other animal's state and calling it worm 3.
+@inline function byId(id: i32): Worm { return wormById.get(id); }
 
 // -------------------------------------------------------------------------- exported --
 
@@ -1236,18 +1259,50 @@ export function addRepellent(x: f64, y: f64, s: f64, ls: f64): void {
   world.addRepellent(x, y, s, ls);
 }
 export function createWorm(seed: i32, x: f64, y: f64, heading: f64): i32 {
-  worms.push(new Worm(<u64>seed, x, y, heading));
-  return worms.length - 1;
+  const wm = new Worm(<u64>seed, x, y, heading);
+  const id = nextWormId++;
+  wm.id = id;
+  worms.push(wm);
+  wormById.set(id, wm);
+  return id;
 }
 export function wormCount(): i32 { return worms.length; }
-export function clearWorms(): void { worms = []; }
-export function popWorm(): void { if (worms.length > 1) worms.pop(); }
+/* Enumerate the population. Ids are not contiguous once anything has been culled, so a
+ * caller that wants every animal has to ask rather than counting from zero. */
+export function wormIdAt(k: i32): i32 {
+  return k >= 0 && k < worms.length ? unchecked(worms[k]).id : -1;
+}
+export function hasWorm(id: i32): i32 { return wormById.has(id) ? 1 : 0; }
+export function clearWorms(): void { worms = []; wormById = new Map<i32, Worm>(); }
+/* Remove one animal, whoever it is. Returns 1 if it was there.
+ *
+ * Swap-with-last, so removal is O(1) and the array stays dense -- the moved animal keeps
+ * its id, which is the whole point of having one. The population is allowed to reach
+ * zero: a generation boundary that clears and repopulates should not have to keep one
+ * arbitrary survivor alive to satisfy the container. */
+export function removeWorm(id: i32): i32 {
+  if (!wormById.has(id)) return 0;
+  const wm = wormById.get(id);
+  const n = worms.length;
+  for (let k = 0; k < n; k++) {
+    if (unchecked(worms[k]) === wm) {
+      unchecked(worms[k] = unchecked(worms[n - 1]));
+      worms.pop();
+      break;
+    }
+  }
+  wormById.delete(id);
+  return 1;
+}
+export function popWorm(): void {
+  if (worms.length > 0) removeWorm(unchecked(worms[worms.length - 1]).id);
+}
 export function resetWorld(): void { world = new World(); }
 
 /* Ablation. The caller passes a list of neuron indices; passing none restores everything,
  * which is why this replaces the set rather than adding to it. */
 export function setAblated(w: i32, ptr: usize, count: i32): void {
-  const wm = worms[w];
+  const wm = byId(w);
   for (let i = 0; i < G.N_NEURONS; i++) unchecked(wm.alive[i] = 1);
   for (let k = 0; k < count; k++) {
     const idx = load<i32>(ptr + (<usize>k << 2));
@@ -1261,16 +1316,16 @@ export function setAblated(w: i32, ptr: usize, count: i32): void {
     }
   }
 }
-export function isAlive(w: i32, i: i32): i32 { return worms[w].alive[i]; }
+export function isAlive(w: i32, i: i32): i32 { return byId(w).alive[i]; }
 export function setMedium(ct: f64, cn: f64): void {
   for (let i = 0; i < worms.length; i++) { worms[i].cT = ct; worms[i].cN = cn; }
 }
 
 // Drive the body directly, which is what the conformance test for the mechanics needs:
 // a prescribed moment, no biology, the same numbers on both sides.
-export function setMoment(w: i32, j: i32, v: f64): void { unchecked(worms[w].moment[j] = v); }
+export function setMoment(w: i32, j: i32, v: f64): void { unchecked(byId(w).moment[j] = v); }
 export function stepBodyOnly(w: i32, dt: f64, steps: i32): void {
-  const wm = worms[w];
+  const wm = byId(w);
   for (let i = 0; i < steps; i++) { wm.contact(); wm.stepBody(dt); wm.t += dt; }
 }
 
@@ -1278,8 +1333,13 @@ export function setNoise(on: i32): void { noiseOn = on != 0; }
 // One animal, and the plate goes with it -- this is the conformance path, where there is
 // only ever one worm and it has to match a Python Simulation exactly. Do not use it to
 // step several worms in a loop: the plate would age once per animal per step. Use stepAll.
+//
+// That the two agree for one animal is checked in wasm/conform.mjs. That the *ordering*
+// is right for several is checked in wasm/population.mjs, and it has to be checked there
+// because with a single worm the correct implementation and the once-per-animal one are
+// byte-identical -- conform.mjs claimed to cover it for a while and could not.
 export function step(w: i32, n: i32): void {
-  const wm = worms[w];
+  const wm = byId(w);
   for (let i = 0; i < n; i++) { wm.step(); world.stepFields(G.DT); }
 }
 export function stepAll(n: i32): void {
@@ -1289,25 +1349,25 @@ export function stepAll(n: i32): void {
     world.stepFields(G.DT);
   }
 }
-export function ptrAct(w: i32): usize { return changetype<usize>(worms[w].act); }
-export function ptrV(w: i32): usize { return changetype<usize>(worms[w].V); }
-export function ptrTension(w: i32): usize { return changetype<usize>(worms[w].mTen); }
-export function getPumpRate(w: i32): f64 { return worms[w].phRate; }
-export function getPumping(w: i32): f64 { return worms[w].phPumping ? 1.0 : 0.0; }
-export function getLumen(w: i32): f64 { return worms[w].lumen; }
-export function getEaten(w: i32): f64 { return worms[w].eaten; }
-export function getEggsHeld(w: i32): f64 { return worms[w].eglEggs; }
-export function getEggsLaid(w: i32): f64 { return <f64>worms[w].eglLaid; }
-export function getVulvalMuscle(w: i32): f64 { return worms[w].eglVm; }
-export function getEglActive(w: i32): f64 { return worms[w].eglInPhase ? 1.0 : 0.0; }
-export function getEglResource(w: i32): f64 { return worms[w].eglResource; }
+export function ptrAct(w: i32): usize { return changetype<usize>(byId(w).act); }
+export function ptrV(w: i32): usize { return changetype<usize>(byId(w).V); }
+export function ptrTension(w: i32): usize { return changetype<usize>(byId(w).mTen); }
+export function getPumpRate(w: i32): f64 { return byId(w).phRate; }
+export function getPumping(w: i32): f64 { return byId(w).phPumping ? 1.0 : 0.0; }
+export function getLumen(w: i32): f64 { return byId(w).lumen; }
+export function getEaten(w: i32): f64 { return byId(w).eaten; }
+export function getEggsHeld(w: i32): f64 { return byId(w).eglEggs; }
+export function getEggsLaid(w: i32): f64 { return <f64>byId(w).eglLaid; }
+export function getVulvalMuscle(w: i32): f64 { return byId(w).eglVm; }
+export function getEglActive(w: i32): f64 { return byId(w).eglInPhase ? 1.0 : 0.0; }
+export function getEglResource(w: i32): f64 { return byId(w).eglResource; }
 export function eggCount(): i32 { return world.nEggs; }
 export function ptrEggX(): usize { return changetype<usize>(world.eggX); }
 export function ptrEggY(): usize { return changetype<usize>(world.eggY); }
-export function getGateForward(w: i32): f64 { return worms[w].goingForward ? 1.0 : 0.0; }
-export function getOmega(w: i32): f64 { return worms[w].omega * worms[w].omegaSign; }
+export function getGateForward(w: i32): f64 { return byId(w).goingForward ? 1.0 : 0.0; }
+export function getOmega(w: i32): f64 { return byId(w).omega * byId(w).omegaSign; }
 export function getSensed(w: i32, which: i32): f64 {
-  const wm = worms[w];
+  const wm = byId(w);
   if (which == 0) return wm.sensedAtt;
   if (which == 1) return wm.sensedT;
   if (which == 2) return wm.sensedO2;
@@ -1320,20 +1380,20 @@ export function getSensed(w: i32, which: i32): f64 {
   return 0.0;
 }
 export function pokeWorm(w: i32, anterior: i32, strength: f64): void {
-  const wm = worms[w];
+  const wm = byId(w);
   if (anterior != 0) wm.pokeA += strength; else wm.pokeP += strength;
 }
-export function ptrNodesX(w: i32): usize { return changetype<usize>(worms[w].nodesX); }
-export function ptrNodesY(w: i32): usize { return changetype<usize>(worms[w].nodesY); }
-export function ptrKappa(w: i32): usize { return changetype<usize>(worms[w].kappa); }
-export function ptrTheta(w: i32): usize { return changetype<usize>(worms[w].theta); }
+export function ptrNodesX(w: i32): usize { return changetype<usize>(byId(w).nodesX); }
+export function ptrNodesY(w: i32): usize { return changetype<usize>(byId(w).nodesY); }
+export function ptrKappa(w: i32): usize { return changetype<usize>(byId(w).kappa); }
+export function ptrTheta(w: i32): usize { return changetype<usize>(byId(w).theta); }
 export function ptrFood(): usize { return changetype<usize>(world.food); }
 export function ptrAttractant(): usize { return changetype<usize>(world.attractant); }
 export function ptrRepellent(): usize { return changetype<usize>(world.repellent); }
 export function ptrO2(): usize { return changetype<usize>(world.o2); }
 
-export function getX(w: i32): f64 { return worms[w].bx; }
-export function getY(w: i32): f64 { return worms[w].by; }
-export function getTime(w: i32): f64 { return worms[w].t; }
+export function getX(w: i32): f64 { return byId(w).bx; }
+export function getY(w: i32): f64 { return byId(w).by; }
+export function getTime(w: i32): f64 { return byId(w).t; }
 export function sampleFood(x: f64, y: f64): f64 { return world.sample(world.food, x, y); }
 export function sampleO2(x: f64, y: f64): f64 { return world.oxygen(x, y); }

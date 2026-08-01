@@ -55,9 +55,27 @@ declare namespace __AdaptedExports {
    */
   export function wormCount(): number;
   /**
+   * assembly/index/wormIdAt
+   * @param k `i32`
+   * @returns `i32`
+   */
+  export function wormIdAt(k: number): number;
+  /**
+   * assembly/index/hasWorm
+   * @param id `i32`
+   * @returns `i32`
+   */
+  export function hasWorm(id: number): number;
+  /**
    * assembly/index/clearWorms
    */
   export function clearWorms(): void;
+  /**
+   * assembly/index/removeWorm
+   * @param id `i32`
+   * @returns `i32`
+   */
+  export function removeWorm(id: number): number;
   /**
    * assembly/index/popWorm
    */
