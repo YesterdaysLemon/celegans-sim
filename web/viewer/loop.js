@@ -14,6 +14,8 @@ import { buildWormSel } from './controls.js';
 
 let fieldClock = 0;
 
+const SPEED_CAP = 512;    // hard bound on the speed window; see below
+
 function localTick(now) {
   const eng = S.engine;
   if (!eng || !eng.ready) return;
@@ -68,9 +70,22 @@ function localTick(now) {
   if (S.speedWin === undefined || S.speedFocus !== S.focus) { S.speedWin = []; S.speedFocus = S.focus; }
   const c0 = S.trails[S.focus][S.trails[S.focus].length - 1];
   if (c0) {
-    S.speedWin.push([f0.t, c0[0], c0[1]]);
-    while (S.speedWin.length > 1 && f0.t - S.speedWin[0][0] > 2.0) S.speedWin.shift();
-    const a = S.speedWin[0], b = S.speedWin[S.speedWin.length - 1];
+    const w = S.speedWin;
+    let lastT = w.length ? w[w.length - 1][0] : null;
+    // The same fixed-timestamp trap the frequency buffer had, for the same reason: this
+    // function runs on requestAnimationFrame whether or not the engine stepped, and the
+    // window is trimmed in *simulated* seconds, so nothing in it ages out while the
+    // animal is paused. It grew by 60 entries a second for as long as you left it.
+    // Backwards is a reset, and its samples are another animal's. See updateFreq.
+    if (lastT !== null && f0.t < lastT) { w.length = 0; lastT = null; }
+    if (lastT === null || f0.t > lastT) {
+      w.push([f0.t, c0[0], c0[1]]);
+      while (w.length > 1 && f0.t - w[0][0] > 2.0) w.shift();
+      // Two simulated seconds at the slowest rate the slider offers is forty wall-clock
+      // seconds of frames, so the timestamp trim alone is not a bound. This is.
+      if (w.length > SPEED_CAP) w.splice(0, w.length - SPEED_CAP);
+    }
+    const a = w[0], b = w[w.length - 1];
     const span = b[0] - a[0];
     S.frame.speed = span > 0.2 ? Math.hypot(b[1] - a[1], b[2] - a[2]) / span : 0;
   }

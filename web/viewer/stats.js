@@ -10,10 +10,35 @@ import { S, C, el } from './state.js';
 // Undulation frequency from zero crossings of midbody curvature, about its own mean.
 // A worm holding a turn has a large standing offset in its curvature; counting raw sign
 // changes would call that "no undulation" while it is plainly still undulating.
+const FREQ_WINDOW = 12;    // seconds of simulated history the estimate is over
+// A defensive bound, and not a redundant one. The window above is in *simulated* seconds,
+// so the number of samples inside it is (frame rate / speed multiplier): at the slowest
+// rate the slider offers, 0.05x, twelve simulated seconds is four minutes of wall clock
+// and about fifteen thousand frames. The estimate does not get better past a few hundred
+// samples, and every one of them is scanned twice per frame.
+const FREQ_CAP = 2048;
 export function updateFreq(k, t) {
   const b = S.freqBuf;
+  const last = b.length ? b[b.length - 1][0] : null;
+  if (last !== null && t <= last) {
+    // Frames keep arriving while the simulation is paused -- thirty a second from the
+    // socket, one per animation frame from the local engine -- and every one of them
+    // carries the same simulated timestamp. Eviction below is by simulated time, so none
+    // of those samples ever ages out: an hour paused used to leave ~216k entries in here
+    // and make each frame rescan all of them. A second sample at a timestamp we already
+    // have says nothing the first one did not, so drop it.
+    //
+    // Time going *backwards* is a reset rather than a pause, and needs the opposite
+    // treatment. The old samples belong to a different animal, and because the window is
+    // a difference they would never age out either -- worse, the guard above would then
+    // reject every new sample until t climbed back past them, which for a reset at t=300
+    // means five minutes of a frozen readout. Throw them away and start again.
+    if (t < last) b.length = 0;
+    else return;
+  }
   b.push([t, k]);
-  while (b.length && t - b[0][0] > 12) b.shift();
+  while (b.length && t - b[0][0] > FREQ_WINDOW) b.shift();
+  if (b.length > FREQ_CAP) b.splice(0, b.length - FREQ_CAP);
   if (b.length < 40) return;
   const mean = b.reduce((a, x) => a + x[1], 0) / b.length;
   const dev = Math.sqrt(b.reduce((a, x) => a + (x[1] - mean) ** 2, 0) / b.length);
