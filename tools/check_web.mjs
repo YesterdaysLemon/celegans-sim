@@ -20,6 +20,7 @@ import { fileURLToPath } from 'url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WEB = path.join(ROOT, 'web');
+const FINDING_EXIT = 10;
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -125,6 +126,8 @@ for (const p of problems) console.log(`  FAIL  ${p}`);
 if (problems.length) {
   console.log(`\n${problems.length} problem(s). The viewer has no build step, so these are`
             + ` runtime blank pages rather than compile errors.`);
-  process.exit(1);
+  // A dedicated code lets the mutation audit distinguish an asserted graph finding from
+  // a Node startup, parse, filesystem, or uncaught runtime failure.
+  process.exit(FINDING_EXIT);
 }
 console.log('  module graph is acyclic, and every import resolves.');
