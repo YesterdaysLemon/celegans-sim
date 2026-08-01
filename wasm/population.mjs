@@ -511,6 +511,64 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* ---------------------------------------------------------------------------------- 9 --
+ * An egg is a heritable record, and it outlives its parent.
+ *
+ * This is what separates reproduction from decoration. An egg used to be two coordinates,
+ * so a population could be *selected* -- something outside the dish reading fitness and
+ * deciding who breeds -- but could not *inherit*, because nothing an animal produced
+ * carried anything of the animal.
+ *
+ * The load-bearing assertion is the last one. An egg has to survive its parent being
+ * culled, which is most of the point of laying it, so the genome is copied at laying
+ * rather than referenced. A reference would work in every test that keeps the parent
+ * alive and fail exactly when a generation turns over.
+ */
+{
+  const names = head.genes || [];
+  const E = engine();
+  E.addFood(0.0, 0.0, 20.0, 1.0, 1.0, 30.0);      // a lawn worth laying on
+  const parent = E.createWorm(7, 0.0, 0.0, 0.0);
+
+  // A parent that is not wild type, so a hatchling carrying the defaults is a failure
+  // rather than a coincidence.
+  const want = names.map((_, s) => E.getGene(parent, s) * 2 + 0.5);
+  want.forEach((v, s) => E.setGene(parent, s, v));
+
+  let laid = false;
+  for (let k = 0; k < 40 && !laid; k++) { E.stepAll(2000); laid = E.eggCount() > 0; }
+
+  const eggT = laid ? E.eggTime(0) : NaN;
+  const eggParent = laid ? E.eggParent(0) : -1;
+  const carried = names.map((_, s) => E.eggGene(0, s));
+  const ex = f64(E)[(E.ptrEggX() >> 3)], ey = f64(E)[(E.ptrEggY() >> 3)];
+  const before = E.eggCount();
+
+  // Kill the parent before hatching. Anything the egg cannot answer on its own now fails.
+  E.removeWorm(parent);
+  const chick = E.hatchEgg(0, 4242, 0.0);
+  const got = chick >= 0 ? names.map((_, s) => E.getGene(chick, s)) : [];
+
+  const inherited = chick >= 0 && worst(got, want) === 0;
+  const recorded = laid && eggParent === parent && eggT > 0 && eggT < 40.0;
+  const stored = laid && worst(carried, want) === 0;
+  const placed = chick >= 0
+    && Math.abs(E.getX(chick) - ex) < 1e-12 && Math.abs(E.getY(chick) - ey) < 1e-12;
+  const consumed = E.eggCount() === before - 1;
+  const nothingLost = E.eggsDropped() === 0;
+
+  report(
+    'EGGS ARE HERITABLE -- laid by a mutant, hatched after the parent was culled',
+    laid && recorded && stored && inherited && placed && consumed && nothingLost,
+    `  eggs laid                     ${before} (first at t=${eggT.toFixed(3)} s)\n` +
+    `  egg records its parent        ${eggParent === parent}  (id ${eggParent})\n` +
+    `  egg carries parent's genome   ${stored}   (worst gene gap ${worst(carried, want).toExponential(2)})\n` +
+    `  hatchling inherits it         ${inherited}   -- with the parent already dead\n` +
+    `  hatched where the egg lay     ${placed}\n` +
+    `  egg consumed, none dropped    ${consumed} / ${nothingLost}`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');

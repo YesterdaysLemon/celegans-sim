@@ -242,6 +242,38 @@ declare namespace __AdaptedExports {
    */
   export function eggCount(): number;
   /**
+   * assembly/index/eggsDropped
+   * @returns `i32`
+   */
+  export function eggsDropped(): number;
+  /**
+   * assembly/index/eggParent
+   * @param i `i32`
+   * @returns `i32`
+   */
+  export function eggParent(i: number): number;
+  /**
+   * assembly/index/eggTime
+   * @param i `i32`
+   * @returns `f64`
+   */
+  export function eggTime(i: number): number;
+  /**
+   * assembly/index/eggGene
+   * @param i `i32`
+   * @param slot `i32`
+   * @returns `f64`
+   */
+  export function eggGene(i: number, slot: number): number;
+  /**
+   * assembly/index/hatchEgg
+   * @param i `i32`
+   * @param seed `i32`
+   * @param heading `f64`
+   * @returns `i32`
+   */
+  export function hatchEgg(i: number, seed: number, heading: number): number;
+  /**
    * assembly/index/ptrEggX
    * @returns `usize`
    */

@@ -165,8 +165,12 @@ class World {
   // cannot grow without bound -- the oldest go, which is the right end to lose.
   eggX: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS);
   eggY: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS);
+  // Who laid it, when, and what it carries. See layEgg.
+  eggParent: StaticArray<i32> = new StaticArray<i32>(G.MAX_EGGS);
+  eggT: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS);
+  eggGene: StaticArray<f64> = new StaticArray<f64>(G.MAX_EGGS * G.N_GENES);
   nEggs: i32 = 0;
-  eggHead: i32 = 0;
+  eggsDropped: i32 = 0;
   scratch: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   facc: f64 = 0.0;
 
@@ -175,11 +179,58 @@ class World {
    * dish cannot see, because a field of zeros diffuses to zeros. It showed up as an
    * exact-agreement run that diverged on step 41 and nowhere else: 41 steps is 0.0205 s,
    * and field_dt is 0.02. */
-  layEgg(x: f64, y: f64): void {
-    unchecked(this.eggX[this.eggHead] = x);
-    unchecked(this.eggY[this.eggHead] = y);
-    this.eggHead = (this.eggHead + 1) % G.MAX_EGGS;
-    if (this.nEggs < G.MAX_EGGS) this.nEggs++;
+  /* An egg is a record, not a dot.
+   *
+   * It used to be two coordinates, which is all a picture needs and not enough for
+   * anything downstream of it: no parent, no time, and above all no genome, so the one
+   * thing on this plate that outlives the animal that made it carried nothing heritable.
+   * That is the difference between reproduction and decoration, and between evolution and
+   * selection imposed from outside.
+   *
+   * The genome is **copied**, not referenced. An egg has to outlive its parent -- that is
+   * most of the point of laying it -- so a dead or recycled parent must not be able to
+   * change or invalidate what its eggs carry. At 15 genes and 4096 eggs that is 480 kB,
+   * which is affordable; a much larger genome would want a shared table and an index. */
+  layEgg(x: f64, y: f64, parent: i32, t: f64, genes: StaticArray<f64>): void {
+    /* Eggs used to live in a ring that silently dropped the oldest when it filled. That is
+     * right for a picture and wrong for a record, and it does not survive eggs being
+     * hatchable either: removing one from the middle of a ring leaves the write head
+     * pointing at a live egg. So they are a plain bounded array now -- slots 0..nEggs,
+     * which is what the viewer already read -- and a full plate refuses to take another
+     * rather than quietly forgetting one it already has.
+     *
+     * The bound is not close: at the measured 11 eggs/hour/animal, four animals need
+     * about 39 hours of wall clock to reach 4096. Refusals are counted anyway, because
+     * the number that matters is whether any were lost, not how likely it was. */
+    if (this.nEggs >= G.MAX_EGGS) { this.eggsDropped++; return; }
+    const at = this.nEggs++;
+    unchecked(this.eggX[at] = x);
+    unchecked(this.eggY[at] = y);
+    unchecked(this.eggParent[at] = parent);
+    unchecked(this.eggT[at] = t);
+    const base = at * G.N_GENES;
+    for (let g = 0; g < G.N_GENES; g++) {
+      unchecked(this.eggGene[base + g] = unchecked(genes[g]));
+    }
+  }
+
+  /* Take an egg off the plate, leaving the array dense. Swap-with-last, the same shape as
+   * removeWorm, so an index is only valid until the next removal -- read what you need
+   * from an egg before taking it. */
+  takeEgg(i: i32): bool {
+    if (i < 0 || i >= this.nEggs) return false;
+    const last = --this.nEggs;
+    if (i != last) {
+      unchecked(this.eggX[i] = unchecked(this.eggX[last]));
+      unchecked(this.eggY[i] = unchecked(this.eggY[last]));
+      unchecked(this.eggParent[i] = unchecked(this.eggParent[last]));
+      unchecked(this.eggT[i] = unchecked(this.eggT[last]));
+      const a = i * G.N_GENES, b = last * G.N_GENES;
+      for (let g = 0; g < G.N_GENES; g++) {
+        unchecked(this.eggGene[a + g] = unchecked(this.eggGene[b + g]));
+      }
+    }
+    return true;
   }
 
   stepFields(dt: f64): void {
@@ -1195,7 +1246,8 @@ class Worm {
     // not eat does not make eggs. The vulva is halfway down the body.
     if (this.stepEggLaying(moved, food) > 0.0) {
       const mid = G.N_LINKS >> 1;
-      world.layEgg(unchecked(this.nodesX[mid]), unchecked(this.nodesY[mid]));
+      world.layEgg(unchecked(this.nodesX[mid]), unchecked(this.nodesY[mid]),
+                   this.id, this.t, this.genes);
     }
     this.t += G.DT;
   }
@@ -1449,6 +1501,39 @@ export function getVulvalMuscle(w: i32): f64 { return byId(w).eglVm; }
 export function getEglActive(w: i32): f64 { return byId(w).eglInPhase ? 1.0 : 0.0; }
 export function getEglResource(w: i32): f64 { return byId(w).eglResource; }
 export function eggCount(): i32 { return world.nEggs; }
+/* Eggs the plate refused because it was full. Never silently non-zero: anything reading
+ * eggs as a record of what a population did should check this before believing it. */
+export function eggsDropped(): i32 { return world.eggsDropped; }
+export function eggParent(i: i32): i32 {
+  return i >= 0 && i < world.nEggs ? unchecked(world.eggParent[i]) : -1;
+}
+export function eggTime(i: i32): f64 {
+  return i >= 0 && i < world.nEggs ? unchecked(world.eggT[i]) : NaN;
+}
+export function eggGene(i: i32, slot: i32): f64 {
+  if (i < 0 || i >= world.nEggs || slot < 0 || slot >= G.N_GENES) return NaN;
+  return unchecked(world.eggGene[i * G.N_GENES + slot]);
+}
+/* Hatch an egg into an animal, and take it off the plate. Returns the new worm's id, or
+ * -1 if there is no such egg.
+ *
+ * The animal starts where the egg was lying and carries the genome the egg carries --
+ * which is a *copy* taken at laying, so a parent that has since been culled or had its own
+ * genes changed cannot affect what hatches. Mutation is deliberately not done here: the
+ * runtime provides the mechanism and the caller owns the policy, so a hatchling starts as
+ * a clone of its parent and whatever is driving the population mutates it with setGene. */
+export function hatchEgg(i: i32, seed: i32, heading: f64): i32 {
+  if (i < 0 || i >= world.nEggs) return -1;
+  const x = unchecked(world.eggX[i]), y = unchecked(world.eggY[i]);
+  const id = createWorm(seed, x, y, heading);
+  const wm = wormById.get(id);
+  const base = i * G.N_GENES;
+  for (let g = 0; g < G.N_GENES; g++) {
+    unchecked(wm.genes[g] = unchecked(world.eggGene[base + g]));
+  }
+  world.takeEgg(i);
+  return id;
+}
 export function ptrEggX(): usize { return changetype<usize>(world.eggX); }
 export function ptrEggY(): usize { return changetype<usize>(world.eggY); }
 export function getGateForward(w: i32): f64 { return byId(w).goingForward ? 1.0 : 0.0; }

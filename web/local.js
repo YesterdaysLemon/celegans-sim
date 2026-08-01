@@ -286,8 +286,13 @@ export class LocalEngine {
   }
 
   /* Every egg on the plate, as a flat x,y list. Read straight out of linear memory: the
-   * runtime keeps them in a fixed ring, so this is a view rather than a copy until the
-   * caller wants one. Shared by all the animals, because the dish is. */
+   * runtime keeps them in a dense bounded array, slots 0..eggCount, so this is a view
+   * rather than a copy until the caller wants one. Shared by all the animals, because the
+   * dish is.
+   *
+   * Each egg also carries its parent, its lay time and a copy of that parent's genome --
+   * see eggParent/eggTime/eggGene/hatchEgg on the runtime. None of that is needed to draw
+   * a dot, which is why it is not read here. */
   eggs() {
     const E = this.E, n = E.eggCount();
     if (!n) return null;
