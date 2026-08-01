@@ -115,6 +115,26 @@ def test_single_animal_step_still_advances_its_world():
     assert world.t == pytest.approx(sim.dt)
 
 
+def test_one_animal_population_step_matches_single_simulation_feeding():
+    p = Params()
+    direct_world = World(p.world, np.random.default_rng(0))
+    population_world = World(p.world, np.random.default_rng(0))
+    direct_world.food[direct_world.inside] = 1.0
+    population_world.food[population_world.inside] = 1.0
+    direct = Simulation(p, seed=3, world=direct_world, placement=(0.0, 0.0, 0.0))
+    batched = Simulation(p, seed=3, world=population_world, placement=(0.0, 0.0, 0.0))
+    direct.pharynx.phase = 1.0
+    batched.pharynx.phase = 1.0
+
+    direct.step()
+    Population([batched], check_every=None).step()
+
+    assert batched.food_eaten == pytest.approx(direct.food_eaten)
+    assert batched.pharynx.lumen == pytest.approx(direct.pharynx.lumen)
+    assert population_world.food == pytest.approx(direct_world.food)
+    assert population_world.t == pytest.approx(direct_world.t)
+
+
 def _contended_feeding_tick(order):
     p = Params()
     world = World(p.world, np.random.default_rng(0))
@@ -172,6 +192,58 @@ def test_contended_feeding_is_proportional_and_iteration_order_safe():
     assert reverse[5] == pytest.approx(held)
 
 
+def test_single_batch_request_matches_eat_allocation_and_food_field():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+    direct = World(p.world, np.random.default_rng(0))
+    batched = World(p.world, np.random.default_rng(0))
+    patch = np.arange(1.0, 10.0).reshape(3, 3)
+    direct.food[3:6, 3:6] = patch
+    batched.food[3:6, 3:6] = patch
+
+    expected = direct.eat(0.0, 0.0, 7.5)
+    actual = batched.eat_batch([(0.0, 0.0, 7.5)])
+
+    assert actual == pytest.approx([expected])
+    assert batched.food == pytest.approx(direct.food)
+
+
+def test_identical_under_demand_requests_share_and_deplete_proportionally():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+    direct = World(p.world, np.random.default_rng(0))
+    batched = World(p.world, np.random.default_rng(0))
+    patch = np.arange(1.0, 10.0).reshape(3, 3)
+    direct.food[3:6, 3:6] = patch
+    batched.food[3:6, 3:6] = patch
+
+    direct.eat(0.0, 0.0, 8.0)
+    actual = batched.eat_batch([(0.0, 0.0, 2.0), (0.0, 0.0, 6.0)])
+
+    assert actual == pytest.approx([2.0, 6.0])
+    assert batched.food == pytest.approx(direct.food)
+
+
+def test_disconnected_feeding_components_settle_like_separate_batches():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+    combined = World(p.world, np.random.default_rng(0))
+    separate = World(p.world, np.random.default_rng(0))
+    combined.food[3:6, 0:3] = 0.05
+    combined.food[3:6, 5:8] = np.arange(1.0, 10.0).reshape(3, 3)
+    separate.food[:] = combined.food
+
+    requests = [(-2.0, 0.0, 0.4), (-2.0, 0.0, 0.2), (2.0, 0.0, 4.0)]
+    actual = combined.eat_batch(requests)
+    expected = np.concatenate([
+        separate.eat_batch(requests[:2]),
+        separate.eat_batch(requests[2:]),
+    ])
+
+    assert actual == pytest.approx(expected)
+    assert combined.food == pytest.approx(separate.food)
+
+
 def test_real_population_capture_accounts_for_every_unit_removed_from_the_plate():
     p = Params()
     world = World(p.world, np.random.default_rng(0))
@@ -226,7 +298,27 @@ def test_partially_overlapping_batch_feeding_is_order_safe_when_food_is_short():
     forward, food_forward = settle([(0.0, 0.0, 1.0), (-1.0, 0.0, 1.0)])
     reverse, food_reverse = settle([(-1.0, 0.0, 1.0), (0.0, 0.0, 1.0)])
 
-    assert forward == pytest.approx([0.25, 1.0])
-    assert reverse == pytest.approx([1.0, 0.25])
+    assert forward == pytest.approx([0.625, 0.625])
+    assert reverse == pytest.approx([0.625, 0.625])
+    assert float(food_forward.sum()) == pytest.approx(0.0)
+    assert np.array_equal(food_reverse, food_forward)
+
+
+def test_symmetric_partial_overlap_has_no_grid_direction_winner():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+
+    def settle(requests):
+        world = World(p.world, np.random.default_rng(0))
+        world.food[4, 3] = 0.1       # reachable only from the left
+        world.food[4, 4] = 1.0       # shared
+        world.food[4, 5] = 0.1       # reachable only from the right
+        return world.eat_batch(requests), world.food
+
+    forward, food_forward = settle([(-1.0, 0.0, 1.0), (1.0, 0.0, 1.0)])
+    reverse, food_reverse = settle([(1.0, 0.0, 1.0), (-1.0, 0.0, 1.0)])
+
+    assert forward == pytest.approx([0.6, 0.6])
+    assert reverse == pytest.approx([0.6, 0.6])
     assert float(food_forward.sum()) == pytest.approx(0.0)
     assert np.array_equal(food_reverse, food_forward)
