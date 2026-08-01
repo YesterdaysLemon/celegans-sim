@@ -72,7 +72,8 @@ for (let s = 0; s < SEEDS; s++) {
   E.clearWorms();
   E.setNoise(1);
   const w = E.createWorm(s, 0.0, 0.0, 0.0);
-  // clearWorms leaves the array empty and createWorm pushes, so this animal is index 0.
+  // createWorm returns a stable handle, not a position: ids are never reused, so the one
+  // returned here names this animal for as long as it exists whatever else joins the dish.
   E.step(w, warmSteps);
 
   for (let i = 0; i < nSamples; i++) {

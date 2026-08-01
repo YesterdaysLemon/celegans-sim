@@ -100,13 +100,56 @@ def test_killing_m3_lengthens_the_pump():
 
 
 def test_the_pharynx_is_what_empties_the_lawn():
-    """Whatever the pharynx transports is what the world loses, and nothing else is."""
+    """What the plate loses is what the animal is holding, to the last decimal.
+
+    The invariant is `food_eaten == ingested + lumen`, not `food_eaten == ingested`: food
+    leaves the plate when the pharynx captures it, and only reaches the intestine when M4
+    transports it, so the difference between the two is whatever is in the mouth. Asserting
+    the stronger-looking equality is what let a conservation bug live here, because on a
+    stationary animal in a uniform lawn the two are indistinguishable.
+    """
     r = _run(on_food=True, seconds=40.0)
     sim = r["sim"]
     assert sim.food_eaten > 0.0, "the animal sat on a lawn and ate nothing"
-    assert abs(sim.food_eaten - sim.pharynx.ingested) < 1e-9 * max(sim.food_eaten, 1.0), (
-        "the world lost %.6f but the pharynx transported %.6f"
-        % (sim.food_eaten, sim.pharynx.ingested))
+    held = sim.pharynx.ingested + sim.pharynx.lumen
+    assert abs(sim.food_eaten - held) < 1e-9 * max(sim.food_eaten, 1.0), (
+        "the world lost %.9f but the animal holds %.9f (%.9f transported + %.9f in lumen)"
+        % (sim.food_eaten, held, sim.pharynx.ingested, sim.pharynx.lumen))
+
+
+def test_food_is_conserved_when_the_animal_moves_between_capture_and_transport():
+    """Carrying a full mouth off the lawn must not create food, or destroy it.
+
+    Capture and transport are separated by about a lumen's worth of time, and the animal
+    keeps moving in between. Debiting the world at *transport* time therefore took the food
+    from wherever the head had drifted to -- which for an animal that had left the lawn was
+    nowhere at all. Measured before this was fixed: 0.00451 captured into the lumen on the
+    lawn, 0.00000000 removed from the world, and the uterus credited for all of it.
+
+    The check is deliberately end-to-end rather than on the pharynx alone, because the bug
+    lived in the seam between the pharynx and the world.
+    """
+    p = Params()
+    w = World(p.world, np.random.default_rng(0))
+    w.add_food_patch(0.0, 0.0, 6.0, density=1.0, attractant=0.0, length_scale=9.0)
+    sim = Simulation(p, seed=5, world=w, placement=(0.0, 0.0, 0.35))
+    start = float(sim.world.food.sum())
+
+    sim.run(6.0)                                   # feed on the lawn
+    sim.body.pos = np.array([30.0, 30.0])          # picked up, put down on bare agar
+    sim._nodes = sim.body.nodes()
+    carried = sim.pharynx.lumen
+    assert carried > 0.0, "the animal left the lawn with an empty mouth; nothing to test"
+    sim.run(4.0)                                   # long enough for M4 to empty it
+
+    removed = start - float(sim.world.food.sum())
+    held = sim.pharynx.ingested + sim.pharynx.lumen
+    assert abs(held - removed) < 1e-9 * max(removed, 1.0), (
+        "the animal holds %.9f but the plate only lost %.9f -- %.3e appeared from nowhere"
+        % (held, removed, held - removed))
+    assert abs(sim.food_eaten - removed) < 1e-9 * max(removed, 1.0), (
+        "food_eaten %.9f disagrees with the plate's own loss %.9f"
+        % (sim.food_eaten, removed))
 
 
 def test_an_ablated_source_falls_silent_rather_than_reversing():

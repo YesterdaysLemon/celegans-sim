@@ -13,8 +13,9 @@ gradient and obstacles. Plus a browser front end to watch it in.
 The worm is the project. The web app is a media player for it.
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-sh tools/fetch_raw.sh                      # downloads the anatomy, ~600 kB
+python3 -m venv .venv                      # Python 3.10 or newer
+.venv/bin/python -m pip install -e .
+.venv/bin/python tools/fetch_raw.py         # downloads pinned, verified anatomy, ~600 kB
 .venv/bin/python tools/build_dataset.py    # -> data/celegans.json
 .venv/bin/python run.py
 ```
@@ -25,6 +26,7 @@ Then open <http://127.0.0.1:8080>. Also useful:
 .venv/bin/python run.py --headless 60      # 60 simulated seconds, no viewer
 PYTHONPATH=. .venv/bin/python tools/kymo.py            # ASCII kymograph
 PYTHONPATH=. .venv/bin/python tools/diagnose_loop.py   # gait metrics
+.venv/bin/python -m pip install -e '.[test]'            # contributor/test dependencies
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
 ```
 
@@ -221,7 +223,7 @@ now pays for its own amplitude.
 
 ## Does it behave like a worm?
 
-`pytest tests/` — 38 tests, of which these are the load-bearing ones. Reference values are
+`pytest tests/` includes the load-bearing checks below. Reference values are
 measurements on live animals; the model column is the mean and spread over five seeds from
 a single run of `tools/scorecard.py`, so every row describes the same animal. It has not
 always: this table once quoted a crawling speed from day two beside a frequency from day

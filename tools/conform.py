@@ -54,7 +54,7 @@ def body_case():
     return out
 
 
-def full_case():
+def full_case(serotonin_mod1=0.0):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
     Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
@@ -68,6 +68,13 @@ def full_case():
 
     p = Params()
     p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+    # MOD-1 ships at zero, and a term multiplied by zero is not being checked -- which is
+    # exactly how the whole serotonin-gated chloride path reached the runtime unported and
+    # stayed that way, passing every conformance run because absent and zero agree to every
+    # decimal place. The second case below runs it at the coefficient params.py documents.
+    if serotonin_mod1:
+        p = dataclasses.replace(
+            p, modulator=dataclasses.replace(p.modulator, serotonin_mod1=serotonin_mod1))
     # A plate with something on it. A bare world leaves most of the sensory layer reading
     # zero -- and a term that is only ever multiplied by zero is not being checked. The
     # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
@@ -100,6 +107,15 @@ def full_case():
                 # Egg-laying carries four pieces of state and three of them are slow, so a
                 # port that got the vulval muscle right and the resource wrong would look
                 # correct for minutes. All four are compared.
+                # Feeding. `lumen` is what the pharynx holds, `ingested` what reached
+                # the intestine, `eaten` what the plate lost -- three quantities that are
+                # equal only when the animal is standing still on food, which is exactly
+                # the case that hid a conservation bug for the whole of this model's life.
+                # Comparing all three pins capture, transport and the world debit
+                # separately rather than letting one stand in for the others.
+                "ph": [round(float(sim.pharynx.lumen), 12),
+                       round(float(sim.pharynx.ingested), 12),
+                       round(float(sim.food_eaten), 12)],
                 "egl": [round(float(sim.egglaying.vm), 10),
                         round(float(sim.egglaying.eggs), 10),
                         round(float(sim.egglaying.resource), 10),
@@ -183,7 +199,11 @@ def ablated_case():
 
 
 def main():
-    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case()},
+    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case(),
+               # 0.30 is the coefficient ModulatorParams.serotonin_mod1 documents as
+               # adopted-then-shipped-at-zero. Running the reference there is the only way
+               # this path gets compared at all.
+               "mod1": full_case(serotonin_mod1=0.30)},
               sys.stdout)
     return 0
 

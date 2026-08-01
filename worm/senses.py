@@ -430,6 +430,7 @@ class Senses:
             "touch": float(self.touch_state.sum()),
             "habituation": float(self.touch_avail.mean()),
             "gate_forward": gate_fwd, "gate_backward": gate_bwd,
+            "gate_shift": shift,
             "omega": float(self.omega * self.omega_sign),
             "omega_wave_gain": float(wave_gain),
             **({} if mods is None else mods.readout()),
