@@ -122,11 +122,12 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const rand = rng(SEED);
-const normal = () => {                     // Box-Muller
-  const u = Math.max(rand(), 1e-12), v = rand();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-};
+function normalFrom(rand) {                // Box-Muller
+  return () => {
+    const u = Math.max(rand(), 1e-12), v = rand();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  };
+}
 
 function engine() {
   const E = new WebAssembly.Instance(compiled, {
@@ -186,12 +187,12 @@ function plate(E, n) {
   return spots;
 }
 
-function evaluate(genomes) {
+function evaluate(genomes, seed) {
   const E = engine();
   E.setNoise(1);                       // real animals; the genome is what we are comparing
   const spots = plate(E, genomes.length);
   const ids = genomes.map((g, i) => {
-    const id = E.createWorm(1000 + i * 7717 + SEED * 131, ...spots[i]);
+    const id = E.createWorm(1000 + i * 7717 + seed * 131, ...spots[i]);
     g.forEach((v, s) => E.setGene(id, s, v));
     return id;
   });
@@ -206,71 +207,123 @@ function evaluate(genomes) {
 }
 
 const wild = GENES.map((n) => head.scalars[n]);
-const mutate = (g) => g.map((v, s) => clampGene(GENES[s], v + normal() * SIGMA * scaleOf(GENES[s])));
-
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+const sd = (xs) => {
+  if (xs.length < 2) return 0;
+  const m = mean(xs);
+  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1));
+};
+
+/* One experiment: a population, N generations, selection either on or off.
+ *
+ * `select` is the only thing that differs between the two arms, and everything else is
+ * held identical -- same environment seed, same worm seeds, same mutation stream from the
+ * same PRNG seed, same starting population. That is common random numbers, and it is the
+ * whole reason a difference between the arms means anything: animal-to-animal variance is
+ * most of the variance here, and pairing cancels it. tools/compare.py does the same for the
+ * behavioural assays, for the same reason.
+ */
+function runArm(seed, select, log) {
+  const rand = rng(seed);
+  const normal = normalFrom(rand);
+  const mutate = (g) => g.map((v, s) => clampGene(GENES[s], v + normal() * SIGMA * scaleOf(GENES[s])));
+  let population = Array.from({ length: POP }, (_, i) => (i === 0 ? wild.slice() : mutate(wild)));
+  const history = [];
+  for (let gen = 0; gen < GENERATIONS; gen++) {
+    const scored = evaluate(population, seed).map((r, i) => ({ ...r, genome: population[i] }));
+    scored.sort((a, b) => b.eaten - a.eaten);
+    const eaten = scored.map((x) => x.eaten);
+    history.push({ best: eaten[0], median: median(eaten), mean: mean(eaten),
+                   means: GENES.map((_, s) => mean(scored.map((x) => x.genome[s]))) });
+    if (log) {
+      console.log(`  ${log} seed ${seed} gen ${gen}: best ${eaten[0].toFixed(5)} `
+                + `median ${median(eaten).toFixed(5)}`);
+    }
+    /* Truncation selection, or the control.
+     *
+     * The control breeds from parents drawn uniformly at random -- the same number of
+     * offspring, the same mutation operator, the same everything, chosen without reference
+     * to fitness. A rising median in the selected arm means nothing until it beats this,
+     * because a population whose worst members are replaced by *anything* drifts upward
+     * when the measure is noisy and the survivors are resampled.
+     */
+    const pool = select
+      ? scored.slice(0, Math.max(2, Math.floor(POP / 2)))
+      : Array.from({ length: Math.max(2, Math.floor(POP / 2)) },
+                   () => scored[Math.floor(rand() * scored.length)]);
+    const next = [pool[0].genome.slice()];
+    while (next.length < POP) next.push(mutate(pool[next.length % pool.length].genome));
+    population = next;
+  }
+  return history;
+}
+
+const SEEDS = (process.env.EVO_SEEDS || String(SEED)).split(',').map(Number);
+const CONTROL = process.env.EVO_CONTROL !== '0';
 
 console.log(`EVOLUTION -- ${POP} animals, ${GENERATIONS} generations, ${SECONDS} s each, `
-          + `sigma ${SIGMA}, seed ${SEED}`);
-console.log(`  ${GENES.length} genes, fitness = food eaten, each animal on its own lawn\n`);
-console.log('  gen |   best    median      mean | ate anything | wall');
+          + `sigma ${SIGMA}`);
+console.log(`  ${GENES.length} genes, fitness = food eaten, each animal on its own lawn`);
+console.log(`  seeds ${SEEDS.join(', ')}${CONTROL ? ', with a selection-off control arm' : ''}\n`);
 
-// Generation zero is the wild type plus a first round of mutation, so there is variation
-// to select on at all -- a population of clones has nothing for selection to act on and
-// the first generation would be pure noise.
-let population = Array.from({ length: POP }, (_, i) => (i === 0 ? wild.slice() : mutate(wild)));
-const history = [];
 const t0 = Date.now();
-
-for (let gen = 0; gen < GENERATIONS; gen++) {
-  const started = Date.now();
-  const scored = evaluate(population).map((r, i) => ({ ...r, genome: population[i] }));
-  scored.sort((a, b) => b.eaten - a.eaten);
-  const eaten = scored.map((s) => s.eaten);
-  const fed = scored.filter((s) => s.eaten > 0).length;
-  history.push({ gen, best: eaten[0], median: median(eaten), mean: mean(eaten),
-                 genome: scored[0].genome.slice(),
-                 means: GENES.map((_, s) => mean(scored.map((x) => x.genome[s]))) });
-  console.log(`  ${String(gen).padStart(3)} | ${eaten[0].toFixed(5)}  ${median(eaten).toFixed(5)}  `
-            + `${mean(eaten).toFixed(5)} |    ${String(fed).padStart(2)} of ${POP}     `
-            + `| ${((Date.now() - started) / 1000).toFixed(0)}s`);
-
-  // Truncation selection: the better half breed, each producing two mutated offspring, and
-  // the single best is carried over unchanged so a good genome cannot be lost to a bad
-  // draw. Selection lives entirely out here -- the runtime provides mechanism, not policy.
-  const parents = scored.slice(0, Math.max(2, Math.floor(POP / 2)));
-  const next = [parents[0].genome.slice()];
-  while (next.length < POP) next.push(mutate(parents[next.length % parents.length].genome));
-  population = next;
+const runs = [];
+for (const seed of SEEDS) {
+  const sel = runArm(seed, true, 'select ');
+  const ctl = CONTROL ? runArm(seed, false, 'control') : null;
+  runs.push({ seed, sel, ctl });
 }
 
-const first = history[0], last = history[history.length - 1];
-console.log(`\n  best fitness ${first.best.toFixed(5)} -> ${last.best.toFixed(5)}`
-          + `   (x${(last.best / (first.best || 1e-9)).toFixed(2)})`);
-console.log(`  median       ${first.median.toFixed(5)} -> ${last.median.toFixed(5)}`);
-console.log(`  wall clock   ${((Date.now() - t0) / 1000).toFixed(0)} s\n`);
-
-console.log('  gene                            wild      gen0 mean   final mean    moved');
-for (let s = 0; s < GENES.length; s++) {
-  const w = wild[s], a = first.means[s], b = last.means[s];
-  const rel = Math.abs(w) > 1e-12 ? (b - w) / Math.abs(w) : b - a;
-  const flag = Math.abs(rel) > 0.15 ? '  <--' : '';
-  console.log(`  ${GENES[s].padEnd(30)} ${w.toFixed(4).padStart(9)} ${a.toFixed(4).padStart(11)}`
-            + ` ${b.toFixed(4).padStart(12)} ${(rel * 100).toFixed(1).padStart(8)}%${flag}`);
-}
-
-/* A drift arrow is not evidence of selection.
+/* The paired comparison, which is the only part of this worth quoting.
  *
- * With a population this small, a gene under no selection at all still wanders -- the
- * survivors are a handful of animals and their genomes are correlated by descent. The
- * honest reading of the table above is that a marked gene is a *candidate*, to be confirmed
- * by re-running at another seed and seeing whether it moves the same way. Anything that
- * does not survive that is drift, and saying so here is cheaper than believing it later.
+ * Per seed: how much the median moved from the first generation to the last, in the
+ * selected arm and in the control. The difference of those two is the effect of selection
+ * on that seed, with the environment held identical. Reported as a spread over seeds
+ * rather than a single number, because one run is one sample -- this project learned that
+ * on day eighteen, when a four-seed result that "reads as a clear win" turned out to have
+ * every interval overlapping every other.
  */
-console.log('\n  Arrows mark genes that moved more than 15%. With a population this small a');
-console.log('  gene under no selection still drifts, so treat them as candidates and');
-console.log('  re-run at another EVO_SEED before believing any of them.');
+const gain = (h) => h[h.length - 1].median - h[0].median;
+console.log('\n  seed |  selected gain |  control gain |  difference');
+const diffs = [];
+for (const r of runs) {
+  const g = gain(r.sel);
+  if (r.ctl) {
+    const c = gain(r.ctl);
+    diffs.push(g - c);
+    console.log(`  ${String(r.seed).padStart(4)} | ${g.toFixed(5).padStart(14)} `
+              + `| ${c.toFixed(5).padStart(13)} | ${(g - c).toFixed(5).padStart(11)}`);
+  } else {
+    console.log(`  ${String(r.seed).padStart(4)} | ${g.toFixed(5).padStart(14)} |            -- |          --`);
+  }
+}
+
+if (diffs.length) {
+  const m = mean(diffs), s = sd(diffs);
+  // A standard error, not a bootstrap: with a handful of seeds the point is the order of
+  // magnitude of the spread against the effect, not a calibrated interval.
+  const se = diffs.length > 1 ? s / Math.sqrt(diffs.length) : NaN;
+  console.log(`\n  selection - control, over ${diffs.length} seed(s): `
+            + `${m.toFixed(5)} +- ${Number.isNaN(se) ? '?' : se.toFixed(5)} (s.e.)`);
+  const clears = diffs.length > 1 && Math.abs(m) > 2 * se;
+  console.log(clears
+    ? '  The difference clears twice its own standard error. That is worth following up.'
+    : '  The difference does NOT clear twice its own standard error: this run shows no\n'
+      + '  detectable effect of selection. More seeds, more generations, or a fitness\n'
+      + '  measure with more dynamic range -- not a louder reading of this one.');
+}
+
+console.log(`\n  wall clock ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+console.log('\n  gene                            wild   selected mean   control mean');
+for (let s = 0; s < GENES.length; s++) {
+  const selMean = mean(runs.map((r) => r.sel[r.sel.length - 1].means[s]));
+  const ctlMean = runs[0].ctl ? mean(runs.map((r) => r.ctl[r.ctl.length - 1].means[s])) : NaN;
+  console.log(`  ${GENES[s].padEnd(30)} ${wild[s].toFixed(4).padStart(9)}`
+            + ` ${selMean.toFixed(4).padStart(14)} ${(Number.isNaN(ctlMean) ? '--' : ctlMean.toFixed(4)).padStart(14)}`);
+}
+console.log('\n  A gene is only interesting where the selected column differs from the control');
+console.log('  column by more than the columns differ from each other across seeds.');
