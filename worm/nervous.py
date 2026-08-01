@@ -2,10 +2,80 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from functools import lru_cache
+
 import numpy as np
 
-from .dataset import Connectome
+from .dataset import Connectome, _readonly
 from .params import NeuralParams
+
+
+@dataclass(frozen=True)
+class _NeuralAnatomy:
+    """Large, immutable matrices shared by compatible nervous systems."""
+
+    G_gap: np.ndarray
+    G_syn: np.ndarray
+    gap_total: np.ndarray
+    E_pre: np.ndarray
+    E_syn: np.ndarray
+    GE_syn: np.ndarray
+
+
+def _anatomy_for(conn: Connectome, p: NeuralParams) -> _NeuralAnatomy:
+    """Select the cache key fields that actually change anatomical matrices.
+
+    Most ``NeuralParams`` are per-animal dynamics.  Keying on the whole dataclass would
+    quietly duplicate 2.9 MB whenever a noise or oscillator gene changed, even though the
+    matrices stayed identical.
+    """
+    return _build_anatomy(
+        conn, float(p.g_gap), float(p.g_syn), float(p.E_exc), float(p.E_inh),
+        float(p.glucl_strength), tuple(p.glucl_pre), tuple(p.glucl_post),
+        float(p.command_cross_inhibition), tuple(p.command_forward),
+        tuple(p.command_backward))
+
+
+@lru_cache(maxsize=8)
+def _build_anatomy(conn: Connectome, g_gap: float, g_syn: float,
+                   e_exc: float, e_inh: float,
+                   glucl_strength: float, glucl_pre: tuple, glucl_post: tuple,
+                   command_cross_inhibition: float,
+                   command_forward: tuple, command_backward: tuple) -> _NeuralAnatomy:
+    """Build the shared matrices once for an anatomy/receptor configuration."""
+    n = conn.n
+    G_gap = conn.gap * g_gap
+    G_syn = conn.syn * g_syn
+    gap_total = G_gap.sum(axis=1)
+    E_pre = conn.syn_reversal
+    E_syn = np.broadcast_to(E_pre, (n, n)).copy()
+
+    # Glutamate-gated chloride on named targets.  Resolve both anatomical classes and
+    # individual cell names, as the original constructor did.
+    gc = glucl_strength
+    if gc > 0.0:
+        pre = np.union1d(conn.group(*glucl_pre), conn.select(*glucl_pre))
+        post = np.union1d(conn.group(*glucl_post), conn.select(*glucl_post))
+        if len(pre) == 0 or len(post) == 0:
+            raise RuntimeError("glutamate-chloride sets matched nothing: %r -> %r"
+                               % (glucl_pre, glucl_post))
+        E_syn[np.ix_(post, pre)] = (1.0 - gc) * e_exc + gc * e_inh
+
+    x = command_cross_inhibition
+    if x > 0.0:
+        fwd = conn.group(*command_forward)
+        bwd = conn.group(*command_backward)
+        if len(fwd) == 0 or len(bwd) == 0:
+            raise RuntimeError("command pools did not match the connectome: %r / %r"
+                               % (command_forward, command_backward))
+        e = (1.0 - x) * e_exc + x * e_inh
+        E_syn[np.ix_(fwd, bwd)] = e
+        E_syn[np.ix_(bwd, fwd)] = e
+
+    GE_syn = G_syn * E_syn
+    return _NeuralAnatomy(*map(_readonly,
+                               (G_gap, G_syn, gap_total, E_pre, E_syn, GE_syn)))
 
 
 class NervousSystem:
@@ -24,11 +94,14 @@ class NervousSystem:
         self.rng = rng
         n = conn.n
 
-        # Contact counts scaled to conductances once, up front.
-        self.G_gap = conn.gap * p.g_gap                     # (N,N) symmetric, nS
-        self.G_syn = conn.syn * p.g_syn                     # (N,N) [post, pre], nS
-        self.gap_total = self.G_gap.sum(axis=1)             # (N,)
-        self.E_pre = conn.syn_reversal.copy()               # (N,) mV, reversal per presyn
+        # Contact counts scaled to conductances once per compatible anatomy/configuration,
+        # not once per animal.  These arrays remain shared and read-only until ablation;
+        # set_ablated already switches that animal to private copies before writing.
+        anatomy = _anatomy_for(conn, p)
+        self.G_gap = anatomy.G_gap                          # (N,N) symmetric, nS
+        self.G_syn = anatomy.G_syn                          # (N,N) [post, pre], nS
+        self.gap_total = anatomy.gap_total                  # (N,)
+        self.E_pre = anatomy.E_pre                          # (N,) mV, reversal per presyn
 
         # Reversal potential per *synapse*, not per presynaptic neuron.
         #
@@ -51,9 +124,8 @@ class NervousSystem:
         # previous code: membrane potentials and synaptic activations agree exactly, body
         # node positions and net speed to 2e-15 relative. That is the same order as
         # changing BLAS, and well inside the 4e-14 mV the noiseless fixed point is held to.
-        self.E_syn = np.broadcast_to(self.E_pre, (n, n)).copy()      # (N,N) [post, pre]
-        self._apply_receptor_overrides(conn, p)
-        self.GE_syn = self.G_syn * self.E_syn
+        self.E_syn = anatomy.E_syn                          # (N,N) [post, pre]
+        self.GE_syn = anatomy.GE_syn
 
         self.g_leak = p.g_leak
         self.E_leak = p.E_leak
@@ -237,42 +309,6 @@ class NervousSystem:
             self.s[~self.alive] = 0.0
 
     # ------------------------------------------------------------------ initialisation
-    def _apply_receptor_overrides(self, conn: Connectome, p: NeuralParams) -> None:
-        """Retarget named synapses onto an inhibitory receptor. Default: none.
-
-        Only one override is defined so far -- reciprocal inhibition between the forward
-        and backward command pools -- and it is off unless `command_cross_inhibition` is
-        raised. See NeuralParams for what it is for and what it is worth.
-        """
-        # Glutamate-gated chloride on named targets. See NeuralParams.glucl_strength.
-        gc = float(p.glucl_strength)
-        if gc > 0.0:
-            # Resolved by class *and* by individual cell name, because the useful case is
-            # per-cell: ASEL and ASER are one anatomical class and have to be given
-            # opposite receptors on their shared target, or the ON/OFF pair cancels.
-            pre = np.union1d(conn.group(*p.glucl_pre), conn.select(*p.glucl_pre))
-            post = np.union1d(conn.group(*p.glucl_post), conn.select(*p.glucl_post))
-            if len(pre) == 0 or len(post) == 0:
-                raise RuntimeError("glutamate-chloride sets matched nothing: %r -> %r"
-                                   % (p.glucl_pre, p.glucl_post))
-            self.E_syn[np.ix_(post, pre)] = (1.0 - gc) * p.E_exc + gc * p.E_inh
-
-        x = float(p.command_cross_inhibition)
-        if x <= 0.0:
-            return
-        fwd = conn.group(*p.command_forward)
-        bwd = conn.group(*p.command_backward)
-        if len(fwd) == 0 or len(bwd) == 0:
-            raise RuntimeError("command pools did not match the connectome: %r / %r"
-                               % (p.command_forward, p.command_backward))
-        # Blend rather than switch, so the coefficient is continuous and 0 is exactly the
-        # unmodified model. Both directions of the reciprocal pair, and only the chemical
-        # synapses -- the gap junctions between the pools are ohmic and have no reversal
-        # to change.
-        e = (1.0 - x) * p.E_exc + x * p.E_inh
-        self.E_syn[np.ix_(fwd, bwd)] = e
-        self.E_syn[np.ix_(bwd, fwd)] = e
-
     def _resting_potentials(self, s_half: float) -> np.ndarray:
         """Solve for the network's resting state with every release curve half-activated.
 
@@ -300,6 +336,10 @@ class NervousSystem:
              + s_half * (self.GE_syn * self.d_rest).sum(axis=1)
              + self.n0 * self.g_adapt * self.p.E_K
              + self.m0 * self.g_ca * self.p.E_Ca)
+        # This is too small to benefit from a BLAS thread team. Population drivers can
+        # opt into deterministic one-thread construction with worm.threads before their
+        # first NumPy import; doing it here would be too late and would override a host
+        # application's policy merely because it imported this library.
         V = np.linalg.solve(A, b)
         if not np.all(np.isfinite(V)):
             raise RuntimeError("resting-potential solve did not converge")
