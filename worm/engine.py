@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from dataclasses import dataclass
 
 import numpy as np
 
 from . import dataset
 from .body import Body
+from .errors import DivergentSimulation
 from .modulators import Modulators
 from .egglaying import EggLaying
 from .pharynx import Pharynx
@@ -34,11 +36,21 @@ from .senses import Senses
 from .world import World, default_world
 
 
+@dataclass(frozen=True)
+class FeedingRequest:
+    """Food an animal wants withdrawn after every animal has sampled this tick."""
+
+    x: float
+    y: float
+    amount: float
+
+
 class Simulation:
     def __init__(self, params: Params | None = None, seed: int = 0,
                  world: World | None = None,
                  placement: tuple[float, float, float] | None = None):
         self.p = params or Params()
+        self.p.validate()
         self.rng = np.random.default_rng(seed)
         self.conn = dataset.load(e_exc=self.p.neural.E_exc, e_inh=self.p.neural.E_inh)
 
@@ -103,6 +115,24 @@ class Simulation:
 
     # ------------------------------------------------------------------------- stepping
     def step(self) -> None:
+        """Advance one animal and its private/single-animal world by one tick.
+
+        This remains the backwards-compatible entry point.  Shared-world callers must use
+        :class:`Population`, which settles feeding simultaneously and advances the world
+        once after every animal has taken its turn.
+        """
+        request = self.step_animal()
+        if request is not None:
+            self.food_eaten += self.world.eat(request.x, request.y, request.amount)
+        self.world.step(self.dt)
+
+    def step_animal(self) -> FeedingRequest | None:
+        """Advance only animal-owned state and return its unsettled feeding request.
+
+        The world time and food field are deliberately not mutated here.  ``Population``
+        calls this for every animal against one shared snapshot, settles the returned
+        requests in a batch, and then advances the shared world exactly once.
+        """
         p = self.p
         nodes = self._nodes
 
@@ -141,8 +171,8 @@ class Simulation:
         food_here = float(self.world.sample(self.world.food, head[0], head[1]))
         moved = self.pharynx.step(activation, food_here, self.modulators,
                                   alive=self.nervous.alive)
-        if moved > 0.0:
-            self.food_eaten += self.world.eat(head[0], head[1], moved)
+        request = (FeedingRequest(float(head[0]), float(head[1]), float(moved))
+                   if moved > 0.0 else None)
 
         # Egg-laying. Fed by what the pharynx actually transported, so the two systems are
         # coupled the way they are in the animal: eggs are made out of food. The vulva is
@@ -155,7 +185,6 @@ class Simulation:
             vulva = self._nodes[len(self._nodes) // 2]
             self.world.lay_egg(vulva[0], vulva[1])
 
-        self.world.step(self.dt)
         self.t += self.dt
         self.steps += 1
 
@@ -183,9 +212,59 @@ class Simulation:
             h["curvature_mid"].append(float(curvature[len(curvature) // 2]))
             h["attractant"].append(self.senses.readout.get("attractant", 0.0))
 
-    def run(self, seconds: float) -> None:
+        return request
+
+    def run(self, seconds: float, check_every: int | None = 1000) -> None:
+        """Run a single-animal simulation, periodically rejecting divergent states."""
+        _validate_check_interval(check_every)
+        if check_every is not None:
+            self.check_invariants()
         for _ in range(int(round(seconds / self.dt))):
             self.step()
+            if check_every is not None and self.steps % check_every == 0:
+                self.check_invariants()
+        if check_every is not None:
+            self.check_invariants()
+
+    def check_invariants(self, max_path_speed: float = 5.0) -> None:
+        """Raise ``DivergentSimulation`` when the animal is no longer physical.
+
+        This is intentionally a harness-level check rather than work in the 2 kHz hot
+        loop.  ``run`` and ``Population`` call it every 1000 steps by default; evolutionary
+        evaluators may choose another interval and treat the exception as fitness zero.
+        """
+        arrays = {
+            "body angles": self.body.theta,
+            "body velocity": self.body.qdot,
+            "membrane potentials": self.nervous.V,
+        }
+        for name, values in arrays.items():
+            if not np.isfinite(values).all():
+                raise DivergentSimulation("%s are not finite" % name)
+
+        curvature = self.body.curvature()
+        curvature_limit = np.pi / self.body.l
+        peak_curvature = float(np.max(np.abs(curvature)))
+        if not np.isfinite(peak_curvature) or peak_curvature >= curvature_limit:
+            raise DivergentSimulation(
+                "curvature %.6g /mm exceeds the %.6g /mm link limit"
+                % (peak_curvature, curvature_limit))
+
+        for name, value in (("path speed", self.path_speed), ("net speed", self.speed)):
+            if not np.isfinite(value):
+                raise DivergentSimulation("%s is not finite" % name)
+        if self.path_speed >= max_path_speed:
+            raise DivergentSimulation(
+                "path speed %.6g mm/s exceeds %.6g mm/s" % (self.path_speed, max_path_speed))
+
+        nodes = self.body.nodes()
+        if not np.isfinite(nodes).all():
+            raise DivergentSimulation("body coordinates are not finite")
+        radius = np.hypot(nodes[:, 0], nodes[:, 1])
+        if float(radius.max()) > self.world.extent:
+            raise DivergentSimulation(
+                "animal left the dish (radius %.6g mm > %.6g mm)"
+                % (float(radius.max()), self.world.extent))
 
     # -------------------------------------------------------------------------- control
     def set_medium(self, name: str) -> None:
@@ -252,3 +331,64 @@ class Simulation:
             "egglaying": {k: round(float(v), 5) for k, v in self.egglaying.readout().items()},
             "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
         }
+
+
+class Population:
+    """A collection of animals sharing one world and one explicit world timebase."""
+
+    def __init__(self, simulations, check_every: int | None = 1000):
+        simulations = tuple(simulations)
+        if not simulations:
+            raise ValueError("a population needs at least one simulation")
+        if len({id(sim) for sim in simulations}) != len(simulations):
+            raise ValueError("a simulation may appear only once in a population")
+        world = simulations[0].world
+        dt = simulations[0].dt
+        if any(sim.world is not world for sim in simulations):
+            raise ValueError("every animal in a population must share the same World instance")
+        if any(sim.dt != dt for sim in simulations):
+            raise ValueError("every animal in a population must use the same timestep")
+        if any(sim.t != simulations[0].t for sim in simulations):
+            raise ValueError("population animals must start at the same simulation time")
+        if not np.isclose(world.t, simulations[0].t, rtol=0.0, atol=1e-12):
+            raise ValueError("shared world time must match animal simulation time")
+        _validate_check_interval(check_every)
+
+        self.simulations = simulations
+        self.world = world
+        self.dt = dt
+        self.check_every = check_every
+        self.steps = 0
+        if check_every is not None:
+            for sim in self.simulations:
+                sim.check_invariants()
+
+    def step(self) -> None:
+        """Advance every animal, settle food simultaneously, then age the world once."""
+        requests = [sim.step_animal() for sim in self.simulations]
+        active = [(i, request) for i, request in enumerate(requests) if request is not None]
+        if active:
+            allocations = self.world.eat_batch(
+                [(request.x, request.y, request.amount) for _, request in active])
+            for (sim_i, _), eaten in zip(active, allocations):
+                self.simulations[sim_i].food_eaten += float(eaten)
+
+        self.world.step(self.dt)
+        self.steps += 1
+        if self.check_every is not None and self.steps % self.check_every == 0:
+            for sim in self.simulations:
+                sim.check_invariants()
+
+    def run(self, seconds: float) -> None:
+        for _ in range(int(round(seconds / self.dt))):
+            self.step()
+        if self.check_every is not None:
+            for sim in self.simulations:
+                sim.check_invariants()
+
+
+def _validate_check_interval(check_every: int | None) -> None:
+    if check_every is not None and (
+            isinstance(check_every, bool) or not isinstance(check_every, int)
+            or check_every <= 0):
+        raise ValueError("check_every must be a positive integer or None")

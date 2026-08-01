@@ -16,8 +16,11 @@ transport coefficients.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
+from .errors import DivergentSimulation
 from .params import WorldParams
 
 
@@ -108,6 +111,7 @@ class World:
     # -------------------------------------------------------------------------- fields
     def temperature(self, x, y):
         """Linear thermal gradient across the plate, cold at -x and warm at +x."""
+        self._validate_coordinates(x, y)
         f = (np.asarray(x) + self.extent) / (2.0 * self.extent)
         return self.p.temp_cold + (self.p.temp_warm - self.p.temp_cold) * np.clip(f, 0, 1)
 
@@ -124,6 +128,7 @@ class World:
 
     def sample(self, field: np.ndarray, x, y):
         """Bilinear sample of a grid field at world coordinates."""
+        self._validate_coordinates(x, y)
         fx = (np.asarray(x, dtype=float) + self.extent) / self.h - 0.5
         fy = (np.asarray(y, dtype=float) + self.extent) / self.h - 0.5
         x0 = np.clip(np.floor(fx).astype(int), 0, self.g - 2)
@@ -147,10 +152,10 @@ class World:
         that decayed away during any measurement longer than a few seconds, and since
         oxygen is derived from this field the animal was also eating its own O2 gradient.
         """
-        i = int(np.clip((y + self.extent) / self.h, 0, self.g - 1))
-        j = int(np.clip((x + self.extent) / self.h, 0, self.g - 1))
-        lo_i, hi_i = max(0, i - 1), min(self.g, i + 2)
-        lo_j, hi_j = max(0, j - 1), min(self.g, j + 2)
+        amount = float(amount)
+        if not np.isfinite(amount) or amount < 0.0:
+            raise ValueError("feeding amount must be finite and >= 0 (got %r)" % amount)
+        lo_i, hi_i, lo_j, hi_j = self._feeding_bounds(float(x), float(y))
         patch = self.food[lo_i:hi_i, lo_j:hi_j]
         available = float(patch.sum())
         if available <= 0.0:
@@ -158,6 +163,85 @@ class World:
         take = min(amount, available)
         patch *= 1.0 - take / available
         return take
+
+    def eat_batch(self, requests) -> np.ndarray:
+        """Settle simultaneous feeding requests against one food-field snapshot.
+
+        Each request is ``(x, y, amount)``.  A small bipartite max-flow settlement lets a
+        flexible animal use another cell before taking food that only a constrained animal
+        can reach. Requests with the same neighbourhood are grouped and split in proportion
+        to demand. This maximises feasible ingestion, conserves food, and is independent of
+        animal iteration order; results correspond one-for-one with the input requests.
+        """
+        requests = list(requests)
+        allocations = np.zeros(len(requests), dtype=float)
+        groups = {}
+
+        for request_i, (x, y, amount) in enumerate(requests):
+            amount = float(amount)
+            if not np.isfinite(amount) or amount < 0.0:
+                raise ValueError("feeding amount must be finite and >= 0 (got %r)" % amount)
+            lo_i, hi_i, lo_j, hi_j = self._feeding_bounds(float(x), float(y))
+            patch = self.food[lo_i:hi_i, lo_j:hi_j]
+            cells = tuple(
+                (lo_i + int(local_i), lo_j + int(local_j))
+                for local_i, local_j in np.argwhere(patch > 0.0)
+            )
+            if amount > 0.0 and cells:
+                groups.setdefault(cells, []).append((request_i, amount))
+
+        if not groups:
+            return allocations
+
+        group_items = sorted(groups.items(), key=lambda item: item[0])
+        cells = sorted({cell for reachable, _ in group_items for cell in reachable})
+        cell_index = {cell: i for i, cell in enumerate(cells)}
+        source = 0
+        group0 = 1
+        cell0 = group0 + len(group_items)
+        sink = cell0 + len(cells)
+        graph = [[] for _ in range(sink + 1)]
+        source_edges = []
+        sink_edges = []
+
+        for group_i, (reachable, members) in enumerate(group_items):
+            demand = math.fsum(amount for _, amount in members)
+            source_edges.append(_add_flow_edge(graph, source, group0 + group_i, demand))
+            for cell in reachable:
+                _add_flow_edge(graph, group0 + group_i, cell0 + cell_index[cell], demand)
+        for cell_i, cell in enumerate(cells):
+            sink_edges.append(_add_flow_edge(
+                graph, cell0 + cell_i, sink, float(self.food[cell])))
+
+        _max_flow(graph, source, sink)
+        for (_, members), edge in zip(group_items, source_edges):
+            demand = math.fsum(amount for _, amount in members)
+            received = demand - edge[2]
+            for request_i, amount in members:
+                allocations[request_i] = received * amount / demand
+
+        for cell, edge in zip(cells, sink_edges):
+            withdrawn = float(self.food[cell]) - edge[2]
+            self.food[cell] = max(0.0, float(self.food[cell]) - withdrawn)
+        return allocations
+
+    def _feeding_bounds(self, x: float, y: float):
+        self._validate_coordinates(x, y)
+        i = int(np.clip((y + self.extent) / self.h, 0, self.g - 1))
+        j = int(np.clip((x + self.extent) / self.h, 0, self.g - 1))
+        return (max(0, i - 1), min(self.g, i + 2),
+                max(0, j - 1), min(self.g, j + 2))
+
+    def _validate_coordinates(self, x, y) -> None:
+        """Fail rather than laundering a divergent animal into a rim-cell reading."""
+        x, y = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
+        if not np.isfinite(x).all() or not np.isfinite(y).all():
+            raise DivergentSimulation("world coordinates are not finite")
+        radius = np.hypot(x, y)
+        if np.any(radius > self.extent):
+            raise DivergentSimulation(
+                "animal left the dish (radius %.6g mm > %.6g mm)"
+                % (float(np.max(radius)), self.extent))
 
     def step(self, dt: float) -> None:
         """Advance the diffusing fields, in chunks of the field timestep."""
@@ -200,6 +284,51 @@ class World:
                 direction = d[hit] / np.maximum(dist[hit, None], 1e-9)
                 f[hit] += stiffness * pen[hit, None] * direction
         return f
+
+
+def _add_flow_edge(graph, source: int, target: int, capacity: float):
+    """Add a residual-network edge and return its mutable forward record."""
+    forward = [target, len(graph[target]), float(capacity)]
+    reverse = [source, len(graph[source]), 0.0]
+    graph[source].append(forward)
+    graph[target].append(reverse)
+    return forward
+
+
+def _max_flow(graph, source: int, sink: int) -> None:
+    """Dinic max flow for the tiny (at most nine cells/animal) feeding graph."""
+    eps = 1e-15
+    while True:
+        level = [-1] * len(graph)
+        level[source] = 0
+        queue = [source]
+        for node in queue:
+            for target, _reverse, capacity in graph[node]:
+                if capacity > eps and level[target] < 0:
+                    level[target] = level[node] + 1
+                    queue.append(target)
+        if level[sink] < 0:
+            return
+
+        next_edge = [0] * len(graph)
+
+        def send(node: int, limit: float) -> float:
+            if node == sink:
+                return limit
+            while next_edge[node] < len(graph[node]):
+                edge = graph[node][next_edge[node]]
+                target, reverse, capacity = edge
+                if capacity > eps and level[target] == level[node] + 1:
+                    pushed = send(target, min(limit, capacity))
+                    if pushed > eps:
+                        edge[2] -= pushed
+                        graph[target][reverse][2] += pushed
+                        return pushed
+                next_edge[node] += 1
+            return 0.0
+
+        while send(source, math.inf) > eps:
+            pass
 
 
 def _smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:

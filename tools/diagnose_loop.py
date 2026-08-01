@@ -33,6 +33,8 @@ def analyse(sim: Simulation, seconds: float, warmup: float = 4.0) -> dict:
     watch = {c: conn.group(c) for c in ("DB", "VB", "DA", "VA", "DD", "VD", "AVB", "AVA")}
     for i in range(n):
         sim.step()
+        if sim.steps % 1000 == 0:
+            sim.check_invariants()
         if i % stride == 0:
             kappa.append(sim.body.curvature().copy())
             d, v = sim.muscles.row_tension()
