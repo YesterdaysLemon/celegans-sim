@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "celegans-sim"
+version = "0.0.0"
+description = "A connectome-driven C. elegans neuromechanical simulator"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0,<9"]
+
+[tool.setuptools]
+packages = ["worm", "tools", "data"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.package-data]
+data = ["celegans.json", "raw_sources.json", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

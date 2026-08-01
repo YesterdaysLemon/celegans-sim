@@ -128,3 +128,11 @@ jobs:
           node wasm/conform.mjs
         env:
           PYTHONPATH: .
+
+      # Conformance runs one animal, because it compares against a Python Simulation and a
+      # Simulation is one animal. These are the invariants that only exist when several
+      # share a plate -- the ordering of the world advance, whether animals perturb one
+      # another, and whether a population can be turned over. They need no Python
+      # reference, so they cost only the model and the runtime built above.
+      - name: the population behaves as a population
+        run: node wasm/population.mjs

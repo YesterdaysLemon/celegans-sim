@@ -20,13 +20,20 @@ would produce a worm that looks plausible and is wrong, which is the worst outco
 from __future__ import annotations
 
 import collections
-import hashlib
 import json
 import os
 import re
-import sys
 
 import xlrd
+
+try:
+    from .raw_sources import (
+        SourceVerificationError,
+        dataset_source_metadata,
+        verify_raw_sources,
+    )
+except ImportError:  # Executed as ``python tools/build_dataset.py``.
+    from raw_sources import SourceVerificationError, dataset_source_metadata, verify_raw_sources
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "data", "raw")
@@ -149,14 +156,6 @@ def canonical(name: str) -> str:
     return name
 
 
-def sha256(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def sheet(book_path: str, name: str):
     return xlrd.open_workbook(book_path).sheet_by_name(name)
 
@@ -170,12 +169,10 @@ def rows(sh, ncols: int):
 
 
 def build() -> dict:
-    tables = os.path.join(RAW, "CElegansNeuronTables.xls")
-    types_path = os.path.join(RAW, "NeuronType.xls")
-    cook_path = os.path.join(RAW, "herm_full_edgelist.csv")
-    for p in (tables, types_path, cook_path):
-        if not os.path.exists(p):
-            sys.exit("missing raw input: %s (run tools/fetch_raw.sh)" % p)
+    approved = verify_raw_sources(RAW)
+    tables = str(approved["CElegansNeuronTables.xls"])
+    types_path = str(approved["NeuronType.xls"])
+    cook_path = str(approved["herm_full_edgelist.csv"])
 
     # ---------------------------------------------------------------- neuron roster
     ntype = sheet(types_path, "NeuronType.csv")
@@ -432,23 +429,7 @@ def build() -> dict:
         "meta": {
             "description": "C. elegans hermaphrodite connectome, muscle map and anatomy, "
                            "assembled for the celegans-sim neuromechanical simulator.",
-            "sources": {
-                "CElegansNeuronTables.xls": {
-                    "sha256": sha256(tables),
-                    "origin": "openworm/c302 @ master :: c302/data/CElegansNeuronTables.xls",
-                    "provenance": "White et al. 1986; Chen, Hall & Chklovskii 2006",
-                },
-                "NeuronType.xls": {
-                    "sha256": sha256(types_path),
-                    "origin": "wormatlas.org/images/NeuronType.xls",
-                    "provenance": "WormAtlas neuron table (soma positions)",
-                },
-                "herm_full_edgelist.csv": {
-                    "sha256": sha256(cook_path),
-                    "origin": "openworm/c302 @ master :: c302/data/herm_full_edgelist.csv",
-                    "provenance": "Cook et al. 2019 (used only to cross-check the muscle roster)",
-                },
-            },
+            "sources": dataset_source_metadata(),
             "conventions": {
                 "soma_pos": "0 = tip of nose, 1 = tip of tail",
                 "synapse_weight": "number of reconstructed synaptic contacts",
@@ -503,7 +484,10 @@ def report(d: dict) -> None:
 
 
 if __name__ == "__main__":
-    data = build()
+    try:
+        data = build()
+    except SourceVerificationError as exc:
+        raise SystemExit("raw source verification failed: %s" % exc) from None
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as fh:
         json.dump(data, fh, separators=(",", ":"))
