@@ -93,6 +93,21 @@ export function connect() {
   socketURL().then((url) => { endpoint = url; dial(url); });
 }
 
+/* Keep endpoint diagnostics as text, even when the endpoint came from `?ws=`.
+ *
+ * A query-string value is untrusted page input. Building this banner with innerHTML made
+ * a failed connection turn markup in a crafted WebSocket URL into live same-origin DOM.
+ * Construct the three deliberately styled nodes instead, and give every value to the DOM
+ * as text so the diagnostic can quote the exact endpoint without interpreting it. */
+function showBanner(title, message, command) {
+  const content = el('banner').firstElementChild;
+  const heading = document.createElement('b');
+  heading.textContent = title;
+  const code = document.createElement('code');
+  code.textContent = command;
+  content.replaceChildren(heading, document.createTextNode(message), code);
+}
+
 function dial(url) {
   ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
@@ -106,10 +121,12 @@ function dial(url) {
     // Name the endpoint. A bare "Retrying…" is what made a wrong --ws-port an unexplained
     // loop: the one fact that identifies the misconfiguration was the one fact the page
     // would not say. After a few goes, say what to do about it as well.
-    el('banner').firstElementChild.innerHTML = attempts < 3
-      ? `<b>Simulation disconnected</b>Retrying ${endpoint}…<code>python run.py</code>`
-      : `<b>Nothing is listening on ${endpoint}</b>Start the server, or point the viewer `
-        + `at the right port with <code>?server&amp;ws=PORT</code>`;
+    if (attempts < 3) {
+      showBanner('Simulation disconnected', `Retrying ${endpoint}…`, 'python run.py');
+    } else {
+      showBanner(`Nothing is listening on ${endpoint}`,
+        'Start the server, or point the viewer at the right port with ', '?server&ws=PORT');
+    }
     setTimeout(connect, 1500);
   };
   ws.onmessage = (ev) => {
@@ -134,10 +151,9 @@ function onStaleProtocol() {
   if (stale) return;
   stale = true;
   el('banner').classList.remove('gone');
-  el('banner').firstElementChild.innerHTML =
-    `<b>The server is out of date</b>This viewer reads frame protocol ${PROTOCOL}; the `
-    + `server is sending protocol 1, which carries no egg state. Restart it from this `
-    + `checkout.<code>python run.py</code>`;
+  showBanner('The server is out of date',
+    `This viewer reads frame protocol ${PROTOCOL}; the server is sending protocol 1, `
+    + 'which carries no egg state. Restart it from this checkout.', 'python run.py');
   if (ws) ws.close();
 }
 

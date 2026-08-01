@@ -60,17 +60,27 @@ function close(server) {
  */
 async function freePorts() {
   for (let attempt = 0; attempt < 20; attempt++) {
-    const a = net.createServer(), b = net.createServer();
+    // Keep rejected candidates bound until selection finishes. Windows commonly assigns
+    // ephemeral ports consecutively, so opening two, closing both and retrying can produce
+    // adjacent pairs forever; holding the adjacent one makes the next candidate advance.
+    const held = [];
     try {
+      const a = net.createServer();
       await listen(a, 0);
-      await listen(b, 0);
-      const http = a.address().port, ws = b.address().port;
-      await close(a);
-      await close(b);
-      if (http < 65535 && ws < 65535 && Math.abs(http - ws) > 1) return { http, ws };
+      held.push(a);
+      const http = a.address().port;
+      let ws = null;
+      for (let candidate = 0; candidate < 4; candidate++) {
+        const b = net.createServer();
+        await listen(b, 0);
+        held.push(b);
+        const port = b.address().port;
+        if (port < 65535 && Math.abs(http - port) > 1) { ws = port; break; }
+      }
+      for (const server of held.reverse()) await close(server);
+      if (http < 65535 && ws !== null) return { http, ws };
     } catch {
-      if (a.listening) await close(a);
-      if (b.listening) await close(b);
+      for (const server of held.reverse()) if (server.listening) await close(server);
     }
   }
   throw new Error('could not find two free nonconsecutive ports');
@@ -399,6 +409,37 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(failed, []);
 
+  /* A user-supplied socket URL is useful behind a reverse proxy, but it is still untrusted
+   * page input. The failed-endpoint banner must quote it as text rather than turn markup
+   * in the query string into same-origin DOM. Use this HTTP server as a deliberately bad
+   * WebSocket endpoint so the diagnostic path runs immediately. */
+  const hostilePage = await browser.newPage();
+  try {
+    await hostilePage.evaluateOnNewDocument(() => { window.__transportXss = 0; });
+    const marker = '<img src=x onerror=window.__transportXss=1>';
+    const hostileEndpoint = `ws://127.0.0.1:${httpPort}/${marker}`;
+    await hostilePage.goto(`${base}?server&ws=${encodeURIComponent(hostileEndpoint)}`,
+      { waitUntil: 'load' });
+    await hostilePage.waitForFunction(() => {
+      const text = document.getElementById('banner')?.textContent || '';
+      return text.includes('Simulation disconnected') || text.includes('Nothing is listening');
+    }, { timeout: 5000 });
+    await delay(250);                 // give an injected <img onerror> time to fire
+    const hostileBanner = await hostilePage.evaluate(() => ({
+      executed: window.__transportXss,
+      images: document.querySelectorAll('#banner img').length,
+      text: document.getElementById('banner').textContent,
+    }));
+    assert.equal(hostileBanner.executed, 0,
+      'markup in ?ws= executed while the failed endpoint was rendered');
+    assert.equal(hostileBanner.images, 0,
+      'markup in ?ws= became a live element in the failed-endpoint banner');
+    assert.ok(hostileBanner.text.includes(marker),
+      'the failed-endpoint banner did not preserve the endpoint as inert text');
+  } finally {
+    await hostilePage.close();
+  }
+
   console.log(
     `Python transport: ${transport.neurons} neurons, ${transport.muscles} muscles, ` +
     `${transport.fieldN}x${transport.fieldN} field, ${rendered.kymoFilled} kymograph columns.`,
@@ -413,6 +454,7 @@ try {
     `Frequency buffer stayed at ${still.freq} entries through 500 ms of paused frames ` +
     `and ${stress.calls} stats calls at one timestamp.`,
   );
+  console.log('A crafted ?ws= endpoint remained inert text in the disconnect banner.');
   console.log('The ?server viewer receives, renders, and controls the Python model.');
 } catch (error) {
   const output = serverOutput.join('').trim();
