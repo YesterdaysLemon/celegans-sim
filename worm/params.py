@@ -21,7 +21,11 @@ because at C. elegans scale SI numbers are all 1e-9 and unreadable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+import math
+from dataclasses import dataclass, field, fields, is_dataclass, replace
+from numbers import Integral, Real
+
+from .errors import InvalidGenome
 
 
 @dataclass(frozen=True)
@@ -1890,7 +1894,96 @@ class Params:
     egglaying: EggLayingParams = field(default_factory=EggLayingParams)
     medium: MediumParams = field(default_factory=lambda: MEDIA["agar"])
 
+    def validate(self) -> "Params":
+        """Reject parameter sets that make the equations singular or nonphysical.
+
+        Optimisers are expected to construct instances with ``dataclasses.replace``.
+        Dataclasses intentionally do not validate on assignment, so the complete tree is
+        checked at the boundary where it becomes a simulation.  The exception type lets
+        an evaluator score a bad candidate as lethal without losing a worker process.
+        """
+        values = dict(_param_values(self))
+        problems = []
+
+        for path, value in values.items():
+            if (isinstance(value, Real) and not isinstance(value, bool)
+                    and not math.isfinite(value)):
+                problems.append("%s must be finite (got %r)" % (path, value))
+
+        def positive(path: str) -> None:
+            value = values[path]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                problems.append("%s must be a real number (got %r)" % (path, value))
+            elif math.isfinite(value) and value <= 0.0:
+                problems.append("%s must be > 0 (got %r)" % (path, value))
+
+        def nonnegative(path: str) -> None:
+            value = values[path]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                problems.append("%s must be a real number (got %r)" % (path, value))
+            elif math.isfinite(value) and value < 0.0:
+                problems.append("%s must be >= 0 (got %r)" % (path, value))
+
+        # Direct divisors and the physical coefficients whose sign defines the model.
+        for path in (
+            "neural.C_m", "neural.g_leak", "neural.a_rise", "neural.a_decay",
+            "neural.ca_slope", "neural.k_slope", "neural.dt",
+            "muscle.C_m", "muscle.g_leak",
+            "body.length", "body.radius_max", "body.EI", "body.dt",
+            "medium.c_tangential", "medium.c_normal",
+            "world.radius", "world.field_dt", "world.o2_length_scale",
+            "pharynx.pump_duration", "pharynx.lumen_capacity",
+        ):
+            positive(path)
+
+        # Every first-order time constant appears in a denominator or exponential rate.
+        for path in values:
+            leaf = path.rsplit(".", 1)[-1]
+            if leaf.startswith("tau_") or "_tau" in leaf:
+                positive(path)
+
+        nonnegative("body.internal_damping")
+        if (isinstance(values["medium.c_normal"], Real)
+                and not isinstance(values["medium.c_normal"], bool)
+                and isinstance(values["medium.c_tangential"], Real)
+                and not isinstance(values["medium.c_tangential"], bool)
+                and math.isfinite(values["medium.c_normal"])
+                and math.isfinite(values["medium.c_tangential"])
+                and values["medium.c_normal"] < values["medium.c_tangential"]):
+            problems.append("medium.c_normal must be >= medium.c_tangential")
+
+        for path in (
+            "world.diffusion_attractant", "world.diffusion_repellent",
+            "world.diffusion_oxygen", "world.decay_attractant",
+            "world.food_diffusion_scale", "world.ingestion_rate",
+        ):
+            nonnegative(path)
+
+        for path, minimum in (
+            ("neural.gap_iters", 1), ("body.n_links", 2), ("body.substeps", 1),
+            ("world.grid", 2), ("egglaying.rest_samples", 1),
+        ):
+            value = values[path]
+            if not isinstance(value, Integral) or isinstance(value, bool) or value < minimum:
+                problems.append("%s must be an integer >= %d (got %r)"
+                                % (path, minimum, value))
+
+        if problems:
+            raise InvalidGenome("invalid simulation parameters: " + "; ".join(problems))
+        return self
+
     def with_medium(self, name: str) -> "Params":
         if name not in MEDIA:
             raise ValueError("unknown medium %r (have %s)" % (name, sorted(MEDIA)))
         return replace(self, medium=MEDIA[name])
+
+
+def _param_values(value, prefix: str = ""):
+    """Yield dotted paths and leaf values from the nested parameter dataclasses."""
+    for item in fields(value):
+        child = getattr(value, item.name)
+        path = "%s.%s" % (prefix, item.name) if prefix else item.name
+        if is_dataclass(child):
+            yield from _param_values(child, path)
+        else:
+            yield path, child

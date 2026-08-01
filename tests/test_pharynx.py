@@ -140,7 +140,9 @@ def test_food_is_conserved_when_the_animal_moves_between_capture_and_transport()
     sim._nodes = sim.body.nodes()
     carried = sim.pharynx.lumen
     assert carried > 0.0, "the animal left the lawn with an empty mouth; nothing to test"
-    sim.run(4.0)                                   # long enough for M4 to empty it
+    # This assay deliberately teleports the animal; disable the evolutionary divergence
+    # gate so the tracker spike from that intervention does not obscure food accounting.
+    sim.run(4.0, check_every=None)                 # long enough for M4 to empty it
 
     removed = start - float(sim.world.food.sum())
     held = sim.pharynx.ingested + sim.pharynx.lumen

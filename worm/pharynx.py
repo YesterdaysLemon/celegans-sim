@@ -88,6 +88,8 @@ class Pharynx:
         self.ingested = 0.0       # total transported, in patch density units
         self.captured = 0.0       # what the last pump took in, for the readout
         self._alive = None        # set each step; see _dev()
+        self._pending_want: float | None = None
+        self._pending_drive = 0.0
 
     # ------------------------------------------------------------------------- stepping
     def step(self, activation: np.ndarray, food_at_mouth: float, take, mods=None,
@@ -114,6 +116,22 @@ class Pharynx:
         reverses it. Ablating MC that way drove the rate to a hard zero rather than to the
         several-fold slowdown eat-2 animals actually show.
         """
+        want = self.prepare_step(activation, food_at_mouth, mods, alive=alive)
+        obtained = float(take(want)) if want > 0.0 else 0.0
+        return self.finish_step(obtained)
+
+    def prepare_step(self, activation: np.ndarray, food_at_mouth: float, mods=None,
+                     alive: np.ndarray | None = None) -> float:
+        """Advance through capture demand, deferring food allocation and transport.
+
+        Population drivers call this for every animal against one food-field snapshot,
+        settle the returned demands together, and pass each actual allocation to
+        :meth:`finish_step`.  The regular :meth:`step` method remains the single-animal
+        wrapper around the same two phases.
+        """
+        if self._pending_want is not None:
+            raise RuntimeError("finish_step must complete the pending pharynx step")
+
         p = self.p
         a = activation
         self._alive = alive
@@ -151,7 +169,9 @@ class Pharynx:
                 self.pumping = False
         if not self.pumping and self.phase >= 1.0:
             self.phase = 0.0
-            self._fire(a, food_at_mouth, take)
+            want = self._start_pump(a, food_at_mouth)
+        else:
+            want = 0.0
 
         # -- isthmus peristalsis ---------------------------------------------------------
         # M4 is what moves the lumen's contents back to the intestine. Without it the
@@ -159,7 +179,28 @@ class Pharynx:
         # property of the pump: capture fills the lumen, M4 empties it, and a full lumen
         # stops further capture.
         m4 = self._dev(a, self.m4)
-        drive = max(0.0, p.m4_transport + p.m4_gain * max(m4, 0.0))
+        self._pending_drive = max(0.0, p.m4_transport + p.m4_gain * max(m4, 0.0))
+        self._pending_want = float(want)
+        return self._pending_want
+
+    def finish_step(self, obtained: float) -> float:
+        """Commit an actual capture allocation, then run isthmus transport."""
+        if self._pending_want is None:
+            raise RuntimeError("prepare_step must run before finish_step")
+
+        obtained = float(obtained)
+        want = self._pending_want
+        if not np.isfinite(obtained) or obtained < 0.0 or obtained > want + 1e-12:
+            raise ValueError(
+                "capture allocation must be finite and between 0 and %.12g (got %r)"
+                % (want, obtained))
+        obtained = min(obtained, want)
+        drive = self._pending_drive
+        self._pending_want = None
+        self._pending_drive = 0.0
+
+        self.captured = obtained
+        self.lumen += obtained
         moved = min(self.lumen, self.lumen * drive * self.dt)
         self.lumen -= moved
         self.ingested += moved
@@ -176,7 +217,7 @@ class Pharynx:
         idx = self._live(idx)
         return float(np.mean(a[idx])) - REST if len(idx) else 0.0
 
-    def _fire(self, a: np.ndarray, food_at_mouth: float, take) -> None:
+    def _start_pump(self, a: np.ndarray, food_at_mouth: float) -> float:
         p = self.p
         # M3 repolarises the muscle and so ends the pump; more M3 means a shorter one.
         m3 = self._dev(a, self.m3)
@@ -188,11 +229,7 @@ class Pharynx:
         room = max(0.0, 1.0 - self.lumen / p.lumen_capacity)
         want = (p.volume_per_pump * max(food_at_mouth, 0.0)
                 * (self.duration / p.pump_duration) * room)
-        # What the pump asks for and what the plate has are two different numbers. The
-        # lumen gains the second one, so the animal cannot ingest food that was never
-        # there -- which is the whole of the conservation invariant the tests assert.
-        self.captured = float(take(want)) if want > 0.0 else 0.0
-        self.lumen += self.captured
+        return float(want)
 
     # -------------------------------------------------------------------------- readout
     def readout(self) -> dict:

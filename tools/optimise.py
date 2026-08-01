@@ -35,6 +35,7 @@ import numpy as np
 
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
+from worm.errors import DivergentSimulation, InvalidGenome
 from worm.params import Params
 
 CHECKPOINT = os.path.join(
@@ -109,8 +110,13 @@ def build(values: dict) -> Params:
 
 def evaluate_one(args) -> dict:
     values, seed = args
-    p = build(values)
     try:
+        p = build(values)
+        # Validate before constructing a caller-supplied World.  Python evaluates
+        # ``bare_world(p)`` before entering Simulation.__init__, so relying only on the
+        # Simulation boundary would misclassify invalid world parameters as infrastructure
+        # failures rather than lethal candidate genomes.
+        p.validate()
         sim = Simulation(p, seed=seed, world=bare_world(p))
         r = analyse(sim, seconds=16.0)
 
@@ -120,6 +126,8 @@ def evaluate_one(args) -> dict:
         path = 0.0
         for i in range(int(40.0 / sim.dt)):
             sim.step()
+            if sim.steps % 1000 == 0:
+                sim.check_invariants()
             if i % 200 == 0:
                 c = sim.body.centroid()
                 path += float(np.hypot(*(c - prev)))
@@ -129,12 +137,19 @@ def evaluate_one(args) -> dict:
         r["net_ratio"] = net / max(path, 1e-9)
         r["backwards"] = r["direction"] != "head->tail"
         return r
+    except (InvalidGenome, DivergentSimulation) as exc:
+        # A bad candidate is a lethal phenotype, not a flaky worker.  Keep it distinct so
+        # one divergent seed invalidates the candidate instead of being averaged away.
+        return {"lethal": repr(exc), "failed": repr(exc), "backwards": True}
     except Exception as exc:
         return {"failed": repr(exc), "backwards": True}
 
 
 def score(results: list) -> tuple:
     """Combine the per-seed results into one number. Lower is better."""
+    lethal = [r for r in results if "lethal" in r]
+    if lethal:
+        return 1e6, {"lethal": True, "n_lethal": len(lethal), "n_seeds": 0}
     good = [r for r in results if "failed" not in r]
     if not good:
         return 1e6, {}
