@@ -45,14 +45,17 @@ def test_partial_reconstruction_is_immutable_and_explicit():
 
 
 def test_mutable_table_matches_runtime_gene_order_and_defaults():
+    from tools.export_model import GENES
+
     expected = (
         "sen_proprio_gain", "sen_head_proprio_gain", "sen_cord_drive",
         "sen_gate_bias", "sen_gate_hysteresis", "sen_tonic_forward",
-        "sen_omega_current", "sen_omega_ventral_fraction", "sen_chemo_gain",
-        "sen_thermo_gain", "sen_oxygen_gain", "sen_repellent_d_gain",
-        "sen_food_gain", "sen_touch_gain",
+        "sen_omega_current", "sen_omega_ventral_fraction", "mod_serotonin_mod1",
+        "sen_chemo_gain", "sen_thermo_gain", "sen_oxygen_gain",
+        "sen_repellent_d_gain", "sen_food_gain", "sen_touch_gain",
     )
     assert EXPORT_GENES == expected
+    assert EXPORT_GENES == GENES
     assert MUTABLE_KEYS == tuple(BOUNDS)
 
     genome = flatten(Params(), mutable_only=True)

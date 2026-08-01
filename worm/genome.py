@@ -9,9 +9,9 @@ Reconstruction always creates a new ``Params`` tree. Existing ``Simulation`` ins
 have already handed each subsystem its parameters, so changing ``sim.p`` is not a supported
 update mechanism; construct a new ``Simulation(unflatten(...), seed=...)`` instead.
 
-The mutable key order deliberately matches the 14 runtime genes introduced by PR #35.
-``EXPORT_GENES`` gives their current exporter spellings without importing or editing
-``tools/export_model.py``; once that PR lands, the exporter can assert or import this list.
+The mutable key order deliberately matches the 15 runtime genes introduced by PR #35.
+``EXPORT_GENES`` gives their current exporter spellings; the tests compare it directly
+with ``tools.export_model.GENES`` so neither side can drift silently.
 """
 
 from __future__ import annotations
@@ -52,6 +52,10 @@ BOUNDS: Mapping[str, Bound] = MappingProxyType({
     # Steering.
     "sensory.omega_current": Bound(0.0, 800.0, 50.0),
     "sensory.omega_ventral_fraction": Bound(0.0, 1.0, 0.05),
+    # Food-sensitive reversal suppression through the serotonin-gated MOD-1 channel.
+    # The calibrated sweep in ModulatorParams spans 0.0 through 0.6; leave headroom for
+    # selection while keeping the conductance coefficient in a conservative envelope.
+    "modulator.serotonin_mod1": Bound(0.0, 1.0, 0.05),
     # One live gain per sensory channel.
     "sensory.chemo_gain": Bound(0.0, 100.0, 5.0),
     "sensory.thermo_gain": Bound(0.0, 40.0, 2.0),
@@ -66,7 +70,7 @@ MUTABLE_KEYS = tuple(BOUNDS)
 
 def _export_name(key: str) -> str:
     section, name = key.split(".", 1)
-    prefix = {"sensory": "sen"}.get(section, section)
+    prefix = {"sensory": "sen", "modulator": "mod"}.get(section, section)
     return "%s_%s" % (prefix, name)
 
 
@@ -93,7 +97,7 @@ def _numeric_items(params: Params):
 def flatten(params: Params, *, mutable_only: bool = False) -> dict[str, float]:
     """Return a deterministic dotted-key projection of numeric ``Params`` leaves.
 
-    With ``mutable_only=True`` the result is the actual 14-value genome, in ``BOUNDS``
+    With ``mutable_only=True`` the result is the actual 15-value genome, in ``BOUNDS``
     order. Otherwise measured and diagnostic numeric fields are included for lossless
     numeric reconstruction, but their presence does not make them mutable.
     """
