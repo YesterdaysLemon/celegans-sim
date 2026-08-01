@@ -19,6 +19,8 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from scipy.optimize import linprog
+from scipy.sparse import coo_matrix
 
 from .errors import DivergentSimulation
 from .params import WorldParams
@@ -234,10 +236,10 @@ class World:
                                    if available > 0.0
                                    else np.zeros_like(local_capacities))
             else:
-                local_received = _fair_group_allocations(
+                local_targets = _fair_group_allocations(
                     local_reachable, local_demands, local_capacities)
-                local_withdrawn = _balanced_cell_withdrawals(
-                    local_reachable, local_received, local_capacities)
+                local_received, local_withdrawn = _balanced_cell_withdrawals(
+                    local_reachable, local_targets, local_capacities)
 
             received_by_group[group_ids] = local_received
             withdrawn[cell_ids] = local_withdrawn
@@ -245,7 +247,7 @@ class World:
         for (_group_cells, members), demand, received in zip(
                 group_items, demands, received_by_group):
             for request_i, amount in members:
-                allocations[request_i] = received * amount / demand
+                allocations[request_i] = min(float(amount), received * amount / demand)
 
         for cell, amount in zip(cells, withdrawn):
             self.food[cell] = max(0.0, float(self.food[cell]) - float(amount))
@@ -370,15 +372,17 @@ def _route_feeding(reachable, targets: np.ndarray, capacities: np.ndarray):
         sink_edges.append(_add_flow_edge(graph, cell0 + cell_i, sink, capacity))
 
     _max_flow(graph, source, sink)
-    requested = math.fsum(float(target) for target in targets)
-    delivered = math.fsum(float(target) - edge[2]
-                          for target, edge in zip(targets, source_edges))
-    tolerance = 1e-13 * max(requested, 1e-9)
-    feasible = requested - delivered <= tolerance
+    delivered_by_group = np.asarray([
+        float(target) - edge[2] for target, edge in zip(targets, source_edges)
+    ])
+    # Feasibility is per group, not relative to the total flow. A large already-frozen
+    # allocation must not make a tolerance-sized overhang on a tiny cut look acceptable;
+    # doing so poisons the next progressive stage and can freeze unrelated groups.
+    feasible = all(edge[2] <= 1e-14 for edge in source_edges)
     withdrawn = np.asarray([
         float(capacity) - edge[2] for capacity, edge in zip(capacities, sink_edges)
     ])
-    return feasible, withdrawn
+    return feasible, withdrawn, delivered_by_group
 
 
 def _fair_group_allocations(reachable, demands: np.ndarray,
@@ -418,7 +422,17 @@ def _fair_group_allocations(reachable, demands: np.ndarray,
         fair_ratio = max(base, low - 1e-12)
         stage = targets.copy()
         stage[active] = demands[active] * fair_ratio
+        _stage_feasible, _stage_withdrawn, stage_delivered = _route_feeding(
+            reachable, stage, capacities)
+        stage = np.minimum(stage, stage_delivered)
         targets = stage
+        _baseline_feasible, _baseline_withdrawn, baseline_delivered = _route_feeding(
+            reachable, stage, capacities)
+        baseline_shortfall = max(
+            0.0,
+            math.fsum(float(amount) for amount in stage)
+            - math.fsum(float(amount) for amount in baseline_delivered),
+        )
 
         capacity_total = math.fsum(float(capacity) for capacity in capacities)
         if math.isclose(math.fsum(float(target) for target in stage), capacity_total,
@@ -442,8 +456,16 @@ def _fair_group_allocations(reachable, demands: np.ndarray,
             increment = max(float(demands[group_i]) * 1e-7, 1e-13)
             probe[group_i] = min(float(demands[group_i]),
                                  float(probe[group_i]) + increment)
-            if probe[group_i] == stage[group_i] or not _route_feeding(
-                    reachable, probe, capacities)[0]:
+            _probe_feasible, _probe_withdrawn, probe_delivered = _route_feeding(
+                reachable, probe, capacities)
+            probe_shortfall = max(
+                0.0,
+                math.fsum(float(amount) for amount in probe)
+                - math.fsum(float(amount) for amount in probe_delivered),
+            )
+            extra_shortfall = max(0.0, probe_shortfall - baseline_shortfall)
+            if (probe[group_i] == stage[group_i]
+                    or extra_shortfall > max(1e-14, increment * 1e-6)):
                 blocked.append(group_i)
 
         if not blocked:
@@ -469,82 +491,169 @@ def _fair_group_allocations(reachable, demands: np.ndarray,
 
         active = [group_i for group_i in active if group_i not in blocked]
 
-    return targets
+    # Progressive filling operates at floating-point cut boundaries. Project the final
+    # vector onto one concrete simultaneous routing so a tolerance-sized overhang can never
+    # become an infeasible input to the subsequent cell-balancing pass.
+    _feasible, _withdrawn, delivered = _route_feeding(reachable, targets, capacities)
+    return np.minimum(targets, delivered)
 
 
 def _balanced_cell_withdrawals(reachable, targets: np.ndarray,
-                               capacities: np.ndarray) -> np.ndarray:
-    """Route targets with lexicographically minimal fractional cell depletion."""
-    if math.fsum(float(target) for target in targets) <= 0.0:
-        return np.zeros_like(capacities)
-    if math.isclose(math.fsum(float(target) for target in targets),
-                    math.fsum(float(capacity) for capacity in capacities),
-                    rel_tol=1e-10, abs_tol=1e-14):
-        return capacities.copy()
+                               capacities: np.ndarray):
+    """Route targets with lexicographically minimal fractional cell depletion.
 
-    ratios = np.ones_like(capacities)
+    Returns the concrete simultaneously delivered group amounts and cell withdrawals from
+    the same flow, so conservation does not depend on treating a feasibility tolerance as
+    food that actually moved.
+    """
+    if math.fsum(float(target) for target in targets) <= 0.0:
+        return np.zeros_like(targets), np.zeros_like(capacities)
+    if math.fsum(float(target) for target in targets) >= math.fsum(
+            float(capacity) for capacity in capacities):
+        _feasible, withdrawn, delivered = _route_feeding(
+            reachable, targets, capacities)
+        return delivered, withdrawn
+
+    # A max-flow supplies feasibility but its traversal order chooses among equivalent
+    # spatial withdrawals. Solve the secondary objective explicitly instead. At each tier
+    # ``level`` bounds every still-active cell's fractional depletion. Cells which cannot
+    # be reduced while preserving that optimum are frozen, giving the lexicographic
+    # minimum without depending on group or grid numbering.
+    edges = [(group_i, cell_i)
+             for group_i, group_cells in enumerate(reachable)
+             for cell_i in group_cells]
+    group_edges = [[] for _ in reachable]
+    cell_edges = [[] for _ in capacities]
+    for edge_i, (group_i, cell_i) in enumerate(edges):
+        group_edges[group_i].append(edge_i)
+        cell_edges[cell_i].append(edge_i)
+
+    n_edges = len(edges)
+    n_variables = n_edges + 1  # final variable is the current depletion level
+    frozen = {}
     active = list(range(len(capacities)))
-    ceiling = 1.0
+    previous_level = 1.0
+
+    def solve(objective_cell=None, level_ceiling=1.0, ceiling_cushion=2e-10):
+        objective = np.zeros(n_variables)
+        if objective_cell is None:
+            objective[-1] = 1.0
+        else:
+            objective[cell_edges[objective_cell]] = 1.0
+
+        eq_rows = []
+        eq_cols = []
+        eq_data = []
+        for group_i, indices in enumerate(group_edges):
+            eq_rows.extend([group_i] * len(indices))
+            eq_cols.extend(indices)
+            eq_data.extend([1.0] * len(indices))
+        equality = coo_matrix(
+            (eq_data, (eq_rows, eq_cols)),
+            shape=(len(reachable), n_variables),
+        ).tocsr()
+        equality_rhs = targets
+
+        ub_rows = []
+        ub_cols = []
+        ub_data = []
+        for row, cell_i in enumerate(active):
+            indices = cell_edges[cell_i]
+            ub_rows.extend([row] * len(indices))
+            ub_cols.extend(indices)
+            ub_data.extend([1.0] * len(indices))
+            ub_rows.append(row)
+            ub_cols.append(n_edges)
+            ub_data.append(-float(capacities[cell_i]))
+        upper_rhs = [0.0] * len(active)
+        for cell_i, limit in sorted(frozen.items()):
+            row = len(upper_rhs)
+            indices = cell_edges[cell_i]
+            ub_rows.extend([row] * len(indices))
+            ub_cols.extend(indices)
+            ub_data.extend([1.0] * len(indices))
+            upper_rhs.append(float(limit))
+        upper = (coo_matrix(
+            (ub_data, (ub_rows, ub_cols)),
+            shape=(len(upper_rhs), n_variables),
+        ).tocsr() if upper_rhs else None)
+
+        result = linprog(
+            objective,
+            A_ub=upper,
+            b_ub=np.asarray(upper_rhs) if upper_rhs else None,
+            A_eq=equality,
+            b_eq=equality_rhs,
+            bounds=[(0.0, None)] * n_edges
+                   + [(0.0, max(0.0, float(level_ceiling) + ceiling_cushion))],
+            method="highs-ds",
+            options={
+                "primal_feasibility_tolerance": 1e-10,
+                "dual_feasibility_tolerance": 1e-10,
+            },
+        )
+        if not result.success:
+            raise RuntimeError("feeding settlement LP failed: %s" % result.message)
+        return result
 
     while active:
-        zeroed = ratios.copy()
-        zeroed[active] = 0.0
-        if _route_feeding(reachable, targets, capacities * zeroed)[0]:
-            ratios = zeroed
+        # A prior optimum can be a hair below the exact tier. Carry a solver-sized cushion
+        # into the next stage instead of turning that rounding into false infeasibility.
+        stage = solve(level_ceiling=previous_level)
+        level = min(previous_level + 2e-10, max(0.0, float(stage.x[-1])))
+        if level <= 1e-12:
+            for cell_i in active:
+                frozen[cell_i] = 2e-10
+            active = []
             break
 
-        low, high = 0.0, ceiling
-        for _ in range(52):
-            middle = 0.5 * (low + high)
-            trial = ratios.copy()
-            trial[active] = middle
-            if _route_feeding(reachable, targets, capacities * trial)[0]:
-                high = middle
-            else:
-                low = middle
-
-        depletion_ratio = min(ceiling, high + 1e-12)
-        stage = ratios.copy()
-        stage[active] = depletion_ratio
-        ratios = stage
-
-        # Freeze every cell whose individual cap cannot be lowered from this level. The
-        # remaining cells then descend to the next utilization tier.
-        blocked = []
+        # The follow-up LPs ask whether a cell can fall below this tier. Give HiGHS a
+        # ceiling wider than its 1e-10 primal tolerance, or a numerically valid base tier
+        # can be rejected before the secondary objective is even evaluated.
+        minimum_ratios = {}
         for cell_i in active:
-            probe = stage.copy()
-            decrement = max(float(stage[cell_i]) * 1e-7, 1e-13)
-            probe[cell_i] = max(0.0, float(probe[cell_i]) - decrement)
-            if probe[cell_i] == stage[cell_i] or not _route_feeding(
-                    reachable, targets, capacities * probe)[0]:
-                blocked.append(cell_i)
+            probe = solve(
+                objective_cell=cell_i,
+                level_ceiling=min(previous_level, level + 5e-10),
+                ceiling_cushion=5e-9,
+            )
+            withdrawal = math.fsum(float(probe.x[edge_i])
+                                   for edge_i in cell_edges[cell_i])
+            minimum_ratios[cell_i] = withdrawal / float(capacities[cell_i])
 
-        if not blocked:
-            # Numerical fallback matching the group allocator: freeze the least reducible
-            # cell rather than allowing traversal order to choose a spatial winner.
-            reducibility = []
-            for cell_i in active:
-                lo, hi = 0.0, float(stage[cell_i])
-                for _ in range(40):
-                    middle = 0.5 * (lo + hi)
-                    probe = stage.copy()
-                    probe[cell_i] = middle
-                    if _route_feeding(reachable, targets, capacities * probe)[0]:
-                        hi = middle
-                    else:
-                        lo = middle
-                reducibility.append((float(stage[cell_i]) - hi, cell_i))
-            least = min(reduction for reduction, _cell_i in reducibility)
-            blocked = [cell_i for reduction, cell_i in reducibility
-                       if reduction <= least + 1e-10]
+        detection_tolerance = max(1e-8, level * 1e-8)
+        forced = [cell_i for cell_i in active
+                  if minimum_ratios[cell_i] >= level - detection_tolerance]
+        if not forced:
+            # HiGHS can report the optimum just outside its own feasibility tolerance.
+            # Freezing every numerically tied maximum is deterministic and lets the next
+            # solve either certify the tier or fail loudly instead of choosing by index.
+            maximum_minimum = max(minimum_ratios.values())
+            forced = [cell_i for cell_i in active
+                      if minimum_ratios[cell_i]
+                      >= maximum_minimum - 2e-8]
+        for cell_i in forced:
+            withdrawal = math.fsum(float(stage.x[edge_i])
+                                   for edge_i in cell_edges[cell_i])
+            frozen[cell_i] = withdrawal + 2e-10
+        active = [cell_i for cell_i in active if cell_i not in forced]
+        previous_level = level
 
-        active = [cell_i for cell_i in active if cell_i not in blocked]
-        ceiling = high
-
-    feasible, withdrawn = _route_feeding(reachable, targets, capacities * ratios)
-    if not feasible:  # defensive: full capacities were feasible when targets were chosen
-        raise RuntimeError("feeding settlement became infeasible")
-    return np.minimum(withdrawn, capacities)
+    # The LP cushions are numerical, not extra food. Route once through the physical
+    # capacities and the certified tier ceilings so returned credits and withdrawals come
+    # from the same conservative flow and can never overdraw a cell.
+    total_target = math.fsum(float(target) for target in targets)
+    for settlement_cushion in (0.0, 1e-10, 1e-9, 1e-8):
+        tier_capacities = np.asarray([
+            min(float(capacity), float(frozen[cell_i]) + settlement_cushion)
+            for cell_i, capacity in enumerate(capacities)
+        ])
+        _feasible, withdrawn, delivered = _route_feeding(
+            reachable, targets, tier_capacities)
+        shortfall = total_target - math.fsum(float(amount) for amount in delivered)
+        if shortfall <= 1e-12:
+            return delivered, withdrawn
+    raise RuntimeError("feeding settlement lost throughput during numerical projection")
 
 
 def _max_flow(graph, source: int, sink: int) -> None:

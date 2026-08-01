@@ -10,7 +10,7 @@ import pytest
 from worm.engine import Population, Simulation
 from worm.errors import DivergentSimulation, InvalidGenome
 from worm.params import Params
-from worm.world import World
+from worm.world import World, _balanced_cell_withdrawals, _fair_group_allocations
 
 
 @pytest.mark.parametrize(
@@ -322,3 +322,214 @@ def test_symmetric_partial_overlap_has_no_grid_direction_winner():
     assert reverse == pytest.approx([0.6, 0.6])
     assert float(food_forward.sum()) == pytest.approx(0.0)
     assert np.array_equal(food_reverse, food_forward)
+
+
+def test_tight_floating_point_cut_does_not_make_batch_settlement_infeasible():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+    world = World(p.world, np.random.default_rng(0))
+    food = {
+        (0, 0): 0.0001362244693329888, (0, 4): 0.00040197172232337954,
+        (1, 3): 0.0014054929878358484, (1, 4): 10.152485164222277,
+        (1, 5): 96.69595380308392, (1, 6): 0.0101279097854137,
+        (2, 0): 73.16862389355865, (2, 1): 0.0007129847932643056,
+        (2, 2): 0.0038068347781582443, (2, 3): 0.0001201276007603188,
+        (2, 5): 9.17561151973112, (2, 6): 60.92521279143089,
+        (3, 4): 49.548647323533935,
+        (4, 4): 0.5262218582687361, (4, 5): 3.4492246854313233,
+        (5, 0): 0.024870316683344357, (5, 1): 0.0007400278713197949,
+        (5, 2): 27.68893153785075, (5, 7): 1.463765788317517,
+        (6, 1): 2.2442208783474316, (6, 3): 0.018111704077300624,
+        (6, 6): 46.77187026929906, (7, 6): 26.692213772158116,
+    }
+    for cell, amount in food.items():
+        world.food[cell] = amount
+    requests = [
+        (1.5, 1.5, 16.964714191184136),
+        (1.5, -1.5, 0.007200188048638822),
+        (-0.5, -1.5, 0.23611436035767142),
+        (-0.5, -0.5, 1.201273062556233),
+        (-2.5, -1.5, 0.004203315317964025),
+        (2.5, 0.5, 0.2746163049290664),
+        (-1.5, 0.5, 0.08925461323159406),
+        (-1.5, 2.5, 0.0003862869306268296),
+    ]
+
+    before = float(world.food.sum())
+    allocated = world.eat_batch(requests)
+    removed = before - float(world.food.sum())
+
+    assert np.all(allocated >= 0.0)
+    assert np.all(allocated <= np.asarray([request[2] for request in requests]))
+    assert float(allocated.sum()) == pytest.approx(removed, abs=1e-12)
+
+
+def test_tiny_saturated_cut_does_not_strand_unrelated_food():
+    base = Params()
+    p = replace(base, world=replace(base.world, radius=4.0, grid=8))
+    world = World(p.world, np.random.default_rng(0))
+    for cell, amount in {
+        (4, 3): 0.0008563812547635219,
+        (5, 1): 0.0002574031968079285,
+        (5, 4): 0.10788040261546657,
+        (6, 2): 15.096005643238989,
+        (7, 5): 4.66322786948004,
+    }.items():
+        world.food[cell] = amount
+    requests = [
+        (-0.5, 1.5, 0.29259253942815083),
+        (-0.5, 2.5, 0.00026363275749006267),
+        (-2.5, 2.5, 37.89004653281265),
+        (1.5, 2.5, 0.0038681349830417397),
+    ]
+
+    before = float(world.food.sum())
+    allocated = world.eat_batch(requests)
+    removed = before - float(world.food.sum())
+
+    assert float(allocated.sum()) == pytest.approx(15.20886796528907, abs=1e-10)
+    assert float(allocated.sum()) == pytest.approx(removed, abs=1e-12)
+
+
+def test_cell_relabeling_does_not_bias_balanced_spatial_depletion():
+    reachable = [(0, 2, 5), (0, 1, 2, 5), (1, 4, 5), (0, 3, 4, 5)]
+    demands = np.asarray([
+        0.00019525214344666251,
+        0.03095259673736658,
+        0.00015524092663456965,
+        2.5216084935527756,
+    ])
+    capacities = np.asarray([
+        0.06945656551923883,
+        28.124970700268701,
+        15.448616194258246,
+        0.010053538338569234,
+        11.495222571716887,
+        0.00013811797330998043,
+    ])
+    targets = _fair_group_allocations(reachable, demands, capacities)
+    allocated, withdrawn = _balanced_cell_withdrawals(
+        reachable, targets, capacities)
+
+    cell_order = np.asarray([5, 2, 0, 1, 3, 4])
+    inverse = np.empty_like(cell_order)
+    inverse[cell_order] = np.arange(len(cell_order))
+    canonical = sorted(
+        (tuple(sorted(int(inverse[cell]) for cell in group)), group_i)
+        for group_i, group in enumerate(reachable)
+    )
+    relabeled_reachable = [group for group, _group_i in canonical]
+    group_order = [group_i for _group, group_i in canonical]
+    relabeled_targets = _fair_group_allocations(
+        relabeled_reachable, demands[group_order], capacities[cell_order])
+    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
+        relabeled_reachable, relabeled_targets, capacities[cell_order])
+    mapped_allocated = np.empty_like(relabeled_allocated)
+    mapped_allocated[group_order] = relabeled_allocated
+    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
+    mapped_withdrawn[cell_order] = relabeled_withdrawn
+
+    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
+    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
+    assert withdrawn[1] / capacities[1] == pytest.approx(
+        withdrawn[2] / capacities[2], abs=1e-10)
+
+
+def test_cell_leveling_remains_label_independent_at_a_tight_cut():
+    reachable = [(1,), (0, 2), (1, 2), (0, 3), (0, 1, 3)]
+    demands = np.asarray([
+        99.86912174666736,
+        0.50585984694991315,
+        21.310871673875386,
+        0.0032113329082032772,
+        0.036428560017572997,
+    ])
+    capacities = np.asarray([
+        43.632251711359771,
+        71.446563232100118,
+        0.00053802024288964725,
+        7.9499753755333815,
+    ])
+    targets = _fair_group_allocations(reachable, demands, capacities)
+    allocated, withdrawn = _balanced_cell_withdrawals(
+        reachable, targets, capacities)
+
+    cell_order = np.asarray([0, 3, 2, 1])
+    inverse = np.empty_like(cell_order)
+    inverse[cell_order] = np.arange(len(cell_order))
+    canonical = sorted(
+        (tuple(sorted(int(inverse[cell]) for cell in group)), group_i)
+        for group_i, group in enumerate(reachable)
+    )
+    relabeled_reachable = [group for group, _group_i in canonical]
+    group_order = [group_i for _group, group_i in canonical]
+    relabeled_targets = _fair_group_allocations(
+        relabeled_reachable, demands[group_order], capacities[cell_order])
+    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
+        relabeled_reachable, relabeled_targets, capacities[cell_order])
+    mapped_allocated = np.empty_like(relabeled_allocated)
+    mapped_allocated[group_order] = relabeled_allocated
+    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
+    mapped_withdrawn[cell_order] = relabeled_withdrawn
+
+    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
+    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
+    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
+
+
+def test_frozen_cell_tiers_remain_feasible_after_relabeling():
+    reachable = [
+        (0,), (2,), (0, 2, 3), (0, 1, 2, 4), (3, 5), (0, 2, 4, 5, 6),
+    ]
+    targets = np.asarray([
+        0.0074091873678323933,
+        0.15732785745858727,
+        7.3054720748202273,
+        0.0029339322465515238,
+        0.0770975747005367,
+        0.08361935449248538,
+    ])
+    capacities = np.asarray([
+        0.0091921682950217,
+        0.10024243368771162,
+        7.461016951381441,
+        0.05772162750752929,
+        1.2688877147264204,
+        0.01937594719704408,
+        0.03498121147904196,
+    ])
+    allocated, withdrawn = _balanced_cell_withdrawals(
+        reachable, targets, capacities)
+
+    cell_order = np.asarray([2, 4, 0, 6, 1, 3, 5])
+    relabeled_reachable = [
+        (0,), (0, 1, 2, 3, 6), (0, 1, 2, 4), (0, 2, 5), (2,), (5, 6),
+    ]
+    group_order = np.asarray([1, 5, 3, 2, 0, 4])
+    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
+        relabeled_reachable, targets[group_order], capacities[cell_order])
+    mapped_allocated = np.empty_like(relabeled_allocated)
+    mapped_allocated[group_order] = relabeled_allocated
+    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
+    mapped_withdrawn[cell_order] = relabeled_withdrawn
+
+    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
+    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
+    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
+
+
+def test_cell_tier_probe_allows_solver_scale_slack():
+    reachable = [(0,), (1,), (0, 1)]
+    targets = np.asarray([
+        0.20811164647933927,
+        0.00689015494040061,
+        0.00436362537898892,
+    ])
+    capacities = np.asarray([0.20811164649880284, 0.09342482249783483])
+
+    allocated, withdrawn = _balanced_cell_withdrawals(
+        reachable, targets, capacities)
+
+    assert allocated == pytest.approx(targets, abs=1e-12)
+    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
+    assert np.all(withdrawn <= capacities)
