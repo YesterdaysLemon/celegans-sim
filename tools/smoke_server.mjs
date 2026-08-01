@@ -206,13 +206,37 @@ try {
   assert.equal(transport.finite, true);
   assert.equal(transport.fieldBytes, transport.fieldN * transport.fieldN * 3);
 
-  await page.waitForFunction(
-    () => window.__sim.kymo?.filled > 0
-      && window.__sim.traces.length >= 3
-      && window.__sim.traces.every(trace => trace.length >= 5)
-      && document.querySelectorAll('#senses [role="meter"][aria-valuenow]').length === 10,
-    { timeout: 15000 },
-  );
+  /* Wait for the panels to have live data in them.
+   *
+   * One condition per wait, so a timeout names what never came true. Rolled into a single
+   * predicate these produced a bare `TimeoutError: Waiting failed: 15000ms exceeded`
+   * pointing at puppeteer's internals, which is how this test stayed red on main for five
+   * runs without anyone learning what it was complaining about.
+   */
+  const settle = async (what, fn, arg) => {
+    try {
+      await page.waitForFunction(fn, { timeout: 15000 }, arg);
+    } catch {
+      throw new Error(`timed out waiting for ${what}`);
+    }
+  };
+  await settle('the kymograph to take a column', () => window.__sim.kymo?.filled > 0);
+  await settle('three membrane traces with samples in them',
+    () => window.__sim.traces?.length >= 3
+      && window.__sim.traces.every(trace => trace.length >= 5));
+  /* Every sense meter the panel declares must have been given a live value.
+   *
+   * This used to assert an exact count of 10, which was true when it was written and
+   * stopped being true when the pharynx and egg-laying work added four rows -- so the
+   * check failed for a year of days over an accounting difference rather than a defect.
+   * The number was also the weaker of the two things it could have asserted: `=== 10`
+   * passes just as happily with ten of twelve meters live and two silently dead, which is
+   * the failure actually worth catching. Counting is now the panel's business; this
+   * asserts the property. */
+  await settle('every sense meter to carry a live value', () => {
+    const meters = [...document.querySelectorAll('#senses [role="meter"]')];
+    return meters.length > 0 && meters.every(m => m.hasAttribute('aria-valuenow'));
+  });
 
   const rendered = await page.evaluate(() => {
     function ink(id) {
@@ -225,13 +249,22 @@ try {
       kymoFilled: window.__sim.kymo.filled,
       traceSamples: window.__sim.traces.map(trace => trace.length),
       senseRows: document.querySelectorAll('#senses [role="meter"]').length,
+      senseLive: document.querySelectorAll('#senses [role="meter"][aria-valuenow]').length,
+      // By key rather than by count. A new row must not break this test -- that is what
+      // broke it last time -- but a sense quietly disappearing from the panel should.
+      senseKeys: [...document.querySelectorAll('#senses [role="meter"]')]
+        .map(m => m.dataset.meter),
       fieldBytes: window.__sim.field.data.length,
       canvases: ['c-dish', 'c-neurons', 'c-muscle', 'c-kymo', 'c-trace'].map(ink),
     };
   });
   assert.ok(rendered.kymoFilled > 0);
   assert.ok(rendered.traceSamples.every(samples => samples >= 5));
-  assert.equal(rendered.senseRows, 10);
+  assert.equal(rendered.senseLive, rendered.senseRows,
+    `${rendered.senseRows - rendered.senseLive} sense meters never got a value`);
+  for (const key of ['attractant', 'food', 'repellent', 'oxygen', 'temperature', 'touch']) {
+    assert.ok(rendered.senseKeys.includes(key), `the ${key} meter is missing from #senses`);
+  }
   assert.ok(rendered.fieldBytes > 0);
   assert.ok(rendered.canvases.every(Boolean), 'one or more viewer canvases rendered blank');
 

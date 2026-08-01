@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>celegans-sim</title>
+<!-- An undulating body, which is the one thing this page is about. Inlined as a data URI
+     rather than served as a file: a browser asks for /favicon.ico whether or not one
+     exists, and a 404 counted as both a console error and a failed request in
+     tools/smoke_web.mjs -- which is half of why CI was red on main. A data URI answers the
+     question without adding an asset that docker/nginx.conf would then owe a cache policy. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 16C7 7 12 25 16 16s6-9 13 0' fill='none' stroke='%23e2a04a' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>

@@ -90,9 +90,23 @@ class Pharynx:
         self._alive = None        # set each step; see _dev()
 
     # ------------------------------------------------------------------------- stepping
-    def step(self, activation: np.ndarray, food_at_mouth: float, mods=None,
+    def step(self, activation: np.ndarray, food_at_mouth: float, take, mods=None,
              alive: np.ndarray | None = None) -> float:
-        """Advance one step. Returns how much food to remove from the world this step.
+        """Advance one step. Returns how much food reached the intestine this step.
+
+        `take(amount) -> obtained` withdraws from the world where the mouth is *now*, and
+        is called at the moment of capture. It is not optional, and the reason is a bug it
+        closes. Capture used to be free: the lumen gained whatever the pump asked for, and
+        the world was debited later, when M4 transported it, at wherever the head had
+        drifted to by then. An animal could therefore feed on a lawn, walk away, and
+        transport food the plate never lost -- measured, 0.0045 into the lumen against
+        0.00000000 removed from the world, with the uterus credited for all of it.
+
+        Food leaves the plate when the pharynx grinds it, not when the isthmus moves it
+        on, so debiting at capture is also the physically honest order. What the animal
+        gets to keep is still `ingested`, which is what makes the M4 phenotype work: an
+        M4-ablated animal captures until its lumen is full, stops, and starves with food
+        in its mouth.
 
         `alive` masks ablated cells out of every drive term. It matters more here than it
         looks: activation is read as a deviation from a resting 0.5, and an ablated cell
@@ -137,7 +151,7 @@ class Pharynx:
                 self.pumping = False
         if not self.pumping and self.phase >= 1.0:
             self.phase = 0.0
-            self._fire(a, food_at_mouth)
+            self._fire(a, food_at_mouth, take)
 
         # -- isthmus peristalsis ---------------------------------------------------------
         # M4 is what moves the lumen's contents back to the intestine. Without it the
@@ -162,7 +176,7 @@ class Pharynx:
         idx = self._live(idx)
         return float(np.mean(a[idx])) - REST if len(idx) else 0.0
 
-    def _fire(self, a: np.ndarray, food_at_mouth: float) -> None:
+    def _fire(self, a: np.ndarray, food_at_mouth: float, take) -> None:
         p = self.p
         # M3 repolarises the muscle and so ends the pump; more M3 means a shorter one.
         m3 = self._dev(a, self.m3)
@@ -172,8 +186,12 @@ class Pharynx:
         self.pumps += 1
         # A longer pump takes in more, and a full lumen cannot take in anything.
         room = max(0.0, 1.0 - self.lumen / p.lumen_capacity)
-        self.captured = (p.volume_per_pump * max(food_at_mouth, 0.0)
-                         * (self.duration / p.pump_duration) * room)
+        want = (p.volume_per_pump * max(food_at_mouth, 0.0)
+                * (self.duration / p.pump_duration) * room)
+        # What the pump asks for and what the plate has are two different numbers. The
+        # lumen gains the second one, so the animal cannot ingest food that was never
+        # there -- which is the whole of the conservation invariant the tests assert.
+        self.captured = float(take(want)) if want > 0.0 else 0.0
         self.lumen += self.captured
 
     # -------------------------------------------------------------------------- readout

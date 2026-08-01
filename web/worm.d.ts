@@ -55,9 +55,51 @@ declare namespace __AdaptedExports {
    */
   export function wormCount(): number;
   /**
+   * assembly/index/wormIdAt
+   * @param k `i32`
+   * @returns `i32`
+   */
+  export function wormIdAt(k: number): number;
+  /**
+   * assembly/index/hasWorm
+   * @param id `i32`
+   * @returns `i32`
+   */
+  export function hasWorm(id: number): number;
+  /**
+   * assembly/index/geneCount
+   * @returns `i32`
+   */
+  export function geneCount(): number;
+  /**
+   * assembly/index/setGene
+   * @param w `i32`
+   * @param slot `i32`
+   * @param v `f64`
+   */
+  export function setGene(w: number, slot: number, v: number): void;
+  /**
+   * assembly/index/getGene
+   * @param w `i32`
+   * @param slot `i32`
+   * @returns `f64`
+   */
+  export function getGene(w: number, slot: number): number;
+  /**
+   * assembly/index/resetGenes
+   * @param w `i32`
+   */
+  export function resetGenes(w: number): void;
+  /**
    * assembly/index/clearWorms
    */
   export function clearWorms(): void;
+  /**
+   * assembly/index/removeWorm
+   * @param id `i32`
+   * @returns `i32`
+   */
+  export function removeWorm(id: number): number;
   /**
    * assembly/index/popWorm
    */
@@ -158,6 +200,12 @@ declare namespace __AdaptedExports {
    * @returns `f64`
    */
   export function getEaten(w: number): number;
+  /**
+   * assembly/index/getIngested
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getIngested(w: number): number;
   /**
    * assembly/index/getEggsHeld
    * @param w `i32`

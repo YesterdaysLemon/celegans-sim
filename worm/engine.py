@@ -139,10 +139,17 @@ class Simulation:
         # nothing at all.
         head = self._nodes[0]
         food_here = float(self.world.sample(self.world.food, head[0], head[1]))
-        moved = self.pharynx.step(activation, food_here, self.modulators,
-                                  alive=self.nervous.alive)
-        if moved > 0.0:
-            self.food_eaten += self.world.eat(head[0], head[1], moved)
+        # The plate is debited where the mouth is *now*, at the moment of capture, and the
+        # lumen gains only what was actually there. Both halves of that used to be wrong:
+        # the world lost nothing when a pump captured, and lost it later at wherever the
+        # head had drifted to by the time M4 transported it. So `food_eaten` is what the
+        # world lost and `pharynx.ingested` is what reached the intestine; they differ by
+        # whatever is still in the lumen, and that is the conservation invariant.
+        moved = self.pharynx.step(
+            activation, food_here,
+            lambda amount: self.world.eat(head[0], head[1], amount),
+            self.modulators, alive=self.nervous.alive)
+        self.food_eaten += self.pharynx.captured
 
         # Egg-laying. Fed by what the pharynx actually transported, so the two systems are
         # coupled the way they are in the animal: eggs are made out of food. The vulva is
