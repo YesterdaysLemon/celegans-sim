@@ -35,6 +35,26 @@ trials is where this machine stops scaling (8 cores at 84% efficiency, 12 at 62%
 long sweep is bounded by about 11,800 steps per second in aggregate however many workers
 it is given.
 
+Population and parameter-sweep drivers should pin BLAS before importing NumPy. The
+302-by-302 resting-potential solve is too small to repay a large BLAS thread team's startup
+cost, and some OpenBLAS builds make each `Simulation(...)` hundreds of milliseconds slower:
+
+```python
+from worm.threads import pin_blas_threads
+pin_blas_threads(1)
+
+import numpy as np
+from worm.engine import Simulation
+```
+
+This is opt-in so importing `worm` never changes an application's threading policy.
+
+Python genomes live in `worm/genome.py`. `flatten(params, mutable_only=True)` returns the
+ordered, bounded genes; `unflatten(values, base=params, mutable_only=True)` validates them
+and returns a new frozen parameter tree. Reconstruct a `Simulation` from that tree: existing
+simulations have already captured their subsystem parameters and are not updated by
+assigning `sim.p`.
+
 ---
 
 ## The loop
