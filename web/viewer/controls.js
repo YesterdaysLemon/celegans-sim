@@ -7,7 +7,7 @@
  * renderer that owns the pixels.
  */
 
-import { S, el } from './state.js';
+import { S, el, ablated, pruneAblations } from './state.js';
 import { theme } from './themes.js';
 import { setCam, zoom, worldAt } from './dish.js';
 import { neuronAt, neuronCentre, neuronStep, invalidateLayout } from './panels.js';
@@ -63,6 +63,9 @@ function focusWorm(i) {
   S.traces = S.selected.map(() => []);
   S.freqBuf = [];
   buildWormSel();
+  // Ablation is per animal too, so Restore and the cell count are about the new one from
+  // here on. Nothing is copied -- updateAblateUI reads whichever record focus now names.
+  updateAblateUI();
 }
 
 function updateAblateUI() {
@@ -70,8 +73,8 @@ function updateAblateUI() {
   const many = S.engine && S.engine.worms.length > 1;
   b.setAttribute('aria-pressed', String(S.ablateMode));
   b.textContent = S.ablateMode ? 'Click a cell' : 'Ablate';
-  el('b-restore').disabled = S.ablated.size === 0;
-  const n = S.ablated.size;
+  const n = ablated().size;
+  el('b-restore').disabled = n === 0;
   el('neuron-hint').textContent = S.ablateMode
     ? (many ? `click a neuron to silence it in worm ${S.focus + 1}` : 'click a neuron to silence it')
     : (n ? `${n} ablated${many ? ' in worm ' + (S.focus + 1) : ''}` : 'hover a neuron');
@@ -181,6 +184,7 @@ export function wire() {
   el('b-worm-del').addEventListener('click', () => {
     if (!S.engine || !S.engine.removeWorm()) return;
     S.trails.pop();
+    pruneAblations();          // that animal is gone, and so is the record of what it lost
     if (S.focus >= S.engine.worms.length) S.focus = S.engine.worms.length - 1;
     focusWorm(S.focus);
   });
@@ -200,7 +204,10 @@ export function wire() {
     send({ cmd: playing ? 'pause' : 'play' });
   });
   el('b-reset').addEventListener('click', () => {
-    S.ablated.clear(); updateAblateUI();
+    // Reset repopulates the plate, so every record is about an animal that no longer
+    // exists; over the socket it restores the one animal there is. Either way nothing is
+    // ablated on the other side of this, so the whole map goes rather than being pruned.
+    S.ablations.clear();
     S.trail = []; S.kymo = null; S.traces = S.selected.map(() => []);
     S.freqBuf = []; S.speedWin = [];
     if (S.engine) {
@@ -208,9 +215,10 @@ export function wire() {
       S.trails = S.engine.worms.map(() => []);
       S.focus = 0; S.recentre = true;
       buildWormSel();
-      return;
+    } else {
+      send({ cmd: 'reset' });
     }
-    send({ cmd: 'reset' });
+    updateAblateUI();
   });
   el('r-rate').addEventListener('input', (e) => {
     const v = Math.pow(10, parseFloat(e.target.value) / 2);
@@ -220,9 +228,12 @@ export function wire() {
     send({ cmd: 'rate', value: v });
   });
   el('b-ablate').addEventListener('click', () => { S.ablateMode = !S.ablateMode; updateAblateUI(); });
+  // Restore is about the focused animal and only that one: the others keep both their
+  // dead cells and the record of them.
   el('b-restore').addEventListener('click', () => {
-    if (!S.ablated.size) return;
-    S.ablated.clear();
+    const cells = ablated();
+    if (!cells.size) return;
+    cells.clear();
     if (S.engine) S.engine.setAblated(S.focus, []);
     else send({ cmd: 'restore' });
     updateAblateUI();
@@ -285,9 +296,10 @@ function wireNeuronPanel() {
   const activate = (i) => {
     if (i == null) return;
     if (S.ablateMode) {
-      if (S.ablated.has(i)) return;              // ablation is not undone one cell at a time
-      S.ablated.add(i);
-      if (S.engine) S.engine.setAblated(S.focus, [...S.ablated]);
+      const cells = ablated();
+      if (cells.has(i)) return;                  // ablation is not undone one cell at a time
+      cells.add(i);
+      if (S.engine) S.engine.setAblated(S.focus, [...cells]);
       else send({ cmd: 'ablate', neurons: [S.meta.neurons[i].name] });
       updateAblateUI();
       return;
