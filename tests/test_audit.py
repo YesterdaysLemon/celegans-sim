@@ -397,7 +397,11 @@ def _repository(tmp_path):
     _git(repo, "config", "user.name", "Audit Test")
     (repo / "tracked.txt").write_text("committed\n", encoding="utf8")
     (repo / "notes.txt").write_text("initial\n", encoding="utf8")
-    (repo / ".gitignore").write_text("node_modules/\nwasm/node_modules/\n", encoding="utf8")
+    # Slashless anchored patterns ignore either real directories or directory symlinks.
+    # Git classifies the latter as files on POSIX, so a trailing slash is not portable.
+    (repo / ".gitignore").write_text(
+        "/node_modules\n/wasm/node_modules\n", encoding="utf8"
+    )
     _git(repo, "add", "tracked.txt", "notes.txt", ".gitignore")
     _git(repo, "commit", "--quiet", "-m", "fixture")
     return repo
