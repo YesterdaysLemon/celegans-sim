@@ -533,7 +533,10 @@ def _omega_sim(current, seed=0, tau=1.5):
     p = Params()
     p = dataclasses.replace(p, sensory=dataclasses.replace(
         p.sensory, omega_current=current, omega_tau=tau))
-    return Simulation(p, seed=seed, world=bare_world(p))
+    # These tests isolate the reversal/omega circuit for as long as 158 simulated
+    # seconds. Start at the dish centre so that locomotion does not turn them into an
+    # accidental boundary test now that out-of-dish coordinates correctly fail fast.
+    return Simulation(p, seed=seed, world=bare_world(p), placement=(0.0, 0.0, 0.35))
 
 
 def test_omega_fires_after_the_reversal_and_never_during_it():
