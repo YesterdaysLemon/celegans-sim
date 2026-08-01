@@ -1,0 +1,128 @@
+# Clean-install gate for the Python model and its pinned anatomical inputs.
+name: python
+
+on:
+  push:
+    branches: [main]
+    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
+            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+            'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
+            '.github/workflows/python.yml']
+  pull_request:
+    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
+            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+            'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
+            '.github/workflows/python.yml']
+
+jobs:
+  discover-tests:
+    name: discover Python test files
+    runs-on: ubuntu-latest
+    outputs:
+      files: ${{ steps.files.outputs.files }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - id: files
+        name: enumerate test files
+        shell: bash
+        run: |
+          files="$(python -c 'import json; from pathlib import Path; files = [p.as_posix() for p in sorted(Path("tests").glob("test_*.py"))]; assert files, "no Python tests found"; print(json.dumps(files))')"
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+  tests:
+    name: Python 3.10 - ${{ matrix.test_file }}
+    needs: discover-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # These simulations solve small dense systems repeatedly. Letting BLAS create a
+    # runner-sized thread team for each solve is dramatically slower and exhausted this
+    # job's one-hour limit on its first clean run.
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      VECLIB_MAXIMUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        test_file: ${{ fromJSON(needs.discover-tests.outputs.files) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+      - run: python -m pip install -e '.[test]'
+      - run: python -m pytest "${{ matrix.test_file }}" -q
+
+  dataset:
+    name: pinned anatomy rebuilds the committed dataset and runtime pair
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wasm/package-lock.json
+      - run: python -m pip install -e .
+      - run: npm ci --no-audit --no-fund
+        working-directory: wasm
+      - run: python tools/fetch_raw.py
+      - run: python tools/build_dataset.py
+      - run: git diff --exit-code -- data/celegans.json
+
+      # The committed .model and .wasm are a single artifact set: model_gen.ts compiles
+      # the model payload's offsets and scalar constants into the runtime. Snapshot all
+      # three before either generator runs, then prove the committed runtime was built from
+      # the committed layout.
+      - name: snapshot the committed model/runtime set
+        run: |
+          mkdir -p "$RUNNER_TEMP/celegans-artifacts"
+          cp web/worm.model "$RUNNER_TEMP/celegans-artifacts/worm.model"
+          cp web/worm.wasm "$RUNNER_TEMP/celegans-artifacts/worm.wasm"
+          cp wasm/assembly/model_gen.ts "$RUNNER_TEMP/celegans-artifacts/model_gen.ts"
+
+      - name: committed WASM matches its committed generated layout
+        run: |
+          cd wasm
+          npx asc assembly/index.ts --target release
+          cmp "$RUNNER_TEMP/celegans-artifacts/worm.wasm" ../web/worm.wasm
+
+      - name: rebuild the model and runtime as one set
+        run: |
+          python tools/export_model.py
+          cd wasm
+          npx asc assembly/index.ts --target release
+        env:
+          PYTHONPATH: .
+
+      # Raw model bytes include a linear solve and libm-derived setup values, so exact
+      # cross-platform comparison would make last-bit BLAS differences a flaky gate. The
+      # checker compares every layout field and payload array, exactly for discrete data
+      # and within 5e-13 for floats. If model_gen is byte-identical, the WASM must be too.
+      - name: regenerated model/runtime set matches the committed set
+        run: >-
+          python tools/check_model_artifacts.py
+          --expected-model "$RUNNER_TEMP/celegans-artifacts/worm.model"
+          --actual-model web/worm.model
+          --expected-layout "$RUNNER_TEMP/celegans-artifacts/model_gen.ts"
+          --actual-layout wasm/assembly/model_gen.ts
+          --expected-wasm "$RUNNER_TEMP/celegans-artifacts/worm.wasm"
+          --actual-wasm web/worm.wasm
+
+      - name: regenerated pair conforms to the Python model
+        run: |
+          python tools/conform.py > web/conform.json
+          node wasm/conform.mjs
+        env:
+          PYTHONPATH: .

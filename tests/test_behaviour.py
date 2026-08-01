@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from tools.diagnose_loop import analyse, bare_world
+from worm import senses as senses_module
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
 from worm.world import World
@@ -736,6 +737,11 @@ def test_omega_turn_actually_turns_the_animal():
         "is not being carried into a heading change" % (driven, idle))
 
 
+def _assert_gate_shift_within_bound(applied: float, limit: float) -> None:
+    assert abs(applied) <= limit + 1e-12, (
+        "the applied shift %.4f exceeded its own bound %.4f" % (applied, limit))
+
+
 def test_a_modulator_cannot_latch_the_direction_gate():
     """No modulator may shift the gate's latch window clear of the operating point.
 
@@ -770,15 +776,42 @@ def test_a_modulator_cannot_latch_the_direction_gate():
         sim.step()
         raw = abs(float(sim.modulators.turn_bias()))
         raw_peak = max(raw_peak, raw)
-        applied_peak = max(applied_peak, min(raw, lim))
+        # Observe what sense() actually applied. Computing min(raw, lim) here used to
+        # test the assertion's own arithmetic while a deleted production clamp stayed
+        # invisible.
+        applied_peak = max(applied_peak, abs(sim.senses.readout["gate_shift"]))
 
-    assert applied_peak <= lim + 1e-12, (
-        "the applied shift %.4f exceeded its own bound %.4f" % (applied_peak, lim))
-    assert applied_peak < p.gate_hysteresis, (
-        "on a lawn the gate shift reached %.4f against a hysteresis of %.4f, which turns "
-        "the Schmitt trigger into a latch" % (applied_peak, p.gate_hysteresis))
-    # And the animal must still be going somewhere, which is what the latch destroyed.
-    assert sim.senses.going_forward or raw_peak > 0, "no modulator state at all on a lawn"
+    assert raw_peak > lim, (
+        "the scenario never saturated the production clamp (raw %.4f, limit %.4f)"
+        % (raw_peak, lim))
+    _assert_gate_shift_within_bound(applied_peak, lim)
+
+
+def test_direction_gate_guard_detects_a_bypassed_production_clamp(monkeypatch):
+    """The bound guard must fail if the production ``np.clip`` is bypassed."""
+    p = Params()
+    lim = p.sensory.turn_bias_limit * p.sensory.gate_hysteresis
+    raw = 2.0 * lim
+    sim = Simulation(p, seed=0, world=bare_world(p), placement=(0.0, 0.0, 0.0))
+
+    # Patch only the scalar clip used for the direction-gate shift. ``numpy`` is a shared
+    # module object, so every unrelated clip still delegates to the captured implementation.
+    real_clip = senses_module.np.clip
+
+    def bypass_gate_clip(value, lower, upper, *args, **kwargs):
+        if (np.isscalar(value) and float(value) == raw
+                and lower == -lim and upper == lim):
+            return value
+        return real_clip(value, lower, upper, *args, **kwargs)
+
+    monkeypatch.setattr(sim.modulators, "turn_bias", lambda: raw)
+    monkeypatch.setattr(senses_module.np, "clip", bypass_gate_clip)
+    sim.step()
+
+    applied = sim.senses.readout["gate_shift"]
+    assert applied == pytest.approx(raw), "the mutation did not reach the production shift"
+    with pytest.raises(AssertionError, match="exceeded its own bound"):
+        _assert_gate_shift_within_bound(applied, lim)
 
 
 def test_the_worm_still_travels_on_a_lawn():
