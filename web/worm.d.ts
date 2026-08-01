@@ -67,6 +67,30 @@ declare namespace __AdaptedExports {
    */
   export function hasWorm(id: number): number;
   /**
+   * assembly/index/geneCount
+   * @returns `i32`
+   */
+  export function geneCount(): number;
+  /**
+   * assembly/index/setGene
+   * @param w `i32`
+   * @param slot `i32`
+   * @param v `f64`
+   */
+  export function setGene(w: number, slot: number, v: number): void;
+  /**
+   * assembly/index/getGene
+   * @param w `i32`
+   * @param slot `i32`
+   * @returns `f64`
+   */
+  export function getGene(w: number, slot: number): number;
+  /**
+   * assembly/index/resetGenes
+   * @param w `i32`
+   */
+  export function resetGenes(w: number): void;
+  /**
    * assembly/index/clearWorms
    */
   export function clearWorms(): void;

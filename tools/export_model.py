@@ -38,12 +38,62 @@ from worm.params import MEDIA, Params
 
 OUT = "web/worm.model"
 
+# ------------------------------------------------------------------------------ genome --
+#
+# The scalars an individual animal is allowed to differ from its parents in.
+#
+# Every other number the runtime uses is shared by every worm in the dish, which is what
+# makes a second animal cheap -- the 302x302 matrices are anatomy. These are the exception:
+# each `Worm` carries its own copy, seeded from the value below, so a population can hold
+# genuinely different animals rather than N clones of one.
+#
+# Three rules decide what may be on this list, and they are not stylistic.
+#
+#   * It has to be a scalar the *runtime* reads in a step function. Anything that fed the
+#     Python construction instead -- `beta`, `C_m`, `E_K`, `s_eq` -- has had its results
+#     baked into the payload by the resting-potential solve and the muscle balance, so
+#     changing it here would move the operating point away from the solve rather than
+#     re-doing it. Those want a re-export, not a gene.
+#   * It has to survive the trip intact. Several parameters are folded into a derived rate
+#     on the way out (`chemo_tau_adapt` leaves as `CHEM_DECAY = exp(-dt/tau)`), and the
+#     runtime never sees the underlying constant. Those are recoverable -- the exporter
+#     could emit tau alongside -- but until it does they cannot be genes.
+#   * It must not be a unit conversion sitting in front of the fitness measure.
+#     `volume_per_pump` and `lumen_capacity` multiply `food_eaten` about eightfold between
+#     them while the animal forages slightly worse, so a population selected on intake
+#     would spend its whole search there. They are deliberately absent.
+#
+# The list is here, in Python, because this is where the parameters live; both the runtime
+# and the browser read the slot numbering out of what this file emits, so the two cannot
+# drift about what gene 7 means.
+GENES = (
+    # locomotion -- how hard the reflexes drive the body
+    "sen_proprio_gain",
+    "sen_head_proprio_gain",
+    "sen_cord_drive",
+    # the forward/backward decision -- where the Schmitt trigger sits and how sticky it is
+    "sen_gate_bias",
+    "sen_gate_hysteresis",
+    "sen_tonic_forward",
+    # steering -- the omega turn's depth, and which way it bends
+    "sen_omega_current",
+    "sen_omega_ventral_fraction",
+    # the senses, one gain each
+    "sen_chemo_gain",
+    "sen_thermo_gain",
+    "sen_oxygen_gain",
+    "sen_repellent_d_gain",
+    "sen_food_gain",
+    "sen_touch_gain",
+)
+
 
 class Blob:
     """Collects named arrays and scalars, then writes header + payload."""
 
     def __init__(self):
-        self.meta = {"arrays": {}, "scalars": {}, "ints": {}, "strings": {}}
+        self.meta = {"arrays": {}, "scalars": {}, "ints": {}, "strings": {},
+                     "genes": []}
         self.chunks = []
         self.offset = 0
 
@@ -280,6 +330,17 @@ def export(path=OUT, params=None):
     b.i("world_grid", wp.grid)
     b.f("world_extent", sim.world.extent)
 
+    # -- genome ------------------------------------------------------------------------
+    # Recorded in the header so the browser can address genes by name without keeping its
+    # own copy of the list. Validated rather than filtered: a gene that names a scalar
+    # this file does not export would otherwise vanish silently, the runtime would keep
+    # its compiled-in literal, and a mutation on it would do nothing -- indistinguishable
+    # from a gene under no selection. That is the quietest way this could ship broken.
+    unknown = [g for g in GENES if g not in b.meta["scalars"]]
+    if unknown:
+        raise KeyError("genes name scalars that are not exported: %s" % ", ".join(unknown))
+    b.meta["genes"] = list(GENES)
+
     size = b.write(path)
     _emit_ts(b.meta, "wasm/assembly/model_gen.ts")
     return path, size, b.meta
@@ -313,6 +374,14 @@ def _emit_ts(meta, path):
         out.append("export const %s: f64 = %r;" % (ident(k).upper(), float(v)))
     for k, v in sorted(meta["ints"].items()):
         out.append("export const %s: i32 = %d;" % (ident(k).upper(), int(v)))
+
+    # Genome slot numbering. Emitted rather than hand-written on either side, because a
+    # slot list kept in two places is exactly the bug this file's docstring is about.
+    out.append("")
+    out.append("// Genome slots. The list lives in tools/export_model.py; see GENES there.")
+    for slot, name in enumerate(meta["genes"]):
+        out.append("export const GENE_%s: i32 = %d;" % (ident(name).upper(), slot))
+    out.append("export const N_GENES: i32 = %d;" % len(meta["genes"]))
     with open(path, "w") as fh:
         fh.write("\n".join(out) + "\n")
 

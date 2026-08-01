@@ -312,6 +312,153 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* ---------------------------------------------------------------------------------- 5 --
+ * The default genome is the model.
+ *
+ * Every gene is seeded from the scalar it was named after, so a population nobody has
+ * mutated is bit-identical to the model before genes existed -- which is what lets
+ * conform.mjs go on meaning something. Matched *by name* through the .model header rather
+ * than by position, because the failure this guards against is the slot numbering drifting
+ * between the exporter and the runtime, and a positional check would drift with it.
+ */
+{
+  const E = engine();
+  const id = E.createWorm(1, 0.0, 0.0, 0.0);
+  const names = head.genes || [];
+  const wrong = names
+    .map((name, slot) => ({ name, slot, got: E.getGene(id, slot), want: head.scalars[name] }))
+    .filter((g) => !Object.is(g.got, g.want));
+  const counted = E.geneCount() === names.length;
+  report(
+    `DEFAULT GENOME -- ${names.length} genes seeded from the exported scalars`,
+    names.length > 0 && counted && wrong.length === 0,
+    `  genes declared                ${names.length}, runtime reports ${E.geneCount()}\n` +
+    `  disagreeing with the model    ${wrong.length}` +
+    (wrong.length
+      ? `\n${wrong.map((g) => `    ${g.name} [${g.slot}]: ${g.got} != ${g.want}`).join('\n')}`
+      : ''),
+  );
+}
+
+/* ---------------------------------------------------------------------------------- 6 --
+ * No gene is inert.
+ *
+ * The one check a genome most needs, and the one whose absence is hardest to notice. A
+ * gene wired to nothing does not fail -- it makes its dimension of the search space flat,
+ * the population drifts on it neutrally, and the run looks exactly like a run where that
+ * trait was simply not under selection. This repo already has one parameter in that state:
+ * `serotonin_mod1` is exported, documented, and recommended for a genome, and the runtime
+ * ignores it entirely, because conformance passes when the shipped value is zero.
+ *
+ * So: perturb each gene on its own, and require the animal to end up somewhere else.
+ *
+ * Three of the fourteen need a context, and the reason is a documented property of the
+ * model rather than a weakness of the check. The omega turn fires on a backward-to-forward
+ * edge, and this animal reverses about 3.3 times a minute -- far too rarely for an assay
+ * this short to catch one, and measured here it produced no reversal at all in ten
+ * seconds. Those genes are therefore exercised against a baseline whose Schmitt trigger
+ * oscillates. Both arms get the same context; only the gene under test differs.
+ */
+{
+  const REVERSING = { sen_gate_bias: 0.20, sen_gate_hysteresis: 0.01 };
+  const CONTEXT = {
+    sen_gate_hysteresis: REVERSING,
+    sen_omega_current: REVERSING,
+    sen_omega_ventral_fraction: REVERSING,
+  };
+  const names = head.genes || [];
+  const slotOf = Object.fromEntries(names.map((n, i) => [n, i]));
+  const BLOCK = 2000, BLOCKS = 5;              // 5 s, poked once a second
+
+  function run(context, mutate) {
+    const E = engine();
+    E.addFood(-16.0, 0.0, 4.0, 1.0, 1.0, 9.0);
+    E.addRepellent(-13.0, 2.0, 0.9, 5.0);
+    const id = E.createWorm(1000, -16.0, 0.0, 0.0);
+    for (const [n, v] of Object.entries(context || {})) E.setGene(id, slotOf[n], v);
+    if (mutate) mutate(E, id);
+    // Poking drives the touch pathway, which nothing else on this plate would reach.
+    for (let k = 0; k < BLOCKS; k++) { E.pokeWorm(id, 1, 1.0); E.stepAll(BLOCK); }
+    return {
+      nodes: readArray(E, E.ptrNodesX(id), 49),
+      V: readArray(E, E.ptrV(id), 302),
+      reversed: E.getGateForward(id),
+    };
+  }
+
+  const controls = new Map();
+  const controlFor = (ctx) => {
+    const key = JSON.stringify(ctx || null);
+    if (!controls.has(key)) controls.set(key, run(ctx, null));
+    return controls.get(key);
+  };
+
+  const inert = [], moved = [];
+  for (const name of names) {
+    const ctx = CONTEXT[name];
+    const base = controlFor(ctx);
+    // x3 + 1 rather than x3, so a gene whose default is zero still moves.
+    const m = run(ctx, (E, id) => E.setGene(id, slotOf[name], E.getGene(id, slotOf[name]) * 3 + 1));
+    const d = Math.max(worst(m.nodes, base.nodes), worst(m.V, base.V));
+    (d > 1e-9 ? moved : inert).push(`${name} (${d.toExponential(2)})`);
+  }
+  report(
+    `NO GENE IS INERT -- each of ${names.length} perturbed alone, against its own control`,
+    inert.length === 0 && names.length > 0,
+    `  genes that changed the animal ${moved.length} of ${names.length}\n` +
+    (inert.length ? `  INERT: ${inert.join(', ')}\n` : '') +
+    `  ${moved.join('\n  ')}`,
+  );
+}
+
+/* ---------------------------------------------------------------------------------- 7 --
+ * A genome belongs to one animal.
+ *
+ * The whole point of per-worm genes, and the one way the change could be worse than
+ * useless: if a gene leaked between animals, a population would still look like it was
+ * evolving while actually sharing one genome, and every fitness comparison in it would be
+ * meaningless. Mutate the middle animal of three and require the other two to be
+ * bit-identical to a run where nobody was mutated.
+ */
+{
+  const names = head.genes || [];
+  const trio = (mutate) => {
+    const E = engine();
+    plate(E);
+    const ids = SPREAD.slice(0, 3).map((p, i) => E.createWorm(1000 + i * 7717, ...p));
+    if (mutate) mutate(E, ids[1]);
+    E.stepAll(STEPS);
+    return {
+      ids,
+      state: ids.map((id) => ({
+        nodes: readArray(E, E.ptrNodesX(id), 49),
+        V: readArray(E, E.ptrV(id), 302),
+      })),
+      genes: ids.map((id) => names.map((_, s) => E.getGene(id, s))),
+    };
+  };
+  const plain = trio(null);
+  // Mutate every gene at once on the middle animal -- the loudest version of the question.
+  const one = trio((E, id) => names.forEach((_, s) => E.setGene(id, s, E.getGene(id, s) * 2 + 1)));
+
+  let bystanders = 0;
+  for (const i of [0, 2]) {
+    bystanders = Math.max(bystanders, worst(one.state[i].nodes, plain.state[i].nodes));
+    bystanders = Math.max(bystanders, worst(one.state[i].V, plain.state[i].V));
+  }
+  const target = Math.max(worst(one.state[1].nodes, plain.state[1].nodes),
+                          worst(one.state[1].V, plain.state[1].V));
+  // Their genomes must still read as the defaults, not as the mutant's.
+  const genomesClean = [0, 2].every((i) => worst(one.genes[i], plain.genes[0]) === 0);
+  report(
+    'GENES ARE PRIVATE -- all 14 mutated on the middle animal of three',
+    bystanders === 0 && genomesClean && target > 1e-9,
+    `  the mutated animal moved      ${target.toExponential(3)}\n` +
+    `  its neighbours moved          ${bystanders.toExponential(3)}   (must be exactly 0)\n` +
+    `  neighbours' genomes intact    ${genomesClean}`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');
