@@ -416,6 +416,8 @@ class Worm {
   phPhase: f64 = 0.0; phOpen: f64 = 0.0; phPumping: bool = false;
   phRate: f64 = 0.0; phDur: f64 = 0.0; phPumps: i32 = 0;
   lumen: f64 = 0.0; ingested: f64 = 0.0; eaten: f64 = 0.0;
+  // What the last pump actually got off the plate, which is what the world lost.
+  phCaptured: f64 = 0.0;
   // Egg-laying. See worm/egglaying.py for the circuit; the shapes here follow it exactly.
   eglVm: f64 = 0.0;
   eglEggs: f64 = G.EGL_EGGS_INITIAL;
@@ -1110,6 +1112,7 @@ class Worm {
 
     // The cycle runs during the pump as well as between pumps, so the rate is the one the
     // animal achieves; what remains is a refractory period, capping it at 1/duration.
+    this.phCaptured = 0.0;
     this.phPhase += this.phRate * dt;
     if (this.phPumping) {
       this.phOpen -= dt;
@@ -1123,8 +1126,15 @@ class Worm {
       this.phPumping = true;
       this.phPumps++;
       const room = 1.0 - this.lumen / G.PH_LUMEN_CAPACITY;
-      this.lumen += G.PH_VOLUME_PER_PUMP * (foodAtMouth > 0.0 ? foodAtMouth : 0.0)
-                    * (this.phDur / G.PH_PUMP_DURATION) * (room > 0.0 ? room : 0.0);
+      const want = G.PH_VOLUME_PER_PUMP * (foodAtMouth > 0.0 ? foodAtMouth : 0.0)
+                   * (this.phDur / G.PH_PUMP_DURATION) * (room > 0.0 ? room : 0.0);
+      /* Debit the plate here, where the mouth is, at the moment of capture -- and gain
+       * only what was actually there. Both halves used to be wrong: capture was free, and
+       * the world was debited later at M4 transport time, wherever the head had drifted
+       * to by then. See worm/pharynx.py for the measurement. */
+      this.phCaptured = want > 0.0
+        ? world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), want) : 0.0;
+      this.lumen += this.phCaptured;
     }
     // Isthmus peristalsis. M4 is what moves the lumen's contents on; without it the
     // animal pumps normally and starves, so transport is its own step.
@@ -1158,7 +1168,9 @@ class Worm {
     }
     const food = world.sample(world.food, unchecked(this.nodesX[0]), unchecked(this.nodesY[0]));
     const moved = this.stepPharynx(food);
-    if (moved > 0.0) this.eaten += world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), moved);
+    // The plate was already debited at capture, inside stepPharynx. `eaten` is what the
+    // world lost; `ingested` is what reached the intestine; they differ by the lumen.
+    this.eaten += this.phCaptured;
     // The uterus fills from what the pharynx actually transported, so an animal that does
     // not eat does not make eggs. The vulva is halfway down the body.
     if (this.stepEggLaying(moved, food) > 0.0) {
@@ -1407,6 +1419,10 @@ export function getPumpRate(w: i32): f64 { return byId(w).phRate; }
 export function getPumping(w: i32): f64 { return byId(w).phPumping ? 1.0 : 0.0; }
 export function getLumen(w: i32): f64 { return byId(w).lumen; }
 export function getEaten(w: i32): f64 { return byId(w).eaten; }
+// What reached the intestine, as opposed to what left the plate. The two differ by
+// whatever is still in the lumen, and an M4-ablated animal is the case that separates
+// them: it captures until full, then starves with its mouth loaded.
+export function getIngested(w: i32): f64 { return byId(w).ingested; }
 export function getEggsHeld(w: i32): f64 { return byId(w).eglEggs; }
 export function getEggsLaid(w: i32): f64 { return <f64>byId(w).eglLaid; }
 export function getVulvalMuscle(w: i32): f64 { return byId(w).eglVm; }

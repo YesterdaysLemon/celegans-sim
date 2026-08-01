@@ -201,6 +201,12 @@ declare namespace __AdaptedExports {
    */
   export function getEaten(w: number): number;
   /**
+   * assembly/index/getIngested
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getIngested(w: number): number;
+  /**
    * assembly/index/getEggsHeld
    * @param w `i32`
    * @returns `f64`

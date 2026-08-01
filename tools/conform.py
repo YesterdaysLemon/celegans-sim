@@ -100,6 +100,15 @@ def full_case():
                 # Egg-laying carries four pieces of state and three of them are slow, so a
                 # port that got the vulval muscle right and the resource wrong would look
                 # correct for minutes. All four are compared.
+                # Feeding. `lumen` is what the pharynx holds, `ingested` what reached
+                # the intestine, `eaten` what the plate lost -- three quantities that are
+                # equal only when the animal is standing still on food, which is exactly
+                # the case that hid a conservation bug for the whole of this model's life.
+                # Comparing all three pins capture, transport and the world debit
+                # separately rather than letting one stand in for the others.
+                "ph": [round(float(sim.pharynx.lumen), 12),
+                       round(float(sim.pharynx.ingested), 12),
+                       round(float(sim.food_eaten), 12)],
                 "egl": [round(float(sim.egglaying.vm), 10),
                         round(float(sim.egglaying.eggs), 10),
                         round(float(sim.egglaying.resource), 10),

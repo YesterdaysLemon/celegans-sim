@@ -117,7 +117,11 @@ E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
 E.addRepellent(7.0, -3.0, 0.9, 5.0);
 E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);   // food under the animal; see conform.py
 const w2 = E.createWorm(0, 0.0, 0.0, 0.0);
-let wXY = 0, wV = 0, wT = 0, gateBad = 0, wEgl = 0;
+let wXY = 0, wV = 0, wT = 0, gateBad = 0, wEgl = 0, wPh = 0;
+// Distinct values seen per pharynx quantity. A comparison over a constant is not a
+// comparison: three of egg-laying's four variables were once compared on a plate the
+// animal never ate from, and agreed perfectly while covering nothing.
+const phSeen = [new Set(), new Set(), new Set()];
 prev = 0;
 for (const f of fc.frames) {
   E.step(w2, f.step - prev);
@@ -139,6 +143,11 @@ for (const f of fc.frames) {
   if (!f.egl) { console.error('  reference frame has no `egl` -- regenerate it'); process.exit(1); }
   const got = [E.getVulvalMuscle(w2), E.getEggsHeld(w2), E.getEglResource(w2), E.getEggsLaid(w2)];
   for (let i = 0; i < 4; i++) wEgl = Math.max(wEgl, Math.abs(got[i] - f.egl[i]));
+  // Feeding, on the same terms: absent data is a broken reference, not a pass.
+  if (!f.ph) { console.error('  reference frame has no `ph` -- regenerate it'); process.exit(1); }
+  const ph = [E.getLumen(w2), E.getIngested(w2), E.getEaten(w2)];
+  for (let i = 0; i < 3; i++) wPh = Math.max(wPh, Math.abs(ph[i] - f.ph[i]));
+  phSeen.forEach((set, i) => set.add(f.ph[i]));
 }
 console.log(`\nWHOLE LOOP -- neurons, muscle, senses, body; ${fc.steps} steps, noise off`);
 console.log(`  worst node disagreement       ${wXY.toExponential(3)} mm`);
@@ -146,7 +155,14 @@ console.log(`  worst membrane potential      ${wV.toExponential(3)} mV`);
 console.log(`  worst muscle tension          ${wT.toExponential(3)}`);
 console.log(`  direction gate disagreed on   ${gateBad} of ${fc.frames.length} samples`);
 console.log(`  worst egg-laying state        ${wEgl.toExponential(3)}   (vm, held, resource, laid)`);
-const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0 && wEgl < 1e-8;
+console.log(`  worst feeding state           ${wPh.toExponential(3)}   (lumen, ingested, eaten)`);
+const phNames = ['lumen', 'ingested', 'eaten'];
+const phFlat = phSeen.map((set, i) => (set.size > 1 ? null : phNames[i])).filter(Boolean);
+if (phFlat.length) {
+  console.log(`  NOT COVERED: ${phFlat.join(', ')} never changed over the run`);
+}
+const fullOk = wXY < 1e-6 && wV < 1e-6 && wT < 1e-8 && gateBad === 0 && wEgl < 1e-8
+  && wPh < 1e-8 && phFlat.length === 0;
 console.log(fullOk ? '  PASS' : '  FAIL');
 
 // --- with cells removed -----------------------------------------------------------------

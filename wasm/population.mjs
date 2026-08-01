@@ -459,6 +459,58 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* ---------------------------------------------------------------------------------- 8 --
+ * Food is conserved across a population sharing one plate.
+ *
+ * The property a fitness measure needs and cannot check for itself: whatever the animals
+ * are credited with having eaten must have come off the plate, and the plate must not lose
+ * more than they got. With one animal this is nearly automatic; with several competing for
+ * the same cells it is not, because `world.eat` serves them in turn out of a shrinking
+ * neighbourhood and each has to be told what it actually received rather than what it
+ * asked for.
+ *
+ * The animals are put deliberately on top of one another here -- the opposite of the
+ * independence check -- on a lawn small enough that they run it down, so the competition
+ * is real rather than nominal.
+ */
+{
+  const N = 4;
+  const E = engine();
+  E.addFood(0.0, 0.0, 1.5, 1.0, 1.0, 4.0);       // a small lawn, four animals on it
+  const foodTotal = () => {
+    const f = f64(E).subarray(E.ptrFood() >> 3, (E.ptrFood() >> 3) + GRID * GRID);
+    let s = 0;
+    for (let i = 0; i < f.length; i++) s += f[i];
+    return s;
+  };
+  const ids = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    ids.push(E.createWorm(2000 + i * 5171, Math.cos(a) * 0.4, Math.sin(a) * 0.4, a));
+  }
+  const before = foodTotal();
+  E.stepAll(FEED_STEPS);
+  const after = foodTotal();
+
+  const removed = before - after;
+  const eaten = ids.reduce((s, id) => s + E.getEaten(id), 0);
+  const held = ids.reduce((s, id) => s + E.getIngested(id) + E.getLumen(id), 0);
+  // Relative, because the grid sum is ~1e3 and cancellation in it dominates any honest
+  // tolerance on the ~1e-2 that actually moved.
+  const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(b), 1e-12);
+  const conserved = rel(eaten, removed) < 1e-9;
+  const accounted = rel(held, eaten) < 1e-9;
+  const competed = removed > 0 && ids.every(id => E.getEaten(id) > 0);
+  report(
+    `FOOD IS CONSERVED -- ${N} animals on one small lawn, ${(FEED_STEPS * 5e-4).toFixed(1)} s`,
+    conserved && accounted && competed,
+    `  plate lost                    ${removed.toExponential(6)}\n` +
+    `  animals credited              ${eaten.toExponential(6)}   (relative gap ${rel(eaten, removed).toExponential(2)})\n` +
+    `  intestine + lumen             ${held.toExponential(6)}   (relative gap ${rel(held, eaten).toExponential(2)})\n` +
+    `  every animal actually fed     ${competed}   [${ids.map(id => E.getEaten(id).toFixed(6)).join(', ')}]`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');
