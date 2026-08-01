@@ -78,6 +78,11 @@ GENES = (
     # steering -- the omega turn's depth, and which way it bends
     "sen_omega_current",
     "sen_omega_ventral_fraction",
+    # the wireless layer -- how strongly food shuts down reversals, via the serotonin-gated
+    # chloride channel on the backward command pool. Shipped at zero and documented as the
+    # best pirouette ratio this model has produced; it is a gene so a population can find
+    # out what it is worth.
+    "mod_serotonin_mod1",
     # the senses, one gain each
     "sen_chemo_gain",
     "sen_thermo_gain",
@@ -293,8 +298,11 @@ def export(path=OUT, params=None):
     for k in mod.NAMES:
         b.arr("idx_mod_" + k, np.asarray(mod.sources[k], dtype=np.int32), "i4")
         b.f("mod_rate_" + k, mod._rate[k])
-    b.arr("mod1_peak", mod._mod1_peak)
-    b.i("any_mod1", 1 if mod._any_mod1 else 0)
+    # The coefficient is factored out: `mod1_unit` is the target set's resting conductance
+    # and `mod_serotonin_mod1` scales it, so an individual can carry its own coefficient
+    # without a re-export. `mod1_peak` was the product, which baked the coefficient into
+    # the payload and is why this path could never be exercised in the browser.
+    b.arr("mod1_unit", mod._mod1_unit)
     mo = p.modulator
     for k in ("dopamine_slowing", "serotonin_slowing", "dopamine_wavelength",
               "serotonin_turning", "octopamine_speeding", "pdf_roaming",

@@ -458,6 +458,7 @@ class Worm {
     unchecked(this.genes[G.GENE_SEN_TONIC_FORWARD] = G.SEN_TONIC_FORWARD);
     unchecked(this.genes[G.GENE_SEN_OMEGA_CURRENT] = G.SEN_OMEGA_CURRENT);
     unchecked(this.genes[G.GENE_SEN_OMEGA_VENTRAL_FRACTION] = G.SEN_OMEGA_VENTRAL_FRACTION);
+    unchecked(this.genes[G.GENE_MOD_SEROTONIN_MOD1] = G.MOD_SEROTONIN_MOD1);
     unchecked(this.genes[G.GENE_SEN_CHEMO_GAIN] = G.SEN_CHEMO_GAIN);
     unchecked(this.genes[G.GENE_SEN_THERMO_GAIN] = G.SEN_THERMO_GAIN);
     unchecked(this.genes[G.GENE_SEN_OXYGEN_GAIN] = G.SEN_OXYGEN_GAIN);
@@ -530,17 +531,36 @@ class Worm {
       unchecked(this.gs[r] = a1); unchecked(this.Es[r] = a2);
     }
 
+    /* MOD-1: the serotonin-gated chloride channel, as a conductance rather than a current
+     * so it shunts and saturates like the real channel instead of driving the cell without
+     * limit. Peak is a fraction of each target's own resting conductance, which is what
+     * `mod1_unit` carries; the fraction itself is this animal's own gene.
+     *
+     * Only the depolarising half of the serotonin level opens it -- less food than
+     * baseline should not prise a channel open backwards.
+     *
+     * This existed in Python from the day the modulator layer was built and was never
+     * ported. It survived every conformance run because the shipped coefficient is zero,
+     * and zero is indistinguishable from absent. */
+    const mod1 = this.gene(G.GENE_MOD_SEROTONIN_MOD1)
+                 * (this.modSER > 0.0 ? this.modSER : 0.0);
     for (let i = 0; i < n; i++) {
       const V = unchecked(this.Vold[i]);
       const gAd = m(G.OFF_g_adapt, i) * unchecked(this.av[i]);
       const gC = m(G.OFF_g_ca, i) * 0.5 *
                  (1.0 + Math.tanh((V - m(G.OFF_ca_vhalf, i)) / G.NEURAL_CA_SLOPE));
-      const gt = gLeak + unchecked(this.gapTot[i]) + unchecked(this.gs[i]) + gAd + gC;
+      let gt = gLeak + unchecked(this.gapTot[i]) + unchecked(this.gs[i]) + gAd + gC;
+      let fx = gLeak * eLeak + unchecked(this.Es[i])
+               + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
+               + unchecked(this.Inoise[i])
+               + (this.anyDead && !unchecked(this.alive[i]) ? 0.0 : unchecked(this.Iext[i]));
+      if (mod1 != 0.0) {
+        const gm = m(G.OFF_mod1_unit, i) * mod1;
+        gt += gm;
+        fx += gm * G.NEURAL_E_INH;
+      }
       unchecked(this.gtot[i] = gt);
-      unchecked(this.fx[i] = gLeak * eLeak + unchecked(this.Es[i])
-                + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
-                + unchecked(this.Inoise[i])
-                + (this.anyDead && !unchecked(this.alive[i]) ? 0.0 : unchecked(this.Iext[i])));
+      unchecked(this.fx[i] = fx);
       unchecked(this.dec[i] = Math.exp(-gt * dt / (G.NEURAL_C_M * 1e-3)));
       unchecked(this.Vn[i] = V);
     }

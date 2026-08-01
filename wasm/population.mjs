@@ -451,7 +451,7 @@ function attractantAfter(nWorms) {
   // Their genomes must still read as the defaults, not as the mutant's.
   const genomesClean = [0, 2].every((i) => worst(one.genes[i], plain.genes[0]) === 0);
   report(
-    'GENES ARE PRIVATE -- all 14 mutated on the middle animal of three',
+    `GENES ARE PRIVATE -- all ${names.length} mutated on the middle animal of three`,
     bystanders === 0 && genomesClean && target > 1e-9,
     `  the mutated animal moved      ${target.toExponential(3)}\n` +
     `  its neighbours moved          ${bystanders.toExponential(3)}   (must be exactly 0)\n` +

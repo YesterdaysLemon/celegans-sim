@@ -54,7 +54,7 @@ def body_case():
     return out
 
 
-def full_case():
+def full_case(serotonin_mod1=0.0):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
     Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
@@ -68,6 +68,13 @@ def full_case():
 
     p = Params()
     p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+    # MOD-1 ships at zero, and a term multiplied by zero is not being checked -- which is
+    # exactly how the whole serotonin-gated chloride path reached the runtime unported and
+    # stayed that way, passing every conformance run because absent and zero agree to every
+    # decimal place. The second case below runs it at the coefficient params.py documents.
+    if serotonin_mod1:
+        p = dataclasses.replace(
+            p, modulator=dataclasses.replace(p.modulator, serotonin_mod1=serotonin_mod1))
     # A plate with something on it. A bare world leaves most of the sensory layer reading
     # zero -- and a term that is only ever multiplied by zero is not being checked. The
     # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
@@ -192,7 +199,11 @@ def ablated_case():
 
 
 def main():
-    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case()},
+    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case(),
+               # 0.30 is the coefficient ModulatorParams.serotonin_mod1 documents as
+               # adopted-then-shipped-at-zero. Running the reference there is the only way
+               # this path gets compared at all.
+               "mod1": full_case(serotonin_mod1=0.30)},
               sys.stdout)
     return 0
 

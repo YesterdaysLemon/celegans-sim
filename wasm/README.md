@@ -153,6 +153,22 @@ zeros diffuses to zeros, so nothing disagreed. It surfaced only once the plate h
 and a drop on it, as an otherwise exact run that diverged on step 41 and nowhere else —
 41 steps is 0.0205 s, and `field_dt` is 0.02.
 
+**And that sentence was false when it was written, in exactly the way the sentence after it
+describes.** The modulators were *not* all ported: MOD-1, the serotonin-gated chloride
+conductance, existed in `worm/modulators.py`, was exported into the model file, was named
+in the roadmap as a parameter worth evolving — and appeared nowhere in `index.ts`. Every
+conformance run passed, because the shipped coefficient is `0.0` and a term multiplied by
+zero is indistinguishable from a term that is not there. The empty dish, the lawn-less
+plate, the egg comparison that compared nothing, and this are all one mistake, and this one
+sat directly beneath a paragraph explaining it.
+
+It is ported now, and the coefficient is no longer baked into the payload: `mod1_unit`
+carries the target set's resting conductance and an individual scales it with its own gene,
+so the conformance suite runs a fourth case at the 0.30 that `params.py` documents. The
+rule that falls out is the same one as before and worth stating in general: **a parameter
+whose shipped value is zero is not covered by a check that only ever runs the shipped
+value.** Every remaining `if (G.ANY_*)` branch in this file is in that position.
+
 ## What it costs
 
 | worms | real time | (before sparse matrices) |
