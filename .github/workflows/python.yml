@@ -19,6 +19,15 @@ jobs:
     name: Python 3.10 clean install and regression suite
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # These simulations solve small dense systems repeatedly. Letting BLAS create a
+    # runner-sized thread team for each solve is dramatically slower and exhausted this
+    # job's one-hour limit on its first clean run.
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      VECLIB_MAXIMUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
