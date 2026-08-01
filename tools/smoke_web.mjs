@@ -201,6 +201,107 @@ try {
       check(vp.name, panel.a === 'true' && panel.b === 'false' && panel.c === 'true',
             `aria-expanded went ${panel.a} -> ${panel.b} -> ${panel.c}`);
 
+      /* Ablation, with two animals on the plate.
+       *
+       * The one exception to "nothing here asserts what the animal does", and it is not
+       * really an exception: the claim is that the controls describe the animal they name.
+       * Ablation is applied to one worm, so a viewer that keeps a single ablated-cell set
+       * silently ablates, displays and restores the wrong subject -- which is what #46
+       * was: Restore emptied the shared record while restoring whichever animal happened
+       * to be focused, leaving the ablated one ablated with nothing that knew it. That is
+       * invisible to every other check in this file, because the page loads, the buttons
+       * respond, and only the *subject* is wrong.
+       *
+       * Driven through the real listeners -- the Ablate toggle, the worm selector, the
+       * Restore button, the neuron panel's Enter -- with one concession: the keyboard
+       * cursor is placed by writing S.hover rather than by clicking a cell, because
+       * hit-testing the neuron canvas from out here would mean keeping a second copy of
+       * the panel's grid layout in this file. S.hover *is* that cursor; the handler under
+       * test is the same one a keypress reaches.
+       *
+       * Read back from E.isAlive, not from the viewer's own record: the bug being caught
+       * is precisely the two disagreeing.
+       */
+      const abl = await page.evaluate(() => {
+        const S = window.__sim;
+        const $ = (id) => document.getElementById(id);
+        const worm = (k) => document.querySelectorAll('#worm-sel button')[k];
+        const nc = $('c-neurons');
+        const kill = (i) => {                       // ablate cell i in the focused animal
+          $('b-ablate').click();
+          S.hover = i;
+          nc.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          $('b-ablate').click();
+        };
+        const dead = (k, i) => S.engine.E.isAlive(S.engine.worms[k], i) === 0;
+        const hint = () => $('neuron-hint').textContent;
+        const out = { worms: S.engine ? S.engine.worms.length : 0 };
+        if (out.worms < 2 || !worm(1)) return out;
+
+        worm(0).click();
+        kill(4);
+        out.ablated = { one: dead(0, 4), two: dead(1, 4), hint: hint(),
+                        restore: $('b-restore').disabled };
+
+        worm(1).click();                            // an intact animal has nothing to undo
+        out.switched = { hint: hint(), restore: $('b-restore').disabled };
+
+        kill(9);
+        out.both = { one: dead(0, 4), two: dead(1, 9), restore: $('b-restore').disabled };
+
+        $('b-restore').click();                     // ...restores worm 2, and only worm 2
+        out.restored = { one: dead(0, 4), two: dead(1, 9), restore: $('b-restore').disabled };
+
+        worm(0).click();                            // and worm 1's record survived all of it
+        out.back = { one: dead(0, 4), hint: hint(), restore: $('b-restore').disabled };
+
+        /* Then the other half of "per animal": an animal that leaves takes its ablations
+         * with it. Worm 2 is ablated, removed, and a replacement added into the position
+         * it vacated -- a different animal, so it starts intact and the controls have to
+         * say so. Keying the record by position rather than by the runtime's id passes
+         * everything above and fails here, which is the point of testing it: the two
+         * schemes are indistinguishable until the population changes.
+         */
+        worm(1).click();
+        kill(7);
+        $('b-worm-del').click();
+        $('b-worm-add').click();                    // adding focuses the new animal
+        out.replaced = { n: S.engine.worms.length, focus: S.focus, hint: hint(),
+                         restore: $('b-restore').disabled,
+                         intact: !dead(S.focus, 7), records: S.ablations.size };
+        return out;
+      });
+      check(vp.name, abl.worms >= 2, `the dish started with ${abl.worms} worms, not two`);
+      if (abl.ablated) {
+        check(vp.name, abl.ablated.one && !abl.ablated.two,
+              `ablating worm 1 left worm 1 ${abl.ablated.one ? 'dead' : 'alive'}`
+              + ` and worm 2 ${abl.ablated.two ? 'dead' : 'alive'}`);
+        // The wording is not the claim; naming a count for the focused animal is.
+        check(vp.name, /ablated/.test(abl.ablated.hint) && !abl.ablated.restore,
+              `after ablating: hint "${abl.ablated.hint}", Restore disabled=${abl.ablated.restore}`);
+        check(vp.name, abl.switched.restore && !/ablated/.test(abl.switched.hint),
+              `focusing the intact worm still offered Restore ("${abl.switched.hint}")`
+              + ' -- the ablation record is not per animal');
+        check(vp.name, abl.both.one && abl.both.two && !abl.both.restore,
+              'ablating in worm 2 did not stick, or disturbed worm 1');
+        check(vp.name, abl.restored.one && !abl.restored.two && abl.restored.restore,
+              `Restore on worm 2 left worm 1 ${abl.restored.one ? 'dead' : 'restored'}`
+              + ` and worm 2 ${abl.restored.two ? 'dead' : 'restored'}`);
+        check(vp.name, abl.back.one && !abl.back.restore && /ablated/.test(abl.back.hint),
+              `back on worm 1: still dead=${abl.back.one}, hint "${abl.back.hint}",`
+              + ` Restore disabled=${abl.back.restore}`);
+        check(vp.name, abl.replaced.intact && abl.replaced.restore
+                       && !/ablated/.test(abl.replaced.hint),
+              `the worm added after a removal arrived ablated: intact=${abl.replaced.intact},`
+              + ` hint "${abl.replaced.hint}", Restore disabled=${abl.replaced.restore}`);
+        // And the records do not outlive the animals. Nothing looks wrong on screen when
+        // they do -- ids are never reused, so a leftover is inert -- but a viewer left
+        // open through a few hundred add/removes should not be keeping a set per animal
+        // that ever lived.
+        check(vp.name, abl.replaced.records <= abl.replaced.n,
+              `${abl.replaced.records} ablation records for ${abl.replaced.n} worms`);
+      }
+
       // Touch targets, on the layouts that are touch-oriented.
       if (vp.width <= 1080) {
         const small = await page.evaluate(() =>

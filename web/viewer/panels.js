@@ -5,7 +5,7 @@
  * nothing about themes and nothing about transports -- they are handed numbers.
  */
 
-import { S, C, el, SERIES, fitCanvas, visible } from './state.js';
+import { S, C, el, SERIES, fitCanvas, visible, ablated } from './state.js';
 import { seq, divRgb } from './scales.js';
 
 /* ------------------------------------------------------------------- neurons ------ */
@@ -59,11 +59,14 @@ export function drawNeurons() {
   }
   const act = S.frame ? S.frame.act : null;
   const pts = layout.pts;
+  // Which cells are dead is a fact about the focused animal, so it is looked up once for
+  // the panel rather than once for each of the 302 cells in it.
+  const dead = ablated();
 
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i], a = act ? act[i] : 0.5;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    if (S.ablated.has(i)) {
+    if (dead.has(i)) {
       ctx.fillStyle = C('--plane'); ctx.fill();
       ctx.strokeStyle = C('--text-muted'); ctx.lineWidth = 1; ctx.stroke();
       const q = p.r * 0.75;
