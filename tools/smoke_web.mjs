@@ -23,6 +23,7 @@ import puppeteer from 'puppeteer-core';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const WEB = path.join(ROOT, 'web');
+const FINDING_EXIT = 10;
 
 /* --- find a Chrome --------------------------------------------------------------- */
 // CI runners have one preinstalled; a developer machine usually has one of these. The
@@ -266,6 +267,7 @@ if (failures.length) {
   console.log('');
   for (const f of failures) console.log(`  FAIL  ${f}`);
   console.log(`\n${failures.length} smoke failure(s).`);
-  process.exit(1);
+  // Keep assertion findings distinct from Puppeteer, Chrome, server, and script crashes.
+  process.exit(FINDING_EXIT);
 }
 console.log('\nThe viewer loads, runs and responds at every viewport checked.');

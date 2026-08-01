@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 // joining that onto anything gives "C:\C:\src\...", which is not a path anywhere.
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const at = (...p) => path.join(ROOT, ...p);
+const FINDING_EXIT = 10;
 
 const inputs = [
   {
@@ -136,7 +137,7 @@ for (const f of fc.frames) {
   // perfect 0.000e+0 while comparing nothing: the exporter-side edit that was supposed to
   // emit `egl` silently matched no text and never applied, and the guard turned that into
   // a pass. Absent data fails here now.
-  if (!f.egl) { console.error('  reference frame has no `egl` -- regenerate it'); process.exit(1); }
+  if (!f.egl) { console.error('  reference frame has no `egl` -- regenerate it'); process.exit(2); }
   const got = [E.getVulvalMuscle(w2), E.getEggsHeld(w2), E.getEglResource(w2), E.getEggsLaid(w2)];
   for (let i = 0; i < 4; i++) wEgl = Math.max(wEgl, Math.abs(got[i] - f.egl[i]));
 }
@@ -244,4 +245,7 @@ console.log(allOk ? '  PASS' : '  FAIL');
 const ok = mechOk && fullOk && ablOk && allOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
-process.exit(ok ? 0 : 1);
+// Only a completed numeric comparison may use the dedicated finding code. Missing or
+// malformed references, WASM load errors, and uncaught runtime failures retain other codes
+// and are therefore infrastructure failures to the mutation audit.
+process.exit(ok ? 0 : FINDING_EXIT);
