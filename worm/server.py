@@ -28,9 +28,26 @@ from .params import MEDIA, Params
 
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
-MAGIC = 0x574F524D            # "WORM"
-FIELD_MAGIC = 0x574F524E      # one greater, for the field frames
+# The frame layout is versioned, because it has changed and will change again. A frame is
+# identified by its magic word rather than by a version field inside a fixed header: every
+# field in that header is at a fixed offset, so *any* change moves the payload, and a
+# viewer that reads the old offsets renders confident garbage rather than failing. A magic
+# it does not recognise it simply drops. Protocol 1 ("WORM") carried a <6I17f header and no
+# egg state; protocol 2 adds egg-laying telemetry and egg positions. MAGIC_V1 is kept only
+# so a current viewer can recognise an out-of-date server and say so -- see
+# web/viewer/transport.js, which is the other half of this contract.
+PROTOCOL = 2
+MAGIC = 0x574F5232            # "WOR2"
+MAGIC_V1 = 0x574F524D         # "WORM", protocol 1
+FIELD_MAGIC = 0x574F524E      # "WORN", for the field frames; unchanged by the bump
 FIELD_SIZE = 128
+# Eggs are a handful an hour and the plate never removes one, so in any realistic session
+# this cap is not reached -- it exists because "never removes one" is a promise about the
+# plate and not about a socket that resends the whole list thirty times a second. At 512
+# the worst case is 4 kB a frame, the same order as the body and the voltages. The WASM
+# runtime keeps its own ring of 4096 (wasm/assembly/model_gen.ts, MAX_EGGS); this is
+# smaller on purpose, because that one is a pointer into memory the viewer already has.
+EGG_LIMIT = 512
 
 
 class Runner:
@@ -181,10 +198,19 @@ class Runner:
             r = sim.senses.readout
             direction = {"forward": 1.0, "backward": -1.0, "still": 0.0}[sim.direction()]
             ph = sim.pharynx.readout()
+            eg = sim.egglaying.readout()
+            # Egg positions, most recent first-dropped. world.eggs is (x, y, t) triples;
+            # the viewer wants two planes, because that is the shape the WASM transport
+            # hands it and the dish should not have to care which feed it is drawing.
+            laid = sim.world.eggs[-EGG_LIMIT:]
+            egg = (np.asarray(laid, dtype=np.float32).reshape(-1, 3) if laid
+                   else np.zeros((0, 3), dtype=np.float32))
+            egg_x = np.ascontiguousarray(egg[:, 0])
+            egg_y = np.ascontiguousarray(egg[:, 1])
             header = struct.pack(
-                "<6I17f",
+                "<7I21f",
                 MAGIC, len(nodes) // 2, len(act), len(tension), len(kappa),
-                1 if self.running else 0,
+                1 if self.running else 0, len(egg_x),
                 sim.t, sim.speed, sim.food_eaten, direction, self.achieved,
                 r.get("attractant", 0.0), r.get("temperature", 20.0),
                 r.get("oxygen", 0.21), r.get("food", 0.0), r.get("touch", 0.0),
@@ -193,9 +219,15 @@ class Runner:
                 r.get("habituation", 1.0),
                 # Feeding, for the viewer's pump indicator. See worm/pharynx.py.
                 ph["pump_rate"], ph["pumping"], ph["lumen"],
+                # Egg-laying. See worm/egglaying.py. This is the state the local WASM feed
+                # has published since it was written and this one did not, which left the
+                # `?server` viewer showing index.html's placeholder egg count -- a number
+                # that looked authoritative and was hard-coded markup.
+                eg["vm"], eg["eggs_held"], eg["eggs_laid"], eg["egl_active"],
             )
         return b"".join([header, nodes.tobytes(), act.tobytes(), volt.tobytes(),
-                         tension.tobytes(), kappa.tobytes()])
+                         tension.tobytes(), kappa.tobytes(),
+                         egg_x.tobytes(), egg_y.tobytes()])
 
     def field_frame(self) -> bytes:
         with self.lock:
@@ -211,8 +243,8 @@ class Runner:
         return struct.pack("<2I", FIELD_MAGIC, n) + payload.tobytes()
 
 
-def serve_static(port: int) -> threading.Thread:
-    handler = functools.partial(_QuietHandler, directory=WEB)
+def serve_static(port: int, ws_port: int) -> threading.Thread:
+    handler = functools.partial(_QuietHandler, directory=WEB, ws_port=ws_port)
     httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), handler)
     httpd.allow_reuse_address = True
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -221,8 +253,32 @@ def serve_static(port: int) -> threading.Thread:
 
 
 class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, ws_port: int = 0, **kw):
+        # Set before the base class, because BaseHTTPRequestHandler.__init__ serves the
+        # request before it returns.
+        self.ws_port = ws_port
+        super().__init__(*args, **kw)
+
     def log_message(self, *args):        # the console belongs to the simulation
         pass
+
+    def do_GET(self):
+        # Where the socket is. --port and --ws-port are independent options and always
+        # have been, but the viewer had no way to learn the answer, so it assumed the
+        # socket sat one port above the page: `python run.py --port 9000` served a page
+        # that dialled 9001 while the server listened on 8081, and the only symptom was a
+        # reconnect loop. The server is the only party that knows, so it says so, and the
+        # viewer's fallback to port+1 now covers only the case where web/ is served by
+        # something that is not this file at all.
+        if self.path.split("?")[0] == "/transport.json":
+            body = json.dumps({"ws_port": self.ws_port, "protocol": PROTOCOL}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -269,7 +325,7 @@ def run(http_port: int = 8080, ws_port: int = 8081, seed: int = 0,
         params: Params | None = None) -> None:
     runner = Runner(params, seed=seed)
     runner.start()
-    serve_static(http_port)
+    serve_static(http_port, ws_port)
     print("celegans-sim")
     print("  viewer     http://127.0.0.1:%d/" % http_port)
     print("  telemetry  ws://127.0.0.1:%d/" % ws_port)

@@ -177,6 +177,38 @@ try {
       });
       check(vp.name, play.before !== play.after, 'Pause did not change aria-pressed');
 
+      /* Pausing must not keep costing anything.
+       *
+       * The animation loop runs on requestAnimationFrame whether or not the engine
+       * stepped, and both telemetry buffers -- the frequency history in stats.js and the
+       * speed window here -- are trimmed by *simulated* time, so with the clock frozen
+       * nothing in them ever ages out. They grew by sixty entries a second for as long as
+       * the tab was left paused, and the frequency estimate rescans its buffer twice a
+       * frame, so a paused viewer got steadily slower while the animal did nothing.
+       *
+       * A property, not a size: "a frozen clock adds no samples" fails immediately, where
+       * a size check passes for however long the buffer takes to reach it. */
+      const paused = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        const b = document.getElementById('b-play');
+        if (b.getAttribute('aria-pressed') === 'true') b.click();   // pause
+        await sleep(250);                                           // let the clock settle
+        const S = window.__sim;
+        const before = { t: S.frame.t, freq: S.freqBuf.length, speed: S.speedWin.length };
+        await sleep(500);                                           // ~30 animation frames
+        const after = { t: S.frame.t, freq: S.freqBuf.length, speed: S.speedWin.length };
+        b.click();                                                  // back to playing
+        return { before, after };
+      });
+      check(vp.name, paused.after.t === paused.before.t,
+            `the clock advanced while paused: ${paused.before.t} -> ${paused.after.t}`);
+      check(vp.name, paused.after.freq === paused.before.freq,
+            `the frequency buffer grew ${paused.before.freq} -> ${paused.after.freq} `
+            + 'with the clock frozen');
+      check(vp.name, paused.after.speed === paused.before.speed,
+            `the speed window grew ${paused.before.speed} -> ${paused.after.speed} `
+            + 'with the clock frozen');
+
       // Theme: three looks, and the pressed state follows.
       const themed = await page.evaluate(() => {
         const out = [];

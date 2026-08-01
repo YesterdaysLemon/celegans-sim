@@ -47,31 +47,33 @@ function close(server) {
   return new Promise(resolve => server.close(resolve));
 }
 
-async function freePortPair() {
+/* Two free ports that are deliberately *not* consecutive.
+ *
+ * This used to hunt for a consecutive pair, because the viewer used to require one: it
+ * built the socket URL as the page's port plus one, so `--ws-port` was decorative and a
+ * test that arranged the ports to match the guess could not possibly notice. Adjacent is
+ * the one layout the bug is invisible in, and it is not the layout the CLI offers -- a
+ * reverse proxy, an occupied port or a hosted environment all produce this one.
+ *
+ * Nothing is listening on httpPort + 1, so a viewer that goes back to guessing gets
+ * ECONNREFUSED and the connect wait below times out naming what never came true.
+ */
+async function freePorts() {
   for (let attempt = 0; attempt < 20; attempt++) {
-    const http = net.createServer();
+    const a = net.createServer(), b = net.createServer();
     try {
-      await listen(http, 0);
-      const port = http.address().port;
-      if (port >= 65535) {
-        await close(http);
-        continue;
-      }
-      const ws = net.createServer();
-      try {
-        await listen(ws, port + 1);
-        await close(ws);
-        await close(http);
-        return port;
-      } catch {
-        if (ws.listening) await close(ws);
-        await close(http);
-      }
+      await listen(a, 0);
+      await listen(b, 0);
+      const http = a.address().port, ws = b.address().port;
+      await close(a);
+      await close(b);
+      if (http < 65535 && ws < 65535 && Math.abs(http - ws) > 1) return { http, ws };
     } catch {
-      if (http.listening) await close(http);
+      if (a.listening) await close(a);
+      if (b.listening) await close(b);
     }
   }
-  throw new Error('could not find a free consecutive HTTP/WebSocket port pair');
+  throw new Error('could not find two free nonconsecutive ports');
 }
 
 function pythonCommand() {
@@ -117,8 +119,9 @@ if (!chrome) {
   process.exit(2);
 }
 
-const httpPort = await freePortPair();
-const wsPort = httpPort + 1;
+const { http: httpPort, ws: wsPort } = await freePorts();
+assert.notEqual(wsPort, httpPort + 1,
+  'the ports must not be consecutive, or this test cannot see --ws-port being ignored');
 const python = pythonCommand();
 const serverOutput = [];
 const child = spawn(
@@ -162,12 +165,30 @@ try {
     }
   });
 
+  /* The server has to tell the browser where the socket is, because only the server knows.
+   * `--port` and `--ws-port` are independent options; the viewer used to add one to the
+   * page's port and hope, which meant `--port 9000` served a page dialling 9001 at a
+   * server on 8081 and nothing but a reconnect loop to show for it. */
+  const advertised = await (await fetch(`${base}transport.json`)).json();
+  assert.equal(advertised.ws_port, wsPort,
+    `the server advertises ws_port ${advertised.ws_port} but was given --ws-port ${wsPort}`);
+
   await page.goto(`${base}?server&debug`, { waitUntil: 'load' });
-  await page.waitForFunction(
-    () => window.__sim?.connected && window.__sim?.meta && window.__sim?.frame
-      && window.__sim?.field && document.getElementById('banner').classList.contains('gone'),
-    { timeout: 30000 },
-  );
+  try {
+    await page.waitForFunction(
+      () => window.__sim?.connected && window.__sim?.meta && window.__sim?.frame
+        && window.__sim?.field && document.getElementById('banner').classList.contains('gone'),
+      { timeout: 30000 },
+    );
+  } catch {
+    // The banner names the endpoint the viewer chose, which is the whole diagnosis when
+    // this fails: page on httpPort, server on wsPort, viewer dialling something else.
+    const banner = await page.evaluate(() =>
+      document.getElementById('banner').textContent.replace(/\s+/g, ' ').trim());
+    throw new Error(
+      `the viewer never connected to the server on ws port ${wsPort} `
+      + `(page served on ${httpPort}). Banner says: ${banner}`);
+  }
 
   const transport = await page.evaluate(() => {
     const S = window.__sim;
@@ -190,6 +211,22 @@ try {
         .every(Number.isFinite),
       fieldN: S.field.n,
       fieldBytes: S.field.data.length,
+      // Egg-laying, which the local WASM feed has published since it was written and this
+      // one did not. Read off the frame rather than the DOM, because the header's egg
+      // readout is markup in index.html until something overwrites it -- and a placeholder
+      // that happens to agree with the model is exactly how this stayed unnoticed.
+      eggsHeld: f.eggsHeld,
+      eggsLaid: f.eggsLaid,
+      vulva: f.vulva,
+      eglActive: f.eglActive,
+      eggsNorm: f.sensed.eggsNorm,
+      plate: S.eggs && { n: S.eggs.n, x: S.eggs.x.length, y: S.eggs.y.length,
+                         finite: [...S.eggs.x, ...S.eggs.y].every(Number.isFinite) },
+      // Bytes after the last array the client parses. The frame is one buffer whose
+      // length the server decides, so this is the client's layout checked against the
+      // server's, with no slack: anything the server appends and the client forgets to
+      // read shows up here as a nonzero remainder.
+      tail: f.kappa.buffer.byteLength - (f.kappa.byteOffset + f.kappa.byteLength),
     };
   });
   assert.equal(transport.connected, true);
@@ -205,6 +242,32 @@ try {
   assert.equal(transport.kappa, transport.nJoints);
   assert.equal(transport.finite, true);
   assert.equal(transport.fieldBytes, transport.fieldN * transport.fieldN * 3);
+
+  /* Egg parity. The claim is not that the animal lays an egg during a smoke test -- it
+   * lays a handful an hour and this runs for seconds -- it is that every piece of egg
+   * state the other transport publishes arrives over this one as a number rather than
+   * being absent. Absent was indistinguishable from zero: `sensed[key] ?? 0` handed the
+   * "Eggs held" meter a live-looking 0 and the header kept index.html's placeholder, so
+   * the `?server` viewer showed a frozen egg count that read as authoritative. */
+  assert.ok(Number.isFinite(transport.eggsHeld),
+    `the frame carries no eggs-held (got ${transport.eggsHeld})`);
+  assert.ok(Number.isFinite(transport.eggsLaid),
+    `the frame carries no eggs-laid (got ${transport.eggsLaid})`);
+  assert.ok(Number.isFinite(transport.vulva) && transport.vulva >= 0 && transport.vulva <= 1,
+    `vulval muscle activation out of range: ${transport.vulva}`);
+  assert.ok(transport.eglActive === 0 || transport.eglActive === 1,
+    `the egg-laying phase flag is not a flag: ${transport.eglActive}`);
+  // A young adult starts with eggs in the uterus (EggLayingParams.eggs_initial), so an
+  // empty one this early means the field is missing rather than the animal being spent.
+  assert.ok(transport.eggsHeld > 0, 'the uterus reads empty seconds into the run');
+  assert.ok(transport.eggsNorm > 0, 'the "Eggs held" meter is being fed a placeholder zero');
+  assert.equal(transport.tail, (transport.plate ? transport.plate.n : 0) * 8,
+    `${transport.tail} bytes of frame the viewer never parses`);
+  if (transport.plate) {
+    assert.equal(transport.plate.x, transport.plate.n);
+    assert.equal(transport.plate.y, transport.plate.n);
+    assert.equal(transport.plate.finite, true, 'an egg on the plate has no position');
+  }
 
   /* Wait for the panels to have live data in them.
    *
@@ -270,10 +333,60 @@ try {
 
   await page.click('#b-play');
   await page.waitForFunction(() => window.__sim.frame?.running === 0, { timeout: 5000 });
-  const pausedAt = await page.evaluate(() => window.__sim.frame.t);
+  const held = await page.evaluate(() => ({
+    t: window.__sim.frame.t, freq: window.__sim.freqBuf.length,
+  }));
+  const pausedAt = held.t;
   await delay(500);
-  const stillAt = await page.evaluate(() => window.__sim.frame.t);
+  const still = await page.evaluate(() => ({
+    t: window.__sim.frame.t, freq: window.__sim.freqBuf.length,
+  }));
+  const stillAt = still.t;
   assert.ok(Math.abs(stillAt - pausedAt) < 1e-6, `clock advanced while paused: ${pausedAt} -> ${stillAt}`);
+
+  /* Pausing the simulation must not keep costing anything.
+   *
+   * Frames do not stop when the clock does -- the server keeps sending thirty a second so
+   * the viewer stays live and controllable -- and the telemetry buffers are trimmed by
+   * *simulated* time, so while the clock is frozen nothing in them can ever age out. They
+   * grew for as long as you left the tab paused, and the frequency estimate rescans the
+   * whole buffer twice every frame, so the page got steadily slower while the animal did
+   * nothing at all. An hour paused was about 216,000 samples.
+   *
+   * Asserted as a property -- "a frozen clock adds no samples" -- rather than as a size,
+   * because a size passes for as long as the buffer takes to reach it. */
+  assert.equal(still.freq, held.freq,
+    `the frequency buffer grew by ${still.freq - held.freq} entries in 500 ms `
+    + `with the clock frozen at ${pausedAt}`);
+
+  /* And the same claim under stress, since 500 ms of real frames is only fifteen of them.
+   * This calls the viewer's own updateFreq -- the same module instance the page is
+   * running, imported by URL -- three thousand times at the frozen timestamp, which is
+   * what fifty seconds of paused tab looks like. Per-update work is bounded by the same
+   * assertion: the estimate is a linear scan of this buffer. */
+  const stress = await page.evaluate(async (n) => {
+    const stats = await import(new URL('./viewer/stats.js', location.href).href);
+    const S = window.__sim;
+    const before = S.freqBuf.length;
+    const t = S.frame.t;
+    // Real-looking curvature, so this is not accidentally testing a degenerate path.
+    for (let i = 0; i < n; i++) stats.updateFreq(0.9 * Math.sin(i * 0.21), t);
+    const after = S.freqBuf.length;
+    // Reset, which is what a clock going *backwards* means. The button clears these
+    // buffers itself, but a reconnect to a restarted server does not -- and refusing a
+    // sample older than the newest one held would then refuse every sample there will
+    // ever be, leaving the readout frozen until the clock climbed back past a run that
+    // is over. Backwards has to empty the buffer, and the next sample has to land.
+    stats.updateFreq(0.4, t - 100);
+    const rewound = S.freqBuf.length;
+    stats.updateFreq(0.4, t - 99);
+    return { calls: n, before, after, rewound, resumed: S.freqBuf.length };
+  }, 3000);
+  assert.ok(stress.after <= stress.before + 1,
+    `${stress.calls} stats updates at one simulated timestamp grew the frequency buffer `
+    + `from ${stress.before} to ${stress.after}`);
+  assert.equal(stress.rewound, 1, 'a rewound clock did not clear the frequency buffer');
+  assert.equal(stress.resumed, 2, 'the frequency buffer stopped accepting samples after a reset');
 
   await page.click('#b-play');
   await page.waitForFunction(
@@ -290,7 +403,16 @@ try {
     `Python transport: ${transport.neurons} neurons, ${transport.muscles} muscles, ` +
     `${transport.fieldN}x${transport.fieldN} field, ${rendered.kymoFilled} kymograph columns.`,
   );
+  console.log(
+    `HTTP on ${httpPort}, socket on ${wsPort} (not ${httpPort + 1}); ` +
+    `uterus holds ${transport.eggsHeld.toFixed(1)}, ${transport.eggsLaid.toFixed(0)} laid, ` +
+    `${transport.plate ? transport.plate.n : 0} on the plate.`,
+  );
   console.log(`Pause held at ${pausedAt.toFixed(3)} s; resume reached ${resumedAt.toFixed(3)} s.`);
+  console.log(
+    `Frequency buffer stayed at ${still.freq} entries through 500 ms of paused frames ` +
+    `and ${stress.calls} stats calls at one timestamp.`,
+  );
   console.log('The ?server viewer receives, renders, and controls the Python model.');
 } catch (error) {
   const output = serverOutput.join('').trim();

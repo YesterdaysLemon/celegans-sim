@@ -51,6 +51,42 @@ therefore the only way to watch the reference implementation rather than the por
 `send()` in `transport.js` is the seam. Everything upstream issues commands — play, rate,
 poke, ablate, drop a lawn — without knowing which path is live.
 
+### Finding the socket
+
+`--port` and `--ws-port` are independent, so the viewer cannot assume where the socket is —
+and for a long time it did anyway, adding one to the page's port. `python run.py --port 9000`
+therefore served a page that dialled 9001 at a server sitting on 8081, and said nothing but
+"Retrying…". `transport.js` now takes the first of:
+
+| source | when it is the right answer |
+|---|---|
+| `?ws=PORT` or `?ws=wss://host/path` | behind a reverse proxy, where the server's own port is not reachable from the browser |
+| `GET /transport.json` | served by `worm/server.py`, which is the only party that knows its `--ws-port` |
+| page port + 1 | `web/` served by something else entirely — `python -m http.server`, `tools/smoke_web.mjs`, the nginx container |
+
+The scheme follows the page: `wss:` on an `https:` page, because a secure page may not open
+an insecure socket and the browser's refusal looks exactly like a server that is not running.
+
+### Frame protocol
+
+Binary frames are versioned by their **magic word**, not by a version field. Every field in
+the header is at a fixed offset, so any layout change moves the payload too; a viewer
+reading the old offsets would draw confident nonsense, whereas a magic it does not
+recognise it simply drops.
+
+| protocol | magic | header | carries |
+|---|---|---|---|
+| 1 | `WORM` `0x574f524d` | `<6I17f`, 92 B | body, voltages, muscle, curvature, senses, pharynx |
+| 2 | `WOR2` `0x574f5232` | `<7I21f`, 112 B | …and vulval muscle, eggs held, eggs laid, active phase, plus egg positions as two `float32` planes |
+
+Field images (`WORN` `0x574f524e`) are unversioned; they have not changed.
+
+Both halves ship from this repository and `worm/server.py` serves `web/` itself, so a skew
+means a stale checkout rather than a stale browser. It is still named rather than guessed
+at: a current viewer that receives protocol 1 frames stops reconnecting and says which
+protocol it wanted, and an older viewer given protocol 2 frames drops them rather than
+mis-parsing them.
+
 ## Checks
 
 ```bash
