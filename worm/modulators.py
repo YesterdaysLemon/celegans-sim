@@ -83,10 +83,16 @@ class Modulators:
         if p.serotonin_mod1 != 0.0 and len(idx) == 0:
             raise RuntimeError("no neurons matched the MOD-1 targets %r"
                                % (p.mod1_targets,))
-        self._mod1_peak = np.zeros(conn.n)
+        # Kept with the coefficient factored *out*: `_mod1_unit` is the target set's own
+        # resting conductance and depends on nothing tunable, so the runtime can be handed
+        # it once and scale it by whatever coefficient an individual carries. Multiplying
+        # the two together here instead would bake the coefficient into the exported model
+        # and make it un-mutatable in the browser -- which is the state it was in, and the
+        # reason the whole MOD-1 path was shipped to the runtime and never wired up.
+        self._mod1_unit = np.zeros(conn.n)
         if len(idx):
-            g = np.ones(len(idx)) if g_rest is None else g_rest[idx]
-            self._mod1_peak[idx] = p.serotonin_mod1 * g
+            self._mod1_unit[idx] = np.ones(len(idx)) if g_rest is None else g_rest[idx]
+        self._mod1_peak = p.serotonin_mod1 * self._mod1_unit
         self._any_mod1 = bool(np.any(self._mod1_peak != 0.0))
 
     def step(self, activation: np.ndarray, alive: np.ndarray | None = None) -> None:

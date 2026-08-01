@@ -112,6 +112,7 @@ class Simulation:
         # this model it inflated the number by a factor of twenty.
         self._speed_window = 2.0     # s
         self._centroid_history = deque()
+        self._pending_step = None
 
     # ------------------------------------------------------------------------- stepping
     def step(self) -> None:
@@ -121,19 +122,22 @@ class Simulation:
         :class:`Population`, which settles feeding simultaneously and advances the world
         once after every animal has taken its turn.
         """
-        request = self.step_animal()
-        if request is not None:
-            self.food_eaten += self.world.eat(request.x, request.y, request.amount)
+        request = self.prepare_step()
+        captured = (self.world.eat(request.x, request.y, request.amount)
+                    if request is not None else 0.0)
+        self.finish_step(captured)
         self.world.step(self.dt)
 
-    def step_animal(self) -> FeedingRequest | None:
-        """Advance only animal-owned state and return its unsettled feeding request.
+    def prepare_step(self) -> FeedingRequest | None:
+        """Advance through capture demand and return an unsettled feeding request.
 
         The world time and food field are deliberately not mutated here.  ``Population``
         calls this for every animal against one shared snapshot, settles the returned
-        requests in a batch, and then advances the shared world exactly once.
+        requests in a batch, and passes each actual allocation to :meth:`finish_step`.
         """
-        p = self.p
+        if self._pending_step is not None:
+            raise RuntimeError("finish_step must complete the pending animal step")
+
         nodes = self._nodes
 
         curvature = self.body.curvature()
@@ -169,10 +173,23 @@ class Simulation:
         # nothing at all.
         head = self._nodes[0]
         food_here = float(self.world.sample(self.world.food, head[0], head[1]))
-        moved = self.pharynx.step(activation, food_here, self.modulators,
-                                  alive=self.nervous.alive)
-        request = (FeedingRequest(float(head[0]), float(head[1]), float(moved))
-                   if moved > 0.0 else None)
+        wanted = self.pharynx.prepare_step(
+            activation, food_here, self.modulators, alive=self.nervous.alive)
+        request = (FeedingRequest(float(head[0]), float(head[1]), float(wanted))
+                   if wanted > 0.0 else None)
+        self._pending_step = (activation, food_here, curvature)
+        return request
+
+    def finish_step(self, captured: float = 0.0) -> None:
+        """Commit actual captured food and complete the animal-owned half of a tick."""
+        if self._pending_step is None:
+            raise RuntimeError("prepare_step must run before finish_step")
+
+        activation, food_here, curvature = self._pending_step
+        moved = self.pharynx.finish_step(captured)
+        # Food is credited when captured, not when M4 transports it.  Consequently plate
+        # loss and ``food_eaten`` agree, while intestine + lumen accounts for the same food.
+        self.food_eaten += self.pharynx.captured
 
         # Egg-laying. Fed by what the pharynx actually transported, so the two systems are
         # coupled the way they are in the animal: eggs are made out of food. The vulva is
@@ -211,8 +228,7 @@ class Simulation:
             h["speed"].append(self.speed)
             h["curvature_mid"].append(float(curvature[len(curvature) // 2]))
             h["attractant"].append(self.senses.readout.get("attractant", 0.0))
-
-        return request
+        self._pending_step = None
 
     def run(self, seconds: float, check_every: int | None = 1000) -> None:
         """Run a single-animal simulation, periodically rejecting divergent states."""
@@ -365,13 +381,17 @@ class Population:
 
     def step(self) -> None:
         """Advance every animal, settle food simultaneously, then age the world once."""
-        requests = [sim.step_animal() for sim in self.simulations]
+        requests = [sim.prepare_step() for sim in self.simulations]
+        allocations = np.zeros(len(self.simulations), dtype=float)
         active = [(i, request) for i, request in enumerate(requests) if request is not None]
         if active:
-            allocations = self.world.eat_batch(
+            captured = self.world.eat_batch(
                 [(request.x, request.y, request.amount) for _, request in active])
-            for (sim_i, _), eaten in zip(active, allocations):
-                self.simulations[sim_i].food_eaten += float(eaten)
+            for (sim_i, _), eaten in zip(active, captured):
+                allocations[sim_i] = float(eaten)
+
+        for sim, eaten in zip(self.simulations, allocations):
+            sim.finish_step(float(eaten))
 
         self.world.step(self.dt)
         self.steps += 1

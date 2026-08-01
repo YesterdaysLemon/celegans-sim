@@ -163,10 +163,20 @@ export class LocalEngine {
                                       Math.random() * Math.PI * 2));
     return this.worms.length - 1;
   }
-  removeWorm() {
+  /* Remove one animal -- by default the last, which is what the viewer's button wants,
+   * but any of them. `this.worms` holds runtime handles rather than positions, so the
+   * splice below re-indexes the viewer's own list without disturbing anyone's identity in
+   * the runtime; a handle stays valid for the life of the animal it was issued for.
+   *
+   * The viewer keeps at least one animal on the plate because an empty dish is a blank
+   * screen. That is a viewer policy, not a runtime one: the runtime will now go to zero,
+   * because a generational loop has to be able to clear a population outright. */
+  removeWorm(i) {
     if (this.worms.length <= 1) return false;
-    this.E.popWorm();
-    this.worms.pop();
+    const at = i === undefined ? this.worms.length - 1 : i;
+    if (!Number.isInteger(at) || at < 0 || at >= this.worms.length) return false;
+    this.E.removeWorm(this.worms[at]);
+    this.worms.splice(at, 1);
     return true;
   }
   reset(nWorms) {

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "sources": {
+    "CElegansNeuronTables.xls": {
+      "url": "https://raw.githubusercontent.com/openworm/c302/aad88a80aa7f217fe109a89f4b68ccb043430722/c302/data/CElegansNeuronTables.xls",
+      "bytes": 369152,
+      "sha256": "e6e2d51cd6a056c6058ec163bf6020d1a43a0a8d48719f09dddd8687c3956d74",
+      "origin": "openworm/c302 @ aad88a80aa7f217fe109a89f4b68ccb043430722 :: c302/data/CElegansNeuronTables.xls",
+      "provenance": "White et al. 1986; Chen, Hall & Chklovskii 2006"
+    },
+    "NeuronType.xls": {
+      "url": "https://web.archive.org/web/20101129153859id_/http://wormatlas.org/images/NeuronType.xls",
+      "bytes": 60928,
+      "sha256": "74c931076d671d24130bdb446cf48140964371e6d63dd1239664085f2566fc13",
+      "origin": "WormAtlas NeuronType.xls, archived 2010-11-29 15:38:59 UTC",
+      "provenance": "WormAtlas neuron table (soma positions)"
+    },
+    "herm_full_edgelist.csv": {
+      "url": "https://raw.githubusercontent.com/openworm/c302/aad88a80aa7f217fe109a89f4b68ccb043430722/c302/data/herm_full_edgelist.csv",
+      "bytes": 245463,
+      "sha256": "142693f17556148d7f962835b18ac6dd5af18b7467eef61815ebc1dd5474c0ca",
+      "origin": "openworm/c302 @ aad88a80aa7f217fe109a89f4b68ccb043430722 :: c302/data/herm_full_edgelist.csv",
+      "provenance": "Cook et al. 2019 (used only to cross-check the muscle roster)"
+    }
+  }
+}

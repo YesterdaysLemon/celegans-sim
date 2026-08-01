@@ -143,7 +143,11 @@ class World:
                 + (f01 * (1 - tx) + f11 * tx) * ty)
 
     def eat(self, x: float, y: float, amount: float) -> float:
-        """Remove `amount` of food from around (x, y). Returns how much was ingested.
+        """Remove `amount` of food from around (x, y). Returns how much was actually there.
+
+        The return value is the point of this, not a courtesy: it is what the caller is
+        allowed to have. `Pharynx._fire` adds *this* to the lumen rather than what it asked
+        for, which is what stops an animal ingesting food the plate never had.
 
         `amount` is a total, withdrawn proportionally to what is present in the
         neighbourhood. It used to be subtracted from every cell of the 3x3 patch

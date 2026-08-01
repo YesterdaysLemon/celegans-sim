@@ -112,6 +112,11 @@ def evaluate_one(args) -> dict:
     values, seed = args
     try:
         p = build(values)
+        # Validate before constructing a caller-supplied World.  Python evaluates
+        # ``bare_world(p)`` before entering Simulation.__init__, so relying only on the
+        # Simulation boundary would misclassify invalid world parameters as infrastructure
+        # failures rather than lethal candidate genomes.
+        p.validate()
         sim = Simulation(p, seed=seed, world=bare_world(p))
         r = analyse(sim, seconds=16.0)
 

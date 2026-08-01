@@ -1,7 +1,10 @@
 """Fail-closed scoring for evolutionary candidates."""
 
+from dataclasses import replace
+
 from tools import optimise
 from worm.errors import InvalidGenome
+from worm.params import Params
 
 
 def _healthy_result():
@@ -46,6 +49,18 @@ def test_evaluate_one_marks_invalid_genomes_as_lethal(monkeypatch):
     result = optimise.evaluate_one(({}, 0))
 
     assert "InvalidGenome" in result["lethal"]
+    assert result["failed"] == result["lethal"]
+
+
+def test_evaluate_one_validates_before_constructing_the_world(monkeypatch):
+    base = Params()
+    invalid = replace(base, world=replace(base.world, grid=0))
+    monkeypatch.setattr(optimise, "build", lambda _values: invalid)
+
+    result = optimise.evaluate_one(({}, 0))
+
+    assert "InvalidGenome" in result["lethal"]
+    assert "world.grid" in result["lethal"]
     assert result["failed"] == result["lethal"]
 
 
