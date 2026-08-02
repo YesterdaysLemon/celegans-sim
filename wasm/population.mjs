@@ -569,6 +569,52 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* --------------------------------------------------------------------------------- 10 --
+ * Contested feeding does not depend on the order the animals are stepped in.
+ *
+ * This is the property a fitness measure needs and the one that is easiest to lose. Each
+ * animal used to capture and debit inside its own step, so on a shared lawn worm 0 sampled
+ * a full neighbourhood and worm 3 sampled what three others had been served from --
+ * measured at 0.016039, 0.016034, 0.016030, 0.016024, monotonic in array order. Selecting
+ * on `food_eaten` therefore partly selected for array position, and swap-with-last culling
+ * makes position semi-heritable across generations.
+ *
+ * Checked by *reversing the creation order* rather than by leaning on the geometry being
+ * symmetric. Four animals, same seeds and same places, created 0..3 and then 3..0; every
+ * animal must eat exactly what it ate before. A symmetric-lawn check would pass on a
+ * uniform field even with the bug, because every neighbourhood starts out identical --
+ * this one cannot.
+ */
+{
+  const N = 4;
+  const spots = Array.from({ length: N }, (_, i) => {
+    const a = (i / N) * Math.PI * 2;
+    return [Math.cos(a) * 0.4, Math.sin(a) * 0.4, a];
+  });
+  const run = (order) => {
+    const E = engine();
+    E.addFood(0.0, 0.0, 1.5, 1.0, 1.0, 4.0);
+    const ids = new Array(N);
+    for (const i of order) ids[i] = E.createWorm(2000 + i * 5171, ...spots[i]);
+    E.stepAll(FEED_STEPS);
+    return ids.map((id) => E.getEaten(id));
+  };
+  const forward = run([0, 1, 2, 3]);
+  const backward = run([3, 2, 1, 0]);
+  const d = worst(forward, backward);
+  const spread = Math.max(...forward) - Math.min(...forward);
+  const fed = forward.every((v) => v > 0);
+  report(
+    `CONTESTED FEEDING IS ORDER-FREE -- ${N} animals on one lawn, created 0..3 then 3..0`,
+    d === 0 && fed,
+    `  worst per-animal difference   ${d.toExponential(3)}   (must be exactly 0)\n` +
+    `  forward order                 ${forward.map((v) => v.toFixed(6)).join(', ')}\n` +
+    `  reversed order                ${backward.map((v) => v.toFixed(6)).join(', ')}\n` +
+    `  spread within one run         ${spread.toExponential(3)}   (rotational symmetry, up to the grid)\n` +
+    `  every animal fed              ${fed}`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');
