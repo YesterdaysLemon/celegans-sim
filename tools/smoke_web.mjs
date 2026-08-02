@@ -335,6 +335,92 @@ try {
               `${abl.replaced.records} ablation records for ${abl.replaced.n} worms`);
       }
 
+      /* Focus survives a removal that did not come from the delete button.
+       *
+       * `#b-worm-del` clamps `S.focus` itself, so every path a person can click keeps the
+       * controls honest. The renderer's own clamp did not -- it moved focus without
+       * rebuilding the selector, the neuron hint or Restore, leaving all three describing
+       * the animal that had just left. Unreachable through the UI, and reachable the
+       * moment anything else changes the population, which is what a generational loop is.
+       *
+       * So this removes an animal the way such a loop would: `engine.removeWorm()`
+       * directly, never touching the button. Two frames are waited on because the clamp
+       * runs inside the render loop, not inside the removal.
+       */
+      const cull = await page.evaluate(async () => {
+        const S = window.__sim;
+        const $ = (id) => document.getElementById(id);
+        const buttons = () => [...document.querySelectorAll('#worm-sel button')];
+        const out = { ran: false };
+        if (!S.engine || S.engine.worms.length < 2) return out;
+
+        /* Start from three animals so the population is still plural after one leaves. The
+         * neuron hint appends "in worm K" only when more than one animal is on the plate,
+         * so a 2 -> 1 removal changes the wording for a reason that has nothing to do with
+         * focus, and the comparison below would be reading that instead. */
+        $('b-worm-add').click();
+
+        /* What the controls say when worm 0 is focused *deliberately*, through the button
+         * that already does this correctly. That is the answer the clamp has to arrive at,
+         * and taking it by measurement rather than by assumption keeps this independent of
+         * whatever the checks above left ablated. */
+        buttons()[0].click();
+        out.deliberate = { hint: $('neuron-hint').textContent,
+                           restore: $('b-restore').disabled };
+
+        // Now focus the last animal and ablate a cell in it, so the panels are saying
+        // something specific about an animal that is about to stop existing.
+        const last = S.engine.worms.length - 1;
+        buttons()[last].click();
+        $('b-ablate').click();
+        S.hover = 12;
+        $('c-neurons').dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        $('b-ablate').click();
+        out.before = { focus: S.focus, hint: $('neuron-hint').textContent,
+                       restore: $('b-restore').disabled };
+
+        S.engine.removeWorm();                     // <- not the button. This is the point.
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const bs = buttons();
+        out.ran = true;
+        out.n = S.engine.worms.length;
+        out.focus = S.focus;
+        out.inRange = S.focus >= 0 && S.focus < out.n;
+        out.buttons = bs.length;
+        // The selector must mark exactly the focused animal, and no other.
+        out.pressed = bs.map((b) => b.getAttribute('aria-pressed') === 'true');
+        out.hint = $('neuron-hint').textContent;
+        out.restore = $('b-restore').disabled;
+        return out;
+      });
+      check(vp.name, cull.ran, 'the focus-clamp check did not run: fewer than two worms');
+      if (cull.ran) {
+        /* The two animals have to be *distinguishable* through the controls, or every
+         * assertion below would pass whether or not the clamp rebuilt anything. This is
+         * the check on the check: the departing animal must say something the remaining
+         * one does not. */
+        check(vp.name, cull.before.hint !== cull.deliberate.hint,
+              `both animals report the same neuron hint ("${cull.before.hint}"), so this`
+              + ' check cannot tell whether the panels were rebuilt');
+        check(vp.name, cull.inRange, `focus ${cull.focus} is outside 0..${cull.n - 1}`);
+        check(vp.name, cull.buttons === cull.n,
+              `${cull.buttons} worm buttons for ${cull.n} animals -- the selector was not`
+              + ' rebuilt after a removal from outside the controls');
+        check(vp.name, cull.pressed.filter(Boolean).length === 1 && cull.pressed[cull.focus],
+              `aria-pressed is ${JSON.stringify(cull.pressed)} with focus ${cull.focus}:`
+              + ' the highlighted animal is not the focused one');
+        /* And the panels have to land where focusing that animal on purpose lands. Before
+         * the fix they kept describing the animal that had just been removed. */
+        check(vp.name, cull.hint === cull.deliberate.hint,
+              `after the removal the neuron hint reads "${cull.hint}"; focusing the same`
+              + ` animal through the selector gives "${cull.deliberate.hint}"`);
+        check(vp.name, cull.restore === cull.deliberate.restore,
+              `after the removal Restore disabled=${cull.restore}; focusing the same animal`
+              + ` through the selector gives ${cull.deliberate.restore}`);
+      }
+
       // Touch targets, on the layouts that are touch-oriented.
       if (vp.width <= 1080) {
         const small = await page.evaluate(() =>

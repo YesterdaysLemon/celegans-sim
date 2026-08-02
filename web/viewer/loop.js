@@ -10,7 +10,7 @@ import { drawDish, follow } from './dish.js';
 import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
          invalidateLayout } from './panels.js';
 import { updateFreq, updateStats, updatePump, updateEggs } from './stats.js';
-import { buildWormSel } from './controls.js';
+import { buildWormSel, clampFocus } from './controls.js';
 
 let fieldClock = 0;
 
@@ -38,7 +38,11 @@ function localTick(now) {
   // Every animal, every frame: the dish needs them all. The panels, the camera and the
   // stats are about one of them -- S.focus -- because "the membrane potential" is not a
   // property of a dish, it is a property of an animal.
-  if (S.focus >= eng.worms.length) S.focus = 0;
+  // Focus may have gone out of range since the last frame: anything holding the engine can
+  // remove an animal, and a generational loop does it wholesale. `clampFocus` moves focus
+  // *and* rebuilds everything that names an animal, which is what this line used to skip.
+  // It returns false for an empty dish, where there is no animal to read out at all.
+  if (!clampFocus()) { S.worms = []; return; }
   S.worms = [];
   for (let i = 0; i < eng.worms.length; i++) S.worms.push(eng.frame(i));
   const f0 = S.worms[S.focus];
