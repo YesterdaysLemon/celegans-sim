@@ -294,8 +294,14 @@ console.log(mod1Ok ? '  PASS' : '  FAIL');
 // here while being the only path a visitor ever executes.
 //
 // With a single animal the two must be identical step for step, which makes this exact
-// rather than statistical. It is a cheap invariant and it covers the ordering -- one world
-// advance per step, not one per animal per step, which is the mistake the shape invites.
+// rather than statistical.
+//
+// It does NOT cover the ordering, and it used to claim it did -- "one world advance per
+// step, not one per animal per step, which is the mistake the shape invites". It cannot:
+// with one worm, once per step and once per animal per step are the same line of
+// arithmetic. Measured, both multi-animal defects registered in tools/audit.py leave this
+// case reading 0.000e+0. The ordering is covered by the MULTI-ANIMAL case below, and this
+// sentence is the one #72 was filed about.
 function trajectory(useStepAll) {
   E.resetWorld();
   E.clearWorms();
@@ -318,7 +324,220 @@ console.log(`  worst disagreement            ${wAll.toExponential(3)}`);
 const allOk = wAll === 0;
 console.log(allOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && fullOk && ablOk && mod1Ok && allOk;
+/* --- several animals on one contested plate ---------------------------------------------
+ *
+ * Everything above this line runs ONE animal, because everything above compares against a
+ * Python `Simulation` and a Simulation is one animal. So the batch settlement, the shared
+ * world advance, and every allocation that has to be split were outside the guarantee this
+ * file exists to give -- and the case immediately above, which claims to cover the
+ * ordering, cannot: with one worm `stepAll` and `step` are the same arithmetic, so the
+ * correct implementation and the once-per-animal one are byte-identical.
+ *
+ * That gap had already let a real divergence through. Python batched contested feeding in
+ * #63; the runtime kept capturing and debiting inside each animal's own step until #71,
+ * and for that whole time the two disagreed about what four animals on a lawn eat. Nothing
+ * could see it: conformance ran one animal, and wasm/population.mjs runs four but has no
+ * Python to compare against.
+ *
+ * It had let a second one through too, and this case found it on its first run: the two
+ * settled contested feeding onto identical allocations and then took the food out of
+ * different cells, 7.456e-04 apart on the plate. Python is the one that moved --
+ * `World.eat_batch` now runs the same iterated proportional claim `settleFeeding` does,
+ * because the runtime has to do this at 2 kHz in a browser tab and the rule it replaced was
+ * a linear program. worm/world.py records what that traded away.
+ *
+ * This case runs a Python `Population` of four against the runtime's `stepAll` and
+ * compares, per animal, what the single-animal cases compare -- node positions, membrane
+ * potentials, the direction gate, the three feeding quantities -- plus the two things that
+ * only exist because the plate is shared: which cells each animal was feeding from, and
+ * what was left in them.
+ *
+ * It also *counts the contention*, on both sides, rather than assuming it. Four animals on
+ * four private lawns agree to 3.5e-18 whether the settlement is batched or served one at a
+ * time, so a version of this case with the animals spread out would pass against the exact
+ * bug it exists to catch. `contested` below is the guard against becoming that case.
+ */
+const pc = ref.multi;
+if (!pc) { console.error('reference has no `multi` case -- regenerate it'); process.exit(1); }
+
+/* The plate and the placement, stated here as well as in tools/conform.py, and then
+ * checked against what the reference recorded. Hardcoding them keeps this file readable as
+ * an experiment rather than a replayer -- the convention the whole-loop case above already
+ * follows -- and comparing them means a one-sided edit stops the run instead of quietly
+ * comparing two different experiments. */
+const MULTI_LAWN = [0.0, 0.0, 1.5, 1.0, 1.0, 4.0];
+const MULTI_PLACE = [[0.05, 0.05, 0.0], [0.12, 0.10, 1.3],
+                     [-0.20, 0.15, 2.9], [0.10, -0.25, 4.4]];
+const sameRow = (a, b) => Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+if (!sameRow(MULTI_LAWN, pc.lawn) || pc.n !== MULTI_PLACE.length
+    || !Array.isArray(pc.placement) || pc.placement.length !== MULTI_PLACE.length
+    || !MULTI_PLACE.every((p, i) => sameRow(p, pc.placement[i]))) {
+  console.error('  the multi-animal plate here and in tools/conform.py have drifted apart;');
+  console.error(`  reference lawn ${JSON.stringify(pc.lawn)} placement ${JSON.stringify(pc.placement)}`);
+  process.exit(2);
+}
+
+// The world grid, from the model header rather than from a constant here, so the two sides
+// cannot disagree about where a cell boundary is.
+const GRID = meta.ints.world_grid;
+const EXTENT = meta.scalars.world_extent;
+const HCELL = 2.0 * EXTENT / GRID;
+const clampCell = (v) => (v < 0 ? 0 : (v > GRID - 1 ? GRID - 1 : v));
+// The same arithmetic as World._feeding_bounds and as the runtime's settleFeeding: row
+// from y, column from x.
+const cellOf = (x, y) => [clampCell(Math.floor((y + EXTENT) / HCELL)),
+                          clampCell(Math.floor((x + EXTENT) / HCELL))];
+
+E.resetWorld();
+E.clearWorms();
+E.setNoise(0);
+E.addFood(...MULTI_LAWN);
+// Creation order is population order: `stepAll` walks the worms array, and the Python
+// walks its list of Simulations. Comparing animal k against animal k means nothing if the
+// two orders differ.
+const pids = MULTI_PLACE.map(([x, y, h]) => E.createWorm(0, x, y, h));
+
+let mem = F64();
+const foodBase = () => E.ptrFood() >> 3;
+const plateTotal = () => {
+  const base = foodBase();
+  let s = 0;
+  for (let i = 0; i < GRID * GRID; i++) s += mem[base + i];
+  return s;
+};
+const cellFood = (i, j) => {
+  const base = foodBase();
+  let s = 0;
+  for (let a = Math.max(0, i - 1); a <= Math.min(GRID - 1, i + 1); a++) {
+    for (let b = Math.max(0, j - 1); b <= Math.min(GRID - 1, j + 1); b++) {
+      s += mem[base + a * GRID + b];
+    }
+  }
+  return s;
+};
+
+/* The tolerances, named because the frame loop also uses them to report *where* a run
+ * first left them. A divergence that starts at one identifiable step is a different animal
+ * from one that was there all along, and the step number says which. */
+const MULTI_TOL = { xy: 1e-6, V: 1e-6, ph: 1e-8, food9: 1e-8, plate: 1e-6 };
+
+const plateStart = plateTotal();
+let pXY = 0, pV = 0, pPh = 0, pFood9 = 0, pPlate = 0;
+let pGateBad = 0, pCellBad = 0;
+let firstBad = 0, worstBefore = 0;
+let captures = 0, contested = 0;
+const eatenBefore = pids.map(() => 0.0);
+// Per animal, per quantity: how many distinct values it took across the run. Four animals
+// compared on three quantities that never moved is four copies of zero, which is what the
+// egg-laying comparison was for the whole of its first life.
+const phSeenEach = pids.map(() => [new Set(), new Set(), new Set()]);
+let frame = 0;
+for (let s = 1; s <= pc.steps; s++) {
+  E.stepAll(1);
+  // Rebuilt after each step: linear memory can grow underneath a view, and a detached view
+  // reads as zeros rather than failing.
+  mem = F64();
+  const cells = pids.map((id) => cellOf(mem[E.ptrNodesX(id) >> 3], mem[E.ptrNodesY(id) >> 3]));
+  for (let k = 0; k < pids.length; k++) {
+    const e = E.getEaten(pids[k]);
+    if (e > eatenBefore[k]) {
+      captures++;
+      // Contested when another animal's 3x3 window overlaps this one's: that is exactly
+      // when the order of settlement can change what either animal is given, or what it
+      // senses on the next step, since the food field is also a sensory field.
+      if (cells.some((c, o) => o !== k && Math.abs(c[0] - cells[k][0]) <= 2
+                                       && Math.abs(c[1] - cells[k][1]) <= 2)) contested++;
+    }
+    eatenBefore[k] = e;
+  }
+
+  if (frame < pc.frames.length && pc.frames[frame].step === s) {
+    const f = pc.frames[frame++];
+    const was = [pXY, pV, pPh, pFood9, pPlate];
+    pPlate = Math.max(pPlate, Math.abs(plateTotal() - f.food));
+    for (let k = 0; k < pids.length; k++) {
+      const id = pids[k], ra = f.a[k];
+      const nx = mem.subarray(E.ptrNodesX(id) >> 3, (E.ptrNodesX(id) >> 3) + ra.x.length);
+      const ny = mem.subarray(E.ptrNodesY(id) >> 3, (E.ptrNodesY(id) >> 3) + ra.y.length);
+      const vv = mem.subarray(E.ptrV(id) >> 3, (E.ptrV(id) >> 3) + ra.V.length);
+      for (let i = 0; i < ra.x.length; i++)
+        pXY = Math.max(pXY, Math.abs(nx[i] - ra.x[i]), Math.abs(ny[i] - ra.y[i]));
+      for (let i = 0; i < ra.V.length; i++) pV = Math.max(pV, Math.abs(vv[i] - ra.V[i]));
+      if (E.getGateForward(id) !== ra.gate) pGateBad++;
+      const ph = [E.getLumen(id), E.getIngested(id), E.getEaten(id)];
+      for (let i = 0; i < 3; i++) pPh = Math.max(pPh, Math.abs(ph[i] - ra.ph[i]));
+      phSeenEach[k].forEach((set, i) => set.add(ra.ph[i]));
+      // Which cells this animal fed from. Compared as integers because it is an integer:
+      // a window that has slipped by one cell is a different experiment, and finding that
+      // out here is far cheaper than inferring it from an unexplained difference in what
+      // the plate had left.
+      if (cells[k][0] !== ra.cell[0] || cells[k][1] !== ra.cell[1]) pCellBad++;
+      pFood9 = Math.max(pFood9, Math.abs(cellFood(cells[k][0], cells[k][1]) - ra.food9));
+    }
+    const now = [pXY, pV, pPh, pFood9, pPlate];
+    const tol = [MULTI_TOL.xy, MULTI_TOL.V, MULTI_TOL.ph, MULTI_TOL.food9, MULTI_TOL.plate];
+    if (!firstBad && now.some((v, i) => v >= tol[i])) {
+      firstBad = f.step;
+      worstBefore = Math.max(...was);
+    }
+  }
+}
+
+const finalEaten = pids.map((id) => E.getEaten(id));
+const plateLost = plateStart - plateTotal();
+const creditedTotal = finalEaten.reduce((a, b) => a + b, 0);
+const spread = Math.max(...finalEaten) - Math.min(...finalEaten);
+const relGap = Math.abs(plateLost - creditedTotal) / Math.max(creditedTotal, 1e-12);
+const phNamesM = ['lumen', 'ingested', 'eaten'];
+const flat = [];
+phSeenEach.forEach((sets, k) => sets.forEach((set, i) => {
+  if (set.size <= 1) flat.push(`worm ${k} ${phNamesM[i]}`);
+}));
+const samples = pc.frames.length * pc.n;
+
+console.log(`\nMULTI-ANIMAL -- ${pc.n} animals on one ${MULTI_LAWN[2]} mm lawn, stepAll, ` +
+            `${pc.steps} steps, noise off`);
+console.log(`  worst node disagreement       ${pXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${pV.toExponential(3)} mV`);
+console.log(`  worst feeding state           ${pPh.toExponential(3)}   (lumen, ingested, eaten)`);
+console.log(`  worst contested-cell food     ${pFood9.toExponential(3)}   (the 3x3 each animal fed from)`);
+console.log(`  worst plate total             ${pPlate.toExponential(3)}   (${GRID * GRID} cells, summed in two different orders)`);
+console.log(`  feeding window disagreed on   ${pCellBad} of ${samples} samples`);
+console.log(`  direction gate disagreed on   ${pGateBad} of ${samples} samples`);
+console.log(`  capture events                ${captures} here, ${pc.captures} in the reference`);
+console.log(`  of those, contested           ${contested} here, ${pc.contested} in the reference`);
+console.log(`  every animal fed              ${finalEaten.every((v) => v > 0)}   ` +
+            `[${finalEaten.map((v) => v.toFixed(9)).join(', ')}]`);
+console.log(`  spread between animals        ${spread.toExponential(3)}   ` +
+            `(four copies of one number is not a comparison)`);
+console.log(`  plate drawn down              ${plateLost.toExponential(3)}   ` +
+            `(what the animals were credited, to ${relGap.toExponential(2)} relative)`);
+if (flat.length) console.log(`  NOT COVERED: ${flat.join(', ')} never changed over the run`);
+if (firstBad) {
+  console.log(`  first frame past tolerance    step ${firstBad} of ${pc.steps}   ` +
+              `(everything before it agreed to ${worstBefore.toExponential(3)})`);
+}
+/* The tolerances are the whole-loop case's, and the reference is stored to the same
+ * precision (1e-12 on positions and food, 1e-10 on voltages), so the floor here is the
+ * rounding and not the arithmetic. The guards below the numeric ones are what stop this
+ * case decaying into the thing it replaces:
+ *   contested > 0        -- the animals actually took food from each other's cells;
+ *                           without it the historical defect is invisible (3.5e-18);
+ *   spread > 1e-7        -- they are four different animals and not four copies of one.
+ *                           Measured 1.4e-05, against a feeding tolerance of 1e-08; the
+ *                           ring placement this case started from managed 2.9e-09, four
+ *                           orders of magnitude narrower and effectively one animal;
+ *   plateLost > 0        -- the lawn was really drawn down (6.4e-02 of 44.35), and the
+ *                           debit landed on the field rather than only in the counters. */
+const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph
+  && pFood9 < MULTI_TOL.food9 && pPlate < MULTI_TOL.plate
+  && pGateBad === 0 && pCellBad === 0 && frame === pc.frames.length
+  && captures === pc.captures && contested === pc.contested
+  && contested > 0 && finalEaten.every((v) => v > 0) && spread > 1e-7
+  && plateLost > 0 && relGap < 1e-9 && flat.length === 0;
+console.log(multiOk ? '  PASS' : '  FAIL');
+
+const ok = mechOk && fullOk && ablOk && mod1Ok && allOk && multiOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 // Only a completed numeric comparison may use the dedicated finding code. Missing or

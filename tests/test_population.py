@@ -10,7 +10,7 @@ import pytest
 from worm.engine import Population, Simulation
 from worm.errors import DivergentSimulation, InvalidGenome
 from worm.params import Params
-from worm.world import World, _balanced_cell_withdrawals, _fair_group_allocations
+from worm.world import World, _settle_by_claim
 
 
 @pytest.mark.parametrize(
@@ -266,7 +266,24 @@ def test_real_population_capture_accounts_for_every_unit_removed_from_the_plate(
     assert held == pytest.approx(credited)
 
 
-def test_batch_feeding_reserves_shared_food_for_the_constrained_request():
+def test_shared_food_is_grazed_twice_rather_than_routed_around():
+    """No central planner moves an animal off contested ground, and that costs throughput.
+
+    This test used to be `test_batch_feeding_reserves_shared_food_for_the_constrained_
+    request` and used to assert [1.0, 1.0] with the plate emptied: the max-flow rule routed
+    the animal that could reach both cells onto the private one and left the shared cell
+    entirely to the animal that could only reach that. It maximised collective intake.
+
+    The rule is now the runtime's -- see World.eat_batch for why the model moved rather than
+    the port -- and the runtime does not plan. Each animal grazes its own neighbourhood
+    proportionally, so the animal at x=0 takes half its claim from the contested cell even
+    though the other animal has nowhere else to go. Measured, the pair now takes
+    1.666666667 of the 2.0 present and leaves 0.333333333 in a cell only an already-full
+    animal could reach.
+
+    That is a real loss and it is written down here rather than in a commit message. What
+    is kept is order-independence and conservation.
+    """
     base = Params()
     p = replace(base, world=replace(base.world, radius=4.0, grid=8))
 
@@ -279,13 +296,26 @@ def test_batch_feeding_reserves_shared_food_for_the_constrained_request():
     forward, food_forward = settle([(0.0, 0.0, 1.0), (-1.0, 0.0, 1.0)])
     reverse, food_reverse = settle([(-1.0, 0.0, 1.0), (0.0, 0.0, 1.0)])
 
-    assert forward == pytest.approx([1.0, 1.0])
-    assert reverse == pytest.approx([1.0, 1.0])
-    assert float(food_forward.sum()) == pytest.approx(0.0)
+    assert forward == pytest.approx([1.0, 2.0 / 3.0])
+    assert reverse == pytest.approx([2.0 / 3.0, 1.0])
+    assert float(forward.sum()) == pytest.approx(2.0 - float(food_forward.sum()))
+    assert float(food_forward.sum()) == pytest.approx(1.0 / 3.0)
     assert np.array_equal(food_reverse, food_forward)
 
 
 def test_partially_overlapping_batch_feeding_is_order_safe_when_food_is_short():
+    """Short food is split by claim, not by a fairness criterion, and order cannot matter.
+
+    The split used to be 0.625/0.625 -- weighted max-min fairness, every group raised to the
+    same fraction of its demand until a reachability cut stopped it. It is now
+    0.694444444/0.555555556: the animal that can reach 1.25 units claims 0.8 of each of its
+    cells and the animal that can reach only 1.0 claims all of its one cell, so the shared
+    cell is split 0.8 : 1.0 and the private cell goes entirely to the animal that can reach
+    it. Both totals are 1.25, because the change is to who gets it and not to how much
+    leaves the plate.
+
+    Order-independence is the property this test is named for and it survives unchanged.
+    """
     base = Params()
     p = replace(base, world=replace(base.world, radius=4.0, grid=8))
 
@@ -298,8 +328,9 @@ def test_partially_overlapping_batch_feeding_is_order_safe_when_food_is_short():
     forward, food_forward = settle([(0.0, 0.0, 1.0), (-1.0, 0.0, 1.0)])
     reverse, food_reverse = settle([(-1.0, 0.0, 1.0), (0.0, 0.0, 1.0)])
 
-    assert forward == pytest.approx([0.625, 0.625])
-    assert reverse == pytest.approx([0.625, 0.625])
+    assert forward == pytest.approx([0.6944444444444444, 0.5555555555555556])
+    assert reverse == pytest.approx([0.5555555555555556, 0.6944444444444444])
+    assert float(forward.sum()) == pytest.approx(1.25)
     assert float(food_forward.sum()) == pytest.approx(0.0)
     assert np.array_equal(food_reverse, food_forward)
 
@@ -364,7 +395,20 @@ def test_tight_floating_point_cut_does_not_make_batch_settlement_infeasible():
     assert float(allocated.sum()) == pytest.approx(removed, abs=1e-12)
 
 
-def test_tiny_saturated_cut_does_not_strand_unrelated_food():
+def test_saturated_cut_conserves_what_it_does_take():
+    """A hard configuration, kept for conservation now that throughput is not guaranteed.
+
+    This was `test_tiny_saturated_cut_does_not_strand_unrelated_food` and asserted a total
+    of 15.20886796528907 -- every unit any animal could reach. The claim rule takes
+    15.107720018824944 from the same plate and strands 0.101147946464126 of it, because the
+    animal that could have cleared the small cell spends part of its claim on ground it
+    shares. Not stranding food was a property of the max-flow routing and it is gone; see
+    World.eat_batch.
+
+    What this configuration is still worth testing is the part that must never go: whatever
+    is credited to the animals is exactly what left the plate, on a field whose cells span
+    five orders of magnitude and where a settlement can saturate.
+    """
     base = Params()
     p = replace(base, world=replace(base.world, radius=4.0, grid=8))
     world = World(p.world, np.random.default_rng(0))
@@ -387,149 +431,129 @@ def test_tiny_saturated_cut_does_not_strand_unrelated_food():
     allocated = world.eat_batch(requests)
     removed = before - float(world.food.sum())
 
-    assert float(allocated.sum()) == pytest.approx(15.20886796528907, abs=1e-10)
+    assert float(allocated.sum()) == pytest.approx(15.107720018824944, abs=1e-10)
     assert float(allocated.sum()) == pytest.approx(removed, abs=1e-12)
+    assert np.all(allocated >= 0.0)
+    assert np.all(allocated <= np.asarray([request[2] for request in requests]))
+    assert np.all(world.food >= 0.0)
 
 
-def test_cell_relabeling_does_not_bias_balanced_spatial_depletion():
-    reachable = [(0, 2, 5), (0, 1, 2, 5), (1, 4, 5), (0, 3, 4, 5)]
-    demands = np.asarray([
-        0.00019525214344666251,
-        0.03095259673736658,
-        0.00015524092663456965,
-        2.5216084935527756,
-    ])
-    capacities = np.asarray([
-        0.06945656551923883,
-        28.124970700268701,
-        15.448616194258246,
-        0.010053538338569234,
-        11.495222571716887,
-        0.00013811797330998043,
-    ])
-    targets = _fair_group_allocations(reachable, demands, capacities)
-    allocated, withdrawn = _balanced_cell_withdrawals(
-        reachable, targets, capacities)
+# --------------------------------------------------------------------- the claim rule ---
+# Four tests used to live here, written directly against `_fair_group_allocations` and
+# `_balanced_cell_withdrawals`: cell-relabeling invariance of the balanced spatial
+# depletion, label independence at a tight cut, feasibility of frozen cell tiers, and
+# solver-scale slack in the tier probe. All four were about one property --
+#
+#     the settlement minimises the largest fractional depletion of any food cell,
+#
+# and that property is deliberately gone. It was produced by a linear program over a
+# max-flow, and the WebAssembly runtime settles this at 2 kHz inside a browser tab and
+# cannot run a linear program; it grazes each animal's neighbourhood proportionally and
+# lets shared ground be grazed twice. Given a model and a port that disagreed, the model
+# moved: two animals eating the same bacteria really do take more out of the ground they
+# share than out of the ground only one of them is standing on. The multi-animal
+# conformance case in wasm/conform.mjs is what found the disagreement, at 7.456e-04 on the
+# plate; worm/world.py's `eat_batch` has the full account of what was traded away.
+#
+# The properties that had to survive are below, now asserted against the rule that replaced
+# it: conservation, request-order independence, cell-relabeling invariance, and reduction to
+# World.eat for a single neighbourhood.
+
+_CLAIM_REACHABLE = [(0, 2, 5), (0, 1, 2, 5), (1, 4, 5), (0, 3, 4, 5)]
+_CLAIM_DEMANDS = [
+    0.00019525214344666251,
+    0.03095259673736658,
+    0.00015524092663456965,
+    2.5216084935527756,
+]
+_CLAIM_CAPACITIES = np.asarray([
+    0.06945656551923883,
+    28.124970700268701,
+    15.448616194258246,
+    0.010053538338569234,
+    11.495222571716887,
+    0.00013811797330998043,
+])
+
+
+def test_claim_settlement_conserves_and_never_overdraws():
+    received, left = _settle_by_claim(
+        _CLAIM_REACHABLE, _CLAIM_DEMANDS, _CLAIM_CAPACITIES)
+
+    assert np.all(np.asarray(left) >= 0.0)
+    assert np.all(np.asarray(left) <= _CLAIM_CAPACITIES)
+    assert np.all(np.asarray(received) >= 0.0)
+    assert np.all(np.asarray(received) <= np.asarray(_CLAIM_DEMANDS) + 1e-15)
+    assert float(np.sum(received)) == pytest.approx(
+        float(_CLAIM_CAPACITIES.sum() - np.sum(left)), abs=1e-12)
+
+
+def test_claim_settlement_does_not_depend_on_request_order():
+    """Which animal is worm 0 must not decide what worm 0 eats.
+
+    This is the invariant #63 was filed for and the one the runtime broke before #71: the
+    old runtime captured and debited inside each animal's own step, so a contested lawn paid
+    a bonus for a low array index. The rule here reads every claim against one snapshot
+    before any of it is withdrawn, which makes the result a function of the configuration
+    and not of the iteration.
+    """
+    order = [2, 0, 3, 1]
+    received, left = _settle_by_claim(
+        _CLAIM_REACHABLE, _CLAIM_DEMANDS, _CLAIM_CAPACITIES)
+    shuffled_received, shuffled_left = _settle_by_claim(
+        [_CLAIM_REACHABLE[i] for i in order],
+        [_CLAIM_DEMANDS[i] for i in order],
+        _CLAIM_CAPACITIES,
+    )
+
+    mapped = np.empty(len(received))
+    mapped[order] = shuffled_received
+    assert mapped == pytest.approx(np.asarray(received), abs=1e-12)
+    assert np.asarray(shuffled_left) == pytest.approx(np.asarray(left), abs=1e-12)
+
+
+def test_claim_settlement_is_cell_relabeling_invariant():
+    """Renumbering the cells must not move the food.
+
+    The grid gives cells an order and nothing about feeding should inherit it. The old
+    max-flow settlement could: its traversal order chose among equivalent routings, which is
+    why the tests this replaces existed at all.
+    """
+    received, left = _settle_by_claim(
+        _CLAIM_REACHABLE, _CLAIM_DEMANDS, _CLAIM_CAPACITIES)
 
     cell_order = np.asarray([5, 2, 0, 1, 3, 4])
     inverse = np.empty_like(cell_order)
     inverse[cell_order] = np.arange(len(cell_order))
-    canonical = sorted(
-        (tuple(sorted(int(inverse[cell]) for cell in group)), group_i)
-        for group_i, group in enumerate(reachable)
-    )
-    relabeled_reachable = [group for group, _group_i in canonical]
-    group_order = [group_i for _group, group_i in canonical]
-    relabeled_targets = _fair_group_allocations(
-        relabeled_reachable, demands[group_order], capacities[cell_order])
-    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
-        relabeled_reachable, relabeled_targets, capacities[cell_order])
-    mapped_allocated = np.empty_like(relabeled_allocated)
-    mapped_allocated[group_order] = relabeled_allocated
-    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
-    mapped_withdrawn[cell_order] = relabeled_withdrawn
+    relabeled_reachable = [tuple(sorted(int(inverse[cell]) for cell in group))
+                           for group in _CLAIM_REACHABLE]
+    relabeled_received, relabeled_left = _settle_by_claim(
+        relabeled_reachable, _CLAIM_DEMANDS, _CLAIM_CAPACITIES[cell_order])
+    mapped_left = np.empty(len(left))
+    mapped_left[cell_order] = relabeled_left
 
-    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
-    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
-    assert withdrawn[1] / capacities[1] == pytest.approx(
-        withdrawn[2] / capacities[2], abs=1e-10)
+    assert np.asarray(relabeled_received) == pytest.approx(
+        np.asarray(received), abs=1e-12)
+    assert mapped_left == pytest.approx(np.asarray(left), abs=1e-12)
 
 
-def test_cell_leveling_remains_label_independent_at_a_tight_cut():
-    reachable = [(1,), (0, 2), (1, 2), (0, 3), (0, 1, 3)]
-    demands = np.asarray([
-        99.86912174666736,
-        0.50585984694991315,
-        21.310871673875386,
-        0.0032113329082032772,
-        0.036428560017572997,
-    ])
-    capacities = np.asarray([
-        43.632251711359771,
-        71.446563232100118,
-        0.00053802024288964725,
-        7.9499753755333815,
-    ])
-    targets = _fair_group_allocations(reachable, demands, capacities)
-    allocated, withdrawn = _balanced_cell_withdrawals(
-        reachable, targets, capacities)
+def test_claim_settlement_reduces_to_eat_for_one_neighbourhood():
+    """One animal alone is `World.eat`, exactly, and that is what keeps the two paths one.
 
-    cell_order = np.asarray([0, 3, 2, 1])
-    inverse = np.empty_like(cell_order)
-    inverse[cell_order] = np.arange(len(cell_order))
-    canonical = sorted(
-        (tuple(sorted(int(inverse[cell]) for cell in group)), group_i)
-        for group_i, group in enumerate(reachable)
-    )
-    relabeled_reachable = [group for group, _group_i in canonical]
-    group_order = [group_i for _group, group_i in canonical]
-    relabeled_targets = _fair_group_allocations(
-        relabeled_reachable, demands[group_order], capacities[cell_order])
-    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
-        relabeled_reachable, relabeled_targets, capacities[cell_order])
-    mapped_allocated = np.empty_like(relabeled_allocated)
-    mapped_allocated[group_order] = relabeled_allocated
-    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
-    mapped_withdrawn[cell_order] = relabeled_withdrawn
+    `eat_batch` keeps a separate proportional branch for a group nothing else reaches,
+    because that branch is what makes `Population([sim]).step` observationally equivalent to
+    `Simulation.step`. It is only safe to keep because the claim rule computes the same
+    thing for a single request: the claim is min(1, want/avail) and the cell keeps
+    have * (1 - claim), which is the proportional withdrawal written the other way round.
+    Checked here to the last bit, over-demand as well as under.
+    """
+    capacities = np.asarray([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+    cells = tuple(range(len(capacities)))
+    available = float(capacities.sum())
 
-    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
-    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
-    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
-
-
-def test_frozen_cell_tiers_remain_feasible_after_relabeling():
-    reachable = [
-        (0,), (2,), (0, 2, 3), (0, 1, 2, 4), (3, 5), (0, 2, 4, 5, 6),
-    ]
-    targets = np.asarray([
-        0.0074091873678323933,
-        0.15732785745858727,
-        7.3054720748202273,
-        0.0029339322465515238,
-        0.0770975747005367,
-        0.08361935449248538,
-    ])
-    capacities = np.asarray([
-        0.0091921682950217,
-        0.10024243368771162,
-        7.461016951381441,
-        0.05772162750752929,
-        1.2688877147264204,
-        0.01937594719704408,
-        0.03498121147904196,
-    ])
-    allocated, withdrawn = _balanced_cell_withdrawals(
-        reachable, targets, capacities)
-
-    cell_order = np.asarray([2, 4, 0, 6, 1, 3, 5])
-    relabeled_reachable = [
-        (0,), (0, 1, 2, 3, 6), (0, 1, 2, 4), (0, 2, 5), (2,), (5, 6),
-    ]
-    group_order = np.asarray([1, 5, 3, 2, 0, 4])
-    relabeled_allocated, relabeled_withdrawn = _balanced_cell_withdrawals(
-        relabeled_reachable, targets[group_order], capacities[cell_order])
-    mapped_allocated = np.empty_like(relabeled_allocated)
-    mapped_allocated[group_order] = relabeled_allocated
-    mapped_withdrawn = np.empty_like(relabeled_withdrawn)
-    mapped_withdrawn[cell_order] = relabeled_withdrawn
-
-    assert mapped_allocated == pytest.approx(allocated, abs=1e-10)
-    assert mapped_withdrawn == pytest.approx(withdrawn, abs=1e-9)
-    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
-
-
-def test_cell_tier_probe_allows_solver_scale_slack():
-    reachable = [(0,), (1,), (0, 1)]
-    targets = np.asarray([
-        0.20811164647933927,
-        0.00689015494040061,
-        0.00436362537898892,
-    ])
-    capacities = np.asarray([0.20811164649880284, 0.09342482249783483])
-
-    allocated, withdrawn = _balanced_cell_withdrawals(
-        reachable, targets, capacities)
-
-    assert allocated == pytest.approx(targets, abs=1e-12)
-    assert float(allocated.sum()) == pytest.approx(float(withdrawn.sum()), abs=1e-12)
-    assert np.all(withdrawn <= capacities)
+    for want in (7.5, available, available * 2.0, 0.0):
+        received, left = _settle_by_claim([cells], [want], capacities)
+        taken = min(want, available)
+        assert received[0] == taken
+        assert np.asarray(left) == pytest.approx(
+            capacities * (1.0 - taken / available), abs=0.0, rel=1e-15)

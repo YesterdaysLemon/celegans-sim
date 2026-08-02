@@ -653,14 +653,28 @@ runtime**. Everything expensive that happens once at construction stays in Pytho
 exported as a block of arrays; the WASM implements only the step functions.
 
 `tools/conform.py` and `wasm/conform.mjs` check the two implementations against each other
-step by step with the noise off, in **four cases** — the mechanics alone, the whole loop on
-a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, and
-the browser's own `stepAll` path against the single-worm one. They agree to the precision
-the reference file stores: 5e-13 mm on node positions, 5e-11 mV on membrane potentials, the
-direction gate never disagrees, and ablated cells are silent rather than merely quiet. The
-Docker build runs that check and **fails if the port has drifted**.
+step by step with the noise off, in **six cases** — the mechanics alone, the whole loop on
+a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, the
+serotonin-gated chloride channel at the coefficient `params.py` documents, the browser's
+own `stepAll` path against the single-worm one, and four animals contesting one lawn
+against a Python `Population`. They agree to the precision the reference file stores: 5e-13
+mm on node positions, 5e-11 mV on membrane potentials, the direction gate never disagrees,
+ablated cells are silent rather than merely quiet, and four animals contesting one lawn
+agree on what each of them ate and on what is left in the cells they were eating it from.
+The Docker build runs that check and **fails if the port has drifted**.
 
-Three of those four cases exist because a coverage audit found the earlier ones passing
+The sixth case disagreed the first time it ran, and **the model moved rather than the
+port**. The two settled contested feeding onto identical allocations and then took the food
+out of different cells: 7.5e-04 apart on the plate at the moment it happened, 4.7e-02 mV on
+membrane potentials four seconds later. Python spread each withdrawal with a linear program
+so that every cell in the union lost the same fraction; the runtime, which has to settle
+this at 2 kHz inside a browser tab and cannot run a linear program, grazes each animal's
+neighbourhood proportionally and lets shared ground be grazed twice. Two animals eating the
+same bacteria really do take more out of the ground they share, so `World.eat_batch` now
+runs the runtime's rule — at the cost of the maximum-throughput and max-min-fairness
+guarantees the linear program bought. `wasm/README.md` has the account.
+
+Five of those six cases exist because a coverage audit found the earlier ones passing
 without covering anything. `tools/audit.py` breaks things on purpose and reports which
 check notices; `wasm/README.md` has the account.
 

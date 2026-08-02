@@ -312,6 +312,43 @@ MUTATIONS = [
          repl="      this.eglResource -= G.EGL_RESOURCE_COST * 0.5;",
          expect=["conform"]),
 
+    # The two multi-animal defects. Both are invisible to every single-animal check by
+    # construction -- with one worm, `stepAll` and a loop over `step` are the same
+    # arithmetic -- so until conform.mjs grew its MULTI-ANIMAL case there was nothing in
+    # this battery either of them could have been put in front of. Both were watched to
+    # fail before being written down here, and with both of them applied every one of the
+    # five single-animal cases still passed, which is the measurement that says the new
+    # case is doing the work rather than riding along with the old ones.
+    dict(name="wasm/feeding-per-animal", file="wasm/assembly/index.ts", rebuild="asc",
+         imitates="the real bug #63 and #71 chased: each animal captured and debited "
+                  "inside its own step, so worm 3 sampled a lawn three others had already "
+                  "been served from. Measured, eaten in array order: 0.016047241, "
+                  "0.016038848, 0.016025892, 0.016025215 -- monotonic in the array index, "
+                  "1.2e-05 past a feeding tolerance of 1e-08. Node positions move only "
+                  "2.2e-08, so the feeding comparison is what catches this and not the "
+                  "trajectory.",
+         find="    for (let k = 0; k < count; k++) unchecked(fWant[k] = unchecked(worms[k]).prepareStep());\n"
+              "    settleFeeding(count);\n"
+              "    for (let k = 0; k < count; k++) unchecked(worms[k]).finishStep(unchecked(fGot[k]));",
+         repl="    for (let k = 0; k < count; k++) unchecked(worms[k]).step();",
+         expect=["conform"]),
+
+    dict(name="wasm/plate-per-animal", file="wasm/assembly/index.ts", rebuild="asc",
+         imitates="the plate aged once per animal per step instead of once per step -- the "
+                  "mistake stepAll's shape invites, and the one the comment on `step` warns "
+                  "against in words rather than in a check. Four animals diffuse the "
+                  "chemistry four times as fast; measured, 6.4e-06 mm on node positions and "
+                  "5.5e-01 mV on membrane potentials against tolerances of 1e-06 on both, "
+                  "and the very first sampled frame is already out.",
+         find="    for (let k = 0; k < count; k++) unchecked(worms[k]).finishStep(unchecked(fGot[k]));\n"
+              "    // The plate is shared, so it advances once per step and not once per animal.\n"
+              "    world.stepFields(G.DT);",
+         repl="    for (let k = 0; k < count; k++) {\n"
+              "      unchecked(worms[k]).finishStep(unchecked(fGot[k]));\n"
+              "      world.stepFields(G.DT);\n"
+              "    }",
+         expect=["conform"]),
+
     dict(name="py/proprio-reach", file="worm/params.py", rebuild="full",
          imitates="a gait-critical model constant moved. The wave should not survive it.",
          # Was proprio_reach_food, which the audit showed nothing caught -- correctly, since
