@@ -409,6 +409,14 @@ def export(path=OUT, params=None):
     # -- egg-laying -----------------------------------------------------------------------
     ep = p.egglaying
     _export_scalars(b, ep, EGGLAYING_SCALARS, "egl_")
+    # The recovery rate itself, not just the tau it comes from. The runtime used to derive
+    # it -- `1.0 - Math.exp(-dt / EGL_RESOURCE_TAU)`, recomputed two thousand times a
+    # second for a constant -- which was tolerable only while Python computed it the same
+    # lossy way. It no longer does, so deriving it there would manufacture a 6.5e-12
+    # divergence between the two implementations out of nothing: the largest cancellation
+    # of the ten rates, because this tau is by far the longest. Exporting it puts both
+    # sides back on one number, which is what this file is for.
+    b.f("egl_resource_recover", egl._recover)
     b.i("egl_rest_samples", ep.rest_samples)
     # The browser keeps eggs in a fixed ring rather than a growing list: a tab left
     # open overnight lays thousands, and the plate is a picture, not a record.

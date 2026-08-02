@@ -62,7 +62,9 @@ class Modulators:
                 raise RuntimeError("no neurons matched the %s sources" % name)
         self.tau = {"dopamine": p.dopamine_tau, "serotonin": p.serotonin_tau,
                     "octopamine": p.octopamine_tau, "pdf": p.pdf_tau}
-        self._rate = {n: 1.0 - np.exp(-dt / self.tau[n]) for n in self.NAMES}
+        # -expm1, not 1 - exp: see the note in senses.py. One line, four exported
+        # constants, and the one #58 was filed on.
+        self._rate = {n: -np.expm1(-dt / self.tau[n]) for n in self.NAMES}
 
         # Levels are deviations from resting release, and resting release is exactly 0.5:
         # every neuron's sigmoid midpoint is solved to sit at its own resting potential

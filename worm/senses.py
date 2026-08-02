@@ -174,15 +174,44 @@ class Senses:
         self._head_hist = np.zeros((self._head_delay_n + 1, body_n_links - 1))
         self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
-        self._prop_adapt_rate = 1.0 - np.exp(-dt / p.proprio_tau_adapt)
+        # Every one-minus-a-decay below is `-expm1(-x)` rather than `1 - exp(-x)`, and the
+        # reason is reproducibility rather than accuracy.
+        #
+        # These x are dt/tau, which at dt = 0.5 ms runs from 5.6e-07 to 1.4e-03. So
+        # exp(-x) is a hair under 1, and subtracting it from 1 throws away most of the
+        # mantissa: the result keeps roughly 12 good digits instead of 16, and *any*
+        # last-ulp difference in the platform's exp -- a different numpy, a different
+        # libm, a different CPU -- lands squarely in the gap that leaves.
+        #
+        # It has already happened. Re-exporting an unmodified checkout on a different
+        # machine moved MOD_RATE_DOPAMINE from ...751507e-05 to ...762609e-05 with nothing
+        # in the repository changed (#58). The tolerance is not the issue -- 1e-12 on an
+        # adaptation rate changes no result -- but the exported model is supposed to be a
+        # function of the repository, and while these are computed this way it is a
+        # function of the repository *and* the machine that last ran the exporter. That
+        # undermines the port's central claim: whatever the two implementations disagree
+        # about, it cannot be the setup, because both read the same numbers out of one
+        # file.
+        #
+        # Measured over the ten exported rates, the relative error of `1 - exp` against
+        # `expm1` runs 3.7e-14 (touch_rate) to 6.5e-12 (the egg-laying resource recovery,
+        # whose tau is by far the longest). expm1 is exact for small x and identical for
+        # large, so there is no trade being made here.
+        #
+        # `_odour_rate` and `_touch_rate` used to be `1.0 - self._odour_decay` and
+        # `1.0 - self._touch_decay`, which is the same cancellation wearing a different
+        # shape. Deriving them from the decay made the pair sum to exactly 1, which looks
+        # like a conservation property and is not one: both are used as `x += (target - x)
+        # * rate`, where the decay never appears, so nothing was relying on it.
+        self._prop_adapt_rate = -np.expm1(-dt / p.proprio_tau_adapt)
         self._chem_decay = np.exp(-dt / p.chemo_tau_adapt)
         self._odour_decay = np.exp(-dt / (2.0 * p.chemo_tau_adapt))
-        self._odour_rate = 1.0 - self._odour_decay
+        self._odour_rate = -np.expm1(-dt / (2.0 * p.chemo_tau_adapt))
         self._therm_decay = np.exp(-dt / p.thermo_tau_adapt)
-        self._o2_rate = 1.0 - np.exp(-dt / p.oxygen_tau_adapt)
-        self._rep_rate = 1.0 - np.exp(-dt / p.repellent_tau_adapt)
+        self._o2_rate = -np.expm1(-dt / p.oxygen_tau_adapt)
+        self._rep_rate = -np.expm1(-dt / p.repellent_tau_adapt)
         self._touch_decay = np.exp(-dt / p.touch_tau)
-        self._touch_rate = 1.0 - self._touch_decay
+        self._touch_rate = -np.expm1(-dt / p.touch_tau)
 
         self.readout = {}
 
