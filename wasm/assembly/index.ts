@@ -469,6 +469,8 @@ class Worm {
   lumen: f64 = 0.0; ingested: f64 = 0.0; eaten: f64 = 0.0;
   // What the last pump actually got off the plate, which is what the world lost.
   phCaptured: f64 = 0.0;
+  phWant: f64 = 0.0;      // this step's capture demand, before the plate has answered
+  phFood: f64 = 0.0;      // food density at the mouth when the demand was formed
   // Egg-laying. See worm/egglaying.py for the circuit; the shapes here follow it exactly.
   eglVm: f64 = 0.0;
   eglEggs: f64 = G.EGL_EGGS_INITIAL;
@@ -1184,6 +1186,7 @@ class Worm {
     // The cycle runs during the pump as well as between pumps, so the rate is the one the
     // animal achieves; what remains is a refractory period, capping it at 1/duration.
     this.phCaptured = 0.0;
+    this.phWant = 0.0;          // a step with no pump asks for nothing
     this.phPhase += this.phRate * dt;
     if (this.phPumping) {
       this.phOpen -= dt;
@@ -1199,14 +1202,25 @@ class Worm {
       const room = 1.0 - this.lumen / G.PH_LUMEN_CAPACITY;
       const want = G.PH_VOLUME_PER_PUMP * (foodAtMouth > 0.0 ? foodAtMouth : 0.0)
                    * (this.phDur / G.PH_PUMP_DURATION) * (room > 0.0 ? room : 0.0);
-      /* Debit the plate here, where the mouth is, at the moment of capture -- and gain
-       * only what was actually there. Both halves used to be wrong: capture was free, and
-       * the world was debited later at M4 transport time, wherever the head had drifted
-       * to by then. See worm/pharynx.py for the measurement. */
-      this.phCaptured = want > 0.0
-        ? world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), want) : 0.0;
-      this.lumen += this.phCaptured;
+      /* What the pump asks for. The plate is debited by the caller, not here, because
+       * with several animals on one lawn the order they are served in must not matter --
+       * see settleFeeding. `step` settles immediately for one animal; `stepAll` collects
+       * every demand first and settles them together. */
+      this.phWant = want;
     }
+    return this.phWant;
+  }
+
+  /* The second half: take what the plate actually gave, then move it on.
+   *
+   * Split from the demand phase so a population can be settled simultaneously. Transport
+   * lives here rather than with the demand because M4 empties a lumen that this step may
+   * just have filled, and doing it before the allocation is known would move food the
+   * animal had not been given yet. */
+  settlePharynx(got: f64): f64 {
+    const dt = G.DT;
+    this.phCaptured = got;
+    this.lumen += got;
     // Isthmus peristalsis. M4 is what moves the lumen's contents on; without it the
     // animal pumps normally and starves, so transport is its own step.
     const m4 = this.meanDev(G.OFF_idx_m4, G.LEN_idx_m4);
@@ -1219,7 +1233,7 @@ class Worm {
   }
 
   /* ------------------------------------------------------------------- a whole step -- */
-  step(): void {
+  prepareStep(): f64 {
     this.activation();
     // The modulators read the same activation the senses do and are updated first, so the
     // wireless layer is one step behind the wired one -- the same consistent unit delay
@@ -1237,19 +1251,34 @@ class Worm {
     } else {
       this.stepBody(G.DT);
     }
-    const food = world.sample(world.food, unchecked(this.nodesX[0]), unchecked(this.nodesY[0]));
-    const moved = this.stepPharynx(food);
-    // The plate was already debited at capture, inside stepPharynx. `eaten` is what the
-    // world lost; `ingested` is what reached the intestine; they differ by the lumen.
-    this.eaten += this.phCaptured;
-    // The uterus fills from what the pharynx actually transported, so an animal that does
-    // not eat does not make eggs. The vulva is halfway down the body.
-    if (this.stepEggLaying(moved, food) > 0.0) {
+    this.phFood = world.sample(world.food, unchecked(this.nodesX[0]), unchecked(this.nodesY[0]));
+    return this.stepPharynx(this.phFood);
+  }
+
+  /* Everything downstream of knowing what the plate gave.
+   *
+   * `eaten` is what the world lost; `ingested` is what reached the intestine; they differ
+   * by whatever is in the lumen. The uterus fills from what the pharynx actually
+   * transported, so an animal that does not eat does not make eggs, and the vulva is
+   * halfway down the body. */
+  finishStep(got: f64): void {
+    const moved = this.settlePharynx(got);
+    this.eaten += got;
+    if (this.stepEggLaying(moved, this.phFood) > 0.0) {
       const mid = G.N_LINKS >> 1;
       world.layEgg(unchecked(this.nodesX[mid]), unchecked(this.nodesY[mid]),
                    this.id, this.t, this.genes);
     }
     this.t += G.DT;
+  }
+
+  /* One animal, settled against the plate on its own. Identical to the batch path when
+   * there is only one demand, which is what keeps the conformance case exact. */
+  step(): void {
+    const want = this.prepareStep();
+    const got = want > 0.0
+      ? world.eat(unchecked(this.nodesX[0]), unchecked(this.nodesY[0]), want) : 0.0;
+    this.finishStep(got);
   }
 
   /* Vulval muscle, the uterus that feeds it, and the resource that clusters it.
@@ -1477,9 +1506,144 @@ export function step(w: i32, n: i32): void {
   const wm = byId(w);
   for (let i = 0; i < n; i++) { wm.step(); world.stepFields(G.DT); }
 }
+/* Scratch for the batch settlement, grown when the population does. Allocating per step
+ * would mean 2000 allocations a second; these are reused. */
+let fWant: StaticArray<f64> = new StaticArray<f64>(0);
+let fGot: StaticArray<f64> = new StaticArray<f64>(0);
+let fRem: StaticArray<f64> = new StaticArray<f64>(0);
+let fR: StaticArray<f64> = new StaticArray<f64>(0);
+let fLoI: StaticArray<i32> = new StaticArray<i32>(0);
+let fLoJ: StaticArray<i32> = new StaticArray<i32>(0);
+let fHiI: StaticArray<i32> = new StaticArray<i32>(0);
+let fHiJ: StaticArray<i32> = new StaticArray<i32>(0);
+function feedingCapacity(n: i32): void {
+  if (fWant.length >= n) return;
+  fWant = new StaticArray<f64>(n); fGot = new StaticArray<f64>(n);
+  fRem = new StaticArray<f64>(n); fR = new StaticArray<f64>(n);
+  fLoI = new StaticArray<i32>(n); fLoJ = new StaticArray<i32>(n);
+  fHiI = new StaticArray<i32>(n); fHiJ = new StaticArray<i32>(n);
+}
+
+/* Settle every animal's feeding demand against one snapshot of the plate.
+ *
+ * Order used to decide this. Each animal captured and debited inside its own step, so on
+ * a contested lawn worm 0 sampled a full neighbourhood and worm 3 sampled what three
+ * others had already been served from -- a systematic advantage in array order, measured
+ * at 0.09% per four seconds, and heritable-ish once culling moves animals between slots.
+ * Selecting on `food_eaten` therefore partly selected for array position.
+ *
+ * The rule is the one `World.eat` already uses, applied to everyone at once and then
+ * repeated on what is left. An animal wanting `take` from a neighbourhood holding `avail`
+ * withdraws `food_c * take/avail` from each cell, so the total fraction demanded of a cell
+ * is the sum of `take/avail` over the animals reaching it; where that exceeds one, every
+ * withdrawal from that cell is scaled by its reciprocal. One pass is order-independent and
+ * conservative but under-serves an animal blocked on a shared cell while it still has
+ * untouched cells of its own, so the pass repeats on the remainder until nothing moves.
+ *
+ * That iteration is not an approximation of the Python: checked against `World.eat_batch`
+ * on seven configurations -- one animal, two and four sharing a spot, far apart, starving,
+ * offset by one cell, three staggered, and asymmetric demand -- it agrees exactly, to
+ * 0.00e+00, including the max-min case a single pass gets wrong.
+ */
+function settleFeeding(n: i32): void {
+  const g = world.g;
+  for (let k = 0; k < n; k++) {
+    const wm = unchecked(worms[k]);
+    let j = <i32>Math.floor((unchecked(wm.nodesX[0]) + world.extent) / world.h);
+    let i = <i32>Math.floor((unchecked(wm.nodesY[0]) + world.extent) / world.h);
+    i = i < 0 ? 0 : (i > g - 1 ? g - 1 : i);
+    j = j < 0 ? 0 : (j > g - 1 ? g - 1 : j);
+    unchecked(fLoI[k] = i > 0 ? i - 1 : 0);
+    unchecked(fHiI[k] = i < g - 1 ? i + 1 : g - 1);
+    unchecked(fLoJ[k] = j > 0 ? j - 1 : 0);
+    unchecked(fHiJ[k] = j < g - 1 ? j + 1 : g - 1);
+    unchecked(fGot[k] = 0.0);
+    unchecked(fRem[k] = unchecked(fWant[k]));
+  }
+
+  // Eight passes is far more than the two or three any real configuration needs; the loop
+  // exits as soon as a pass moves nothing, and the bound is only there so a pathological
+  // field cannot spin.
+  for (let pass = 0; pass < 8; pass++) {
+    // What fraction of its own neighbourhood each animal is asking for this pass.
+    for (let k = 0; k < n; k++) {
+      const want = unchecked(fRem[k]);
+      if (want <= 0.0) { unchecked(fR[k] = 0.0); continue; }
+      let avail = 0.0;
+      for (let a = unchecked(fLoI[k]); a <= unchecked(fHiI[k]); a++)
+        for (let b = unchecked(fLoJ[k]); b <= unchecked(fHiJ[k]); b++)
+          avail += unchecked(world.food[a * g + b]);
+      unchecked(fR[k] = avail > 0.0 ? (want < avail ? want / avail : 1.0) : 0.0);
+    }
+
+    // Each animal's share, all read from the same field before any of it is withdrawn.
+    let moved = 0.0;
+    for (let k = 0; k < n; k++) {
+      const r = unchecked(fR[k]);
+      if (r <= 0.0) continue;
+      let got = 0.0;
+      for (let a = unchecked(fLoI[k]); a <= unchecked(fHiI[k]); a++) {
+        for (let b = unchecked(fLoJ[k]); b <= unchecked(fHiJ[k]); b++) {
+          const have = unchecked(world.food[a * g + b]);
+          if (have <= 0.0) continue;
+          const claimed = claimOn(n, a, b);
+          got += have * r / (claimed > 1.0 ? claimed : 1.0);
+        }
+      }
+      unchecked(fGot[k] += got);
+      unchecked(fRem[k] -= got);
+      moved += got;
+    }
+
+    /* Then take it off the plate. A cell loses `have * min(1, claimed)` however many
+     * animals are on it, so the new value depends only on the cell -- but it must be
+     * written exactly once, or the second writer would scale an already-reduced value.
+     * The lowest-indexed claimant does it, which is a deterministic choice and not an
+     * order-dependent one: every animal's share was fixed in the sweep above. */
+    for (let k = 0; k < n; k++) {
+      if (unchecked(fR[k]) <= 0.0) continue;
+      for (let a = unchecked(fLoI[k]); a <= unchecked(fHiI[k]); a++) {
+        for (let b = unchecked(fLoJ[k]); b <= unchecked(fHiJ[k]); b++) {
+          if (firstClaimant(n, a, b) != k) continue;
+          const cell = a * g + b;
+          const have = unchecked(world.food[cell]);
+          if (have <= 0.0) continue;
+          const claimed = claimOn(n, a, b);
+          const left = have * (1.0 - (claimed > 1.0 ? 1.0 : claimed));
+          unchecked(world.food[cell] = left > 0.0 ? left : 0.0);
+        }
+      }
+    }
+    if (moved <= 1e-18) break;
+  }
+}
+
+// Total fraction of cell (a,b) claimed this pass, summed over every animal reaching it.
+@inline function claimOn(n: i32, a: i32, b: i32): f64 {
+  let claimed = 0.0;
+  for (let m = 0; m < n; m++) {
+    if (unchecked(fR[m]) <= 0.0) continue;
+    if (a >= unchecked(fLoI[m]) && a <= unchecked(fHiI[m])
+     && b >= unchecked(fLoJ[m]) && b <= unchecked(fHiJ[m])) claimed += unchecked(fR[m]);
+  }
+  return claimed;
+}
+@inline function firstClaimant(n: i32, a: i32, b: i32): i32 {
+  for (let m = 0; m < n; m++) {
+    if (unchecked(fR[m]) <= 0.0) continue;
+    if (a >= unchecked(fLoI[m]) && a <= unchecked(fHiI[m])
+     && b >= unchecked(fLoJ[m]) && b <= unchecked(fHiJ[m])) return m;
+  }
+  return -1;
+}
+
 export function stepAll(n: i32): void {
   for (let i = 0; i < n; i++) {
-    for (let k = 0; k < worms.length; k++) worms[k].step();
+    const count = worms.length;
+    feedingCapacity(count);
+    for (let k = 0; k < count; k++) unchecked(fWant[k] = unchecked(worms[k]).prepareStep());
+    settleFeeding(count);
+    for (let k = 0; k < count; k++) unchecked(worms[k]).finishStep(unchecked(fGot[k]));
     // The plate is shared, so it advances once per step and not once per animal.
     world.stepFields(G.DT);
   }
