@@ -339,6 +339,13 @@ console.log(allOk ? '  PASS' : '  FAIL');
  * could see it: conformance ran one animal, and wasm/population.mjs runs four but has no
  * Python to compare against.
  *
+ * It had let a second one through too, and this case found it on its first run: the two
+ * settled contested feeding onto identical allocations and then took the food out of
+ * different cells, 7.456e-04 apart on the plate. Python is the one that moved --
+ * `World.eat_batch` now runs the same iterated proportional claim `settleFeeding` does,
+ * because the runtime has to do this at 2 kHz in a browser tab and the rule it replaced was
+ * a linear program. worm/world.py records what that traded away.
+ *
  * This case runs a Python `Population` of four against the runtime's `stepAll` and
  * compares, per animal, what the single-animal cases compare -- node positions, membrane
  * potentials, the direction gate, the three feeding quantities -- plus the two things that
@@ -517,9 +524,9 @@ if (firstBad) {
  *   contested > 0        -- the animals actually took food from each other's cells;
  *                           without it the historical defect is invisible (3.5e-18);
  *   spread > 1e-7        -- they are four different animals and not four copies of one.
- *                           Measured 3.1e-06 on the reference, against a feeding tolerance
- *                           of 1e-08; the ring placement this case started from managed
- *                           5.6e-11, which is zero;
+ *                           Measured 1.4e-05, against a feeding tolerance of 1e-08; the
+ *                           ring placement this case started from managed 2.9e-09, four
+ *                           orders of magnitude narrower and effectively one animal;
  *   plateLost > 0        -- the lawn was really drawn down (6.4e-02 of 44.35), and the
  *                           debit landed on the field rather than only in the counters. */
 const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph

@@ -211,11 +211,12 @@ def ablated_case():
 #
 # The placement is deliberately NOT a rotation of one animal: the first version of this
 # case put four animals on a ring at equal angles with headings 2*pi*k/4, which is
-# symmetric, and over this run the four then ate 0.016049784 units each -- identical to
-# 5.6e-11, four copies of the same number. Such a case passes against a runtime that hands
-# every animal the population average. The offsets and headings here are uneven, and the
-# four eat 0.016046386, 0.016044154, 0.016043241 and 0.016044790: a spread of 3.1e-06,
-# which is 300x the tolerance the same quantities are compared to.
+# symmetric, and over this run the four then ate 0.016039393, 0.016039394, 0.016039396 and
+# 0.016039394 -- a spread of 2.9e-09 on quantities of 1.6e-02, four copies of the same
+# number. Such a case passes against a runtime that hands every animal the population
+# average. The offsets and headings here are uneven, and the four eat 0.016047229,
+# 0.016042801, 0.016033364 and 0.016036963: a spread of 1.4e-05, which is four orders of
+# magnitude wider than the ring and 1400x the tolerance those quantities are compared to.
 MULTI_LAWN = (0.0, 0.0, 1.5, 1.0, 1.0, 4.0)   # x, y, radius, density, attractant, scale
 MULTI_PLACEMENT = ((0.05, 0.05, 0.0),
                    (0.12, 0.10, 1.3),
@@ -258,9 +259,19 @@ def multi_case():
     capturing and debiting inside each animal's own step. Reproducing that defect here, on
     this plate, gives 0.016047241, 0.016038848, 0.016025892, 0.016025215 units eaten in
     array order -- monotonically decreasing, worm 3 measurably worse off for being worm 3
-    -- against 0.016046386, 0.016044154, 0.016043241, 0.016044790 when the demands are
+    -- against 0.016047229, 0.016042801, 0.016033364, 0.016036963 when the demands are
     settled together. #71 fixed the runtime. Nothing kept it fixed, because conformance ran
     one animal and wasm/population.mjs, which runs four, has no Python to compare against.
+
+    AND THIS CASE FOUND A SECOND DIVERGENCE THE FIRST TIME IT RAN, which is the reason to
+    write checks rather than arguments. The two settled contested feeding onto identical
+    allocations and then took the food out of *different cells*: `World.eat_batch` spread
+    each withdrawal so every cell in the union lost the same fraction, the runtime grazed
+    each animal's own neighbourhood proportionally and let shared cells be grazed twice, and
+    the plate came out 7.456e-04 apart at the first contested pump. The model moved rather
+    than the port -- the runtime settles this at 2 kHz inside a browser tab and cannot run
+    the linear program the old rule needed -- so `World.eat_batch` runs the runtime's rule
+    now and this case is exact. worm/world.py has the account of what that traded away.
 
     THE PLATE HAS TO BE CONTESTED OR THE CASE TESTS NOTHING. Animals on separate lawns
     settle independently and agree whatever the batching does. Measured, not assumed: the

@@ -109,7 +109,7 @@ This is expensive to run — about fifteen minutes for the WebAssembly arm alone
 threaded — so it is not in CI. It is the check to run after touching anything in
 `stepNervous`, the noise, or the command layer.
 
-## Status: matching for one animal, diverging for four
+## Status: complete and matching, one animal and four
 
 Conformance, with noise off, comparing against the Python step for step:
 
@@ -134,15 +134,15 @@ ABLATED -- AVBL, AVAL, DB03, VB05, AVEL, RIML, I2L; 3000 steps
   ablated cells still active    0
 
 MULTI-ANIMAL -- 4 animals on one 1.5 mm lawn, stepAll, 8000 steps
-  worst node disagreement       9.737e-06 mm
-  worst membrane potential      4.740e-02 mV
-  worst feeding state           9.877e-06     (lumen, ingested, eaten)
-  worst contested-cell food     7.618e-03     (the 3x3 each animal fed from)
+  worst node disagreement       5.131e-13 mm
+  worst membrane potential      6.145e-11 mV
+  worst feeding state           4.988e-13     (lumen, ingested, eaten)
+  worst contested-cell food     4.956e-13     (the 3x3 each animal fed from)
+  worst plate total             4.690e-13     (65536 cells, summed two ways)
   feeding window disagreed on   0 of 80 samples
   direction gate disagreed on   0 of 80 samples
   capture events                16, all 16 contested
-  first frame past tolerance    step 3200 of 8000  (before it, 5.006e-11)
-  FAIL
+  plate drawn down              6.416e-02     (what the animals were credited)
 ```
 
 The third case exists because ablation was the largest piece of this runtime that nothing
@@ -198,10 +198,10 @@ four private lawns agree to **3.5e-18** whether the settlement is batched or ser
 a time, so a spread-out version of this case would pass against the exact defect it exists
 to catch.
 
-**It fails.** The two implementations settle contested feeding onto *identical
-allocations* — which is what #71 established and what this case confirms, 0.00e+00 on every
-configuration where a single group of animals reaches a single set of cells — and then take
-that food out of **different cells**:
+**It failed on its first run.** The two implementations settled contested feeding onto
+*identical allocations* — which is what #71 established and what this case confirms,
+0.00e+00 on every configuration where one group of animals reaches one set of cells — and
+then took that food out of **different cells**:
 
 | configuration | worst allocation gap | worst cell gap |
 |---|---|---|
@@ -212,22 +212,56 @@ that food out of **different cells**:
 | two animals, diagonal neighbours | 0.00e+00 | **3.351e-04** over 14 cells |
 | the four on the conformance plate | 0.00e+00 | **7.456e-04** over 15 cells |
 
-`World.eat_batch` routes the withdrawal to minimise the largest fractional depletion of any
-cell, so every cell in the union ends at the same fraction (0.99930104 across the board on
+`World.eat_batch` routed the withdrawal to minimise the largest fractional depletion of any
+cell, so every cell in the union ended at the same fraction (0.99930104 across the board on
 the two-animal case). `settleFeeding` withdraws each animal's share proportionally from its
 own neighbourhood, so a cell two animals reach loses more than one only one of them reaches
 (0.999068053 against 0.999534027). Same totals, same allocations, different hole in the
-plate — and the food field is also a *sensory* field, so it does not stay a cosmetic
-difference: on the conformance plate it is 5.006e-11 through step 2800, appears at the
-first contested pump on step 2881, and reaches 4.740e-02 mV on membrane potentials and
-9.877e-06 units on what each animal has eaten by step 8000.
+plate — and the food field is also a *sensory* field, so it did not stay a cosmetic
+difference: on the conformance plate it was 5.006e-11 through step 2800, appeared at the
+first contested pump on step 2881, and reached 4.740e-02 mV on membrane potentials and
+9.877e-06 units on what each animal had eaten by step 8000.
 
-Replacing Python's `eat_batch` with a transcription of `settleFeeding` and regenerating the
-reference makes the case pass at 5.131e-13 mm, 6.145e-11 mV and 4.988e-13 on feeding —
-i.e. the rest of the multi-animal path, the shared world advance and the per-animal state
-included, is exact, and the disagreement is this one routing rule and nothing else.
-Whichever side is made to move, it is a runtime change and therefore a rebuilt
-`web/worm.wasm`, which is why the check arrives here before the fix does.
+It was isolated rather than inferred: replacing Python's `eat_batch` with a transcription of
+`settleFeeding` and regenerating the reference made the case pass at 5.131e-13 mm,
+6.145e-11 mV and 4.988e-13 on feeding, so the rest of the multi-animal path — shared world
+advance, per-animal state, ordering — was exact and the disagreement was that one routing
+rule and nothing else.
+
+### Which side moved, and what it cost
+
+The runtime cannot adopt Python's rule: the balanced routing is a linear program over a
+max-flow, and this runs at 2 kHz in a browser tab. So **the model moved**. `World.eat_batch`
+now runs `_settle_by_claim`, a line-for-line transcription of `settleFeeding`, for every
+group of animals that share cells with another group; a group nothing else reaches keeps the
+proportional withdrawal `World.eat` performs, which is what pins `Population([sim]).step` to
+`Simulation.step`.
+
+That is a real change to the reference model and it is not free. Measured, on an 8-cell test
+plate:
+
+- **maximum throughput is gone.** Two animals over one shared and one private cell, each
+  wanting 1.0 of the 2.0 present, used to take all 2.0 — the max-flow routed the animal that
+  could reach both onto the private cell. They now take 1.666666667 and leave 0.333333333 in
+  the private cell of an animal that is already full. Nothing plans, so nothing steps aside.
+- **weighted max-min fairness is gone.** The same pair over 1.0 shared and 0.25 private used
+  to split 0.625/0.625; they now split 0.694444444/0.555555556, in proportion to the claim
+  each makes.
+- **minimal largest fractional depletion is gone**, which is the point: shared ground is
+  grazed harder than private ground, because two animals really are eating the same
+  bacteria.
+
+Conservation, order-independence, relabeling-invariance and single-neighbourhood equivalence
+with `World.eat` all survive and are what `tests/test_population.py` now asserts. The
+`scipy.optimize.linprog` machinery, the Dinic max-flow and the progressive-filling search —
+about 340 lines — are deleted.
+
+One corner is knowingly left: when several animals share **one** neighbourhood and their
+combined demand exceeds it, the kept single-group branch splits proportionally to demand
+while the runtime splits proportionally to claim, measured 2.0e-02 apart on demands
+[0.4, 0.2] against 0.3 available. Reaching it needs a neighbourhood stripped to within
+0.06% of empty — the conformance plate runs at `want/avail` ≈ 5.6e-04 — and closing it means
+giving up the single-animal equivalence that branch exists for.
 
 ## What it costs
 
