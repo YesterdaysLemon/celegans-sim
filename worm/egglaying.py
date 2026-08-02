@@ -110,7 +110,9 @@ class EggLaying:
         self.last_event = -1e9    # simulated time of the most recent one
         self.t = 0.0
 
-        self._recover = 1.0 - np.exp(-dt / p.resource_tau)
+        # -expm1, not 1 - exp: see the note in senses.py. This is the worst of the
+        # ten, at dt/tau = 5.6e-07 -- six significant digits cancelled away.
+        self._recover = -np.expm1(-dt / p.resource_tau)
 
     # ------------------------------------------------------------------------ helpers
     def _live(self, idx: np.ndarray, alive: np.ndarray | None) -> np.ndarray:

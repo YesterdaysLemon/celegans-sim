@@ -1323,7 +1323,13 @@ class Worm {
     const target = clamp(drive, 0.0, 1.0) * gate;
     this.eglVm += (target - this.eglVm) * (dt / G.EGL_VM_TAU);
 
-    this.eglResource += (1.0 - this.eglResource) * (1.0 - Math.exp(-dt / G.EGL_RESOURCE_TAU));
+    /* The exported rate, not a locally derived one. This used to be
+     * `1.0 - Math.exp(-dt / G.EGL_RESOURCE_TAU)` -- an exp evaluated two thousand times a
+     * second to recompute a constant, and computed by the one arrangement of the
+     * arithmetic that loses six significant digits to cancellation. Python now uses
+     * -expm1 and exports the result, so both implementations read one number instead of
+     * each deriving its own and disagreeing at 6.5e-12. */
+    this.eglResource += (1.0 - this.eglResource) * G.EGL_RESOURCE_RECOVER;
     if (this.eglRefractory > 0.0) {
       this.eglRefractory -= dt;
       if (this.eglRefractory < 0.0) this.eglRefractory = 0.0;
