@@ -52,7 +52,7 @@ jobs:
       # never reaches the browser check as anything but "blank page".
       - name: every module parses
         run: |
-          for f in $(find web -name '*.js') tools/*.mjs wasm/conform.mjs; do
+          for f in $(find web -name '*.js') tools/*.mjs wasm/*.mjs; do
             node --check "$f" || exit 1
           done
           echo "$(find web -name '*.js' | wc -l) viewer modules parse"
@@ -126,6 +126,15 @@ jobs:
           cd wasm && npx asc assembly/index.ts --target release
         env:
           PYTHONPATH: .
+
+      # #37's regression property: raising `volume_per_pump` tenfold multiplies `food_eaten`
+      # by 9.3x while the animal's trajectory is unchanged to five figures, and the energy
+      # budget in wasm/evolve.mjs must refuse to pay for that. It runs here rather than in
+      # the viewer job because it needs a .model and a .wasm built from the same tree -- it
+      # varies the pharynx by patching the compiled f64 constant, which is the only way to
+      # move a scalar that is deliberately neither a gene nor a payload field.
+      - name: a bigger pharynx buys no fitness
+        run: node --test wasm/energy-fitness.test.mjs
 
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
