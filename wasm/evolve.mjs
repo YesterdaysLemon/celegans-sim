@@ -149,28 +149,65 @@ function engine() {
  * That is small against a real genetic difference and it is not small against nothing, and
  * a first run should not have to argue about which it is measuring.
  *
- * ON the lawn, and this is the part worth reading, because the obvious design does not
- * work. Dropping an animal *outside* its lawn would make the score integrative in the way
- * NEXT.md wants -- find the food, stay on it, pump -- and it produces no score at all.
- * Measured, one lawn of radius 4 mm, three seeds, 30 s:
+ * ON the lawn, and this is the part worth reading, because the reason is not the one an
+ * earlier version of this comment gave. Dropping an animal *outside* its lawn would make
+ * the score integrative in the way NEXT.md wants -- find the food, stay on it, pump. The
+ * first calibration of that reported it scoring nothing at all, 0/3 animals arriving from
+ * one millimetre outside the edge, and concluded the landscape was flat off the lawn.
  *
- *     dropped at   found food   mean eaten
- *         0 mm        3/3         0.09395
- *         3 mm        3/3         0.03762
- *         5 mm        0/3         0.00000      <- 1 mm outside the edge
- *         7 mm        0/3         0.00000
+ * It is not. That calibration launched every animal *tangentially*, and this animal walks
+ * in a nearly straight line, so it measured the drop angle rather than the animal.  Same
+ * lawn, same three seeds, same 30 s, varying only the initial heading:
  *
- * The landscape is *flat* off the lawn: every genome scores exactly zero, so there is
- * nothing for selection to act on. That is not a defect in this file, it is the model's
- * own chemotaxis showing through -- README puts the index at +0.083 against an animal's
- * +0.5 or better, and an animal that cannot climb a gradient cannot be selected for
- * climbing one. Until that improves, foraging-from-scratch is not an evolvable trait here,
- * and pretending otherwise would produce a run full of zeros and a conclusion about
- * nothing.
+ *     dropped at   pointed at the lawn      tangential        pointed away
+ *         5 mm       3/3   0.18576        0/3   0.00000      0/3   0.00000
+ *         8 mm       3/3   0.12276        0/3   0.00000      0/3   0.00000
  *
- * So the assay selects for what *does* vary: staying on food and feeding well. An animal
- * dropped 3 mm off centre eats less than half what one dropped at the centre does, so
- * there is a real gradient in how well an animal holds a lawn once it is on one.
+ * An animal dropped 8 mm out -- four millimetres clear of the edge -- and pointed at the
+ * lawn eats more than one dropped dead centre and pointed sideways (0.09395). The
+ * landscape off the lawn is not flat; it is dominated by one initial condition the genome
+ * has no say in. With noise off the animal covers 3.24 mm in 10 s in a straight line, and
+ * whether that line crosses a radius-4 disc is settled at t=0.
+ *
+ * That does *not* rescue foraging as an evolvable trait, and for the original reason:
+ * README puts the chemotaxis index at +0.083 against an animal's +0.5 or better, so
+ * arrival here is ballistics, not gradient climbing. A genome cannot be selected for
+ * aiming, because it is not the genome that aims. But the honest statement is "arrival is
+ * decided by the drop heading", not "every genome scores zero" -- the second is false and
+ * was measured wrong.
+ *
+ * So the assay selects for what *does* vary once aiming is taken off the table: staying on
+ * food and feeding well. Every animal gets the same heading relative to its own lawn, which
+ * makes the drop angle a controlled constant rather than a lottery.
+ *
+ * WHAT IT SELECTED, AND THE REASON TO BELIEVE IT.
+ *
+ * 8 animals, 5 generations, 15 s, sigma 0.12, three seeds, against a selection-off control:
+ *
+ *     selection - control   0.01687 +- 0.00506 (s.e.)
+ *
+ * positive on every seed, on a first-generation median around 0.011 -- so selection
+ * roughly triples median intake in five generations while the control arm goes nowhere
+ * (+0.00214, -0.00128, +0.00085). That is the shape a control arm is supposed to have.
+ *
+ * The result worth trusting is not the effect size, though. It is which way two genes
+ * moved:
+ *
+ *     gene                 wild    selected   control
+ *     sen_tonic_forward    22.0       17.5      21.0
+ *     sen_cord_drive        8.0        6.5       8.3
+ *
+ * Both down about 20%, both flat in the control. Less forward drive is exactly what "do
+ * not walk off your lawn" asks for, and it is the adaptation this assay was built to
+ * reward.
+ *
+ * Before the heading above was fixed, the same code aimed every animal *through* the
+ * middle of its lawn, and the same two genes moved the *other way* -- tonic_forward 22 ->
+ * 24.5, cord_drive 8 -> 10.1 -- because sprinting across a bullseye is what that assay
+ * rewarded. The genes tracked the trait being selected, and reversed when the trait did.
+ * A number that moves when the assay changes and in the direction the change implies is
+ * worth more than a number that is merely large; the old run's effect was real too, and it
+ * was an artefact.
  */
 const RING = 26.0;         // mm between neighbouring lawns -- far past any interaction
 const OFFSET = 3.0;        // mm off the lawn's centre; the lawn's radius is 4
@@ -182,7 +219,15 @@ function plate(E, n) {
     E.addFood(lx, ly, 4.0, 1.0, 1.0, 9.0);
     // Off-centre and pointing outwards, so an animal that simply swims straight ahead
     // leaves the lawn. Holding station is a behaviour, and this is what scores it.
-    spots.push([lx + Math.cos(a) * OFFSET, ly + Math.sin(a) * OFFSET, a]);
+    //
+    // The `+ Math.PI` is not decoration. createWorm's fourth argument sets the direction
+    // the *body trails*, not the direction the animal faces: node 0 is the mouth and sits
+    // at (x, y), and updateNodes lays the rest of the body out along `heading` behind it,
+    // so the animal travels at `heading + pi`. Measured, not inferred -- a worm created at
+    // the origin with heading 0 and no noise is at (-3.23, +0.10) ten seconds later.
+    // Without the half turn this line did the exact opposite of what it claims: it aimed
+    // every animal straight through the middle of its own lawn.
+    spots.push([lx + Math.cos(a) * OFFSET, ly + Math.sin(a) * OFFSET, a + Math.PI]);
   }
   return spots;
 }
