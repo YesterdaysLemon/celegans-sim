@@ -154,3 +154,10 @@ jobs:
       # turned over -- so they cost only the model and the runtime built above.
       - name: the population behaves as a population
         run: node wasm/population.mjs
+
+      # An animal's memory footprint was documented in three places and measured in none,
+      # and the documented figure was out by a factor of a hundred (#33). This measures it
+      # off the runtime's own exports and fails if any of those documents stops agreeing.
+      # Sub-second, so there is no reason for it not to run on every push.
+      - name: an animal costs what the documents say it costs
+        run: node wasm/memory.mjs

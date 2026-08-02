@@ -787,6 +787,8 @@ tools/audit.py          break each check on purpose and see which one notices
 worm/egglaying.py       vulval muscle, the uterus, and the resource that clusters it
 tools/egglaying.py      rate, retention, the HSN and serotonin phenotypes
 wasm/egglaying.mjs      the hour-long clustering runs, on the runtime
+wasm/population.mjs     the invariants that exist only when several animals share a plate
+wasm/memory.mjs         what an animal costs, measured, against what the documents claim
 web/app.js              viewer bootstrap; the modules it composes are in web/viewer/
 web/local.js            the WebAssembly engine: model loading, stepping budget, frames
 wasm/assembly/index.ts  the runtime — the same model, in the browser

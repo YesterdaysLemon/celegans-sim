@@ -208,6 +208,7 @@ REPRESENTATIVE = [
     # absent from `GENES` and from the payload alike.
     ("wasm/evolve.mjs", [VIEWER_WF]),
     ("wasm/energy-fitness.test.mjs", [VIEWER_WF]),
+    ("wasm/memory.mjs", [VIEWER_WF]),
     # The viewer, its server, and the checks that run against them.
     ("web/local.js", [VIEWER_WF]),
     ("web/viewer/dish.js", [VIEWER_WF]),
@@ -247,7 +248,13 @@ def test_representative_edits_schedule_their_gates(path, wanted):
 # decision somebody made rather than an oversight nobody noticed.
 NO_CI_NEEDED = {
     "README.md": "prose",
-    "NEXT.md": "prose -- the working log",
+    "NEXT.md": "prose -- the working log. One caveat, written down because it is a real "
+               "hole rather than an absence of one: wasm/memory.mjs asserts that NEXT.md "
+               "quotes the measured per-worm memory figure, and an edit to NEXT.md alone "
+               "schedules nothing, so a drift there is caught by the next commit that "
+               "touches wasm/ or web/ rather than by the commit that causes it. Gating a "
+               "131 kB working log on a docker-and-puppeteer job was judged the worse "
+               "trade; the check still fails, just later and blaming the wrong change.",
     "LICENSE": "prose",
     ".gitignore": "affects no job's inputs",
     "Dockerfile": "not built by any workflow; the cache-policy job runs nginx:alpine "
