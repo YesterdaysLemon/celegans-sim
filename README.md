@@ -653,14 +653,22 @@ runtime**. Everything expensive that happens once at construction stays in Pytho
 exported as a block of arrays; the WASM implements only the step functions.
 
 `tools/conform.py` and `wasm/conform.mjs` check the two implementations against each other
-step by step with the noise off, in **four cases** — the mechanics alone, the whole loop on
-a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, and
-the browser's own `stepAll` path against the single-worm one. They agree to the precision
+step by step with the noise off, in **six cases** — the mechanics alone, the whole loop on
+a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, the
+serotonin-gated chloride channel at the coefficient `params.py` documents, the browser's
+own `stepAll` path against the single-worm one, and four animals contesting one lawn
+against a Python `Population`. On everything one animal does they agree to the precision
 the reference file stores: 5e-13 mm on node positions, 5e-11 mV on membrane potentials, the
 direction gate never disagrees, and ablated cells are silent rather than merely quiet. The
 Docker build runs that check and **fails if the port has drifted**.
 
-Three of those four cases exist because a coverage audit found the earlier ones passing
+**On four animals it currently disagrees**, and that is what the sixth case was written to
+find out: the two settle contested feeding onto the same allocations and then take the food
+out of different cells, which is a divergence of 7.5e-04 on the plate at the moment it
+happens and 4.7e-02 mV on membrane potentials four seconds later. `wasm/README.md` has the
+account.
+
+Five of those six cases exist because a coverage audit found the earlier ones passing
 without covering anything. `tools/audit.py` breaks things on purpose and reports which
 check notices; `wasm/README.md` has the account.
 

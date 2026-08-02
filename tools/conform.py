@@ -198,12 +198,178 @@ def ablated_case():
     return out
 
 
+# The contested plate, stated once and emitted into the reference so that wasm/conform.mjs
+# can assert it is running the same experiment rather than merely believing it is.
+#
+# One small lawn, four animals on top of it. The radius is 1.5 mm and the animals start
+# within half a millimetre of the middle, which is what makes the case a *contest*: the
+# world grid is 256 cells across a 90 mm dish, so a cell is 0.352 mm and the 3x3
+# neighbourhood an animal feeds from is about 1.05 mm wide. Animals half a millimetre
+# apart are therefore drawing from cells the others are also drawing from. Measured over
+# the run below, every one of the 16 capture events happened while at least one other
+# animal's feeding neighbourhood overlapped the feeder's.
+#
+# The placement is deliberately NOT a rotation of one animal: the first version of this
+# case put four animals on a ring at equal angles with headings 2*pi*k/4, which is
+# symmetric, and over this run the four then ate 0.016049784 units each -- identical to
+# 5.6e-11, four copies of the same number. Such a case passes against a runtime that hands
+# every animal the population average. The offsets and headings here are uneven, and the
+# four eat 0.016046386, 0.016044154, 0.016043241 and 0.016044790: a spread of 3.1e-06,
+# which is 300x the tolerance the same quantities are compared to.
+MULTI_LAWN = (0.0, 0.0, 1.5, 1.0, 1.0, 4.0)   # x, y, radius, density, attractant, scale
+MULTI_PLACEMENT = ((0.05, 0.05, 0.0),
+                   (0.12, 0.10, 1.3),
+                   (-0.20, 0.15, 2.9),
+                   (0.10, -0.25, 4.4))
+# 8000 steps is 4.0 s. See multi_case: the first pump lands at step 2881 and the fourth at
+# 7207, so a shorter run would be comparing four animals that had never eaten.
+MULTI_STEPS = 8000
+MULTI_SAMPLE = 400
+
+
+def _feeding_cell(world, x, y):
+    """The cell whose 3x3 neighbourhood an animal at (x, y) feeds from.
+
+    Same arithmetic as World._feeding_bounds and as the runtime's settleFeeding, and it is
+    emitted per frame so that a disagreement about *which* cells were contested fails as
+    itself rather than as an inexplicable difference in what was eaten.
+    """
+    return (int(np.clip((y + world.extent) / world.h, 0, world.g - 1)),
+            int(np.clip((x + world.extent) / world.h, 0, world.g - 1)))
+
+
+def _feeding_sum(world, i, j):
+    """What is left in that 3x3 neighbourhood -- the food the animals are contesting."""
+    return float(world.food[max(0, i - 1):min(world.g, i + 2),
+                            max(0, j - 1):min(world.g, j + 2)].sum())
+
+
+def multi_case():
+    """Four animals on one lawn, advanced as a Population -- the path one animal cannot reach.
+
+    Every other case in this file runs a single Simulation, and a Simulation is one animal:
+    `World.eat_batch` never runs, the shared world is advanced by the animal that owns it,
+    and no allocation is ever split. So the entire multi-animal half of the model sat
+    outside the guarantee the conformance pair exists to provide.
+
+    That is not a hypothetical gap, it is a divergence that had already shipped. #63 made
+    contested feeding order-independent in Python -- demands batched, settled
+    proportionally against one snapshot, the world aged once -- while the runtime kept
+    capturing and debiting inside each animal's own step. Reproducing that defect here, on
+    this plate, gives 0.016047241, 0.016038848, 0.016025892, 0.016025215 units eaten in
+    array order -- monotonically decreasing, worm 3 measurably worse off for being worm 3
+    -- against 0.016046386, 0.016044154, 0.016043241, 0.016044790 when the demands are
+    settled together. #71 fixed the runtime. Nothing kept it fixed, because conformance ran
+    one animal and wasm/population.mjs, which runs four, has no Python to compare against.
+
+    THE PLATE HAS TO BE CONTESTED OR THE CASE TESTS NOTHING. Animals on separate lawns
+    settle independently and agree whatever the batching does. Measured, not assumed: the
+    same four animals moved 22.6 mm out from the middle, one private lawn each and 32 mm
+    between the nearest pair, eat 0.016066596,
+    0.016066239, 0.016058615, 0.016058423 with the correct settlement and the same numbers
+    to 3.5e-18 with the per-animal defect above applied -- the case would pass, cheerfully,
+    against the exact bug it exists to catch. That is the same trap as the empty dish that
+    hid the missing field diffusion and the lawn-less plate that hid the food skirt, so the
+    reference records what actually happened -- how many capture events there were and how
+    many of them were contested -- and wasm/conform.mjs recounts both from the runtime's
+    own state and refuses a run in which the animals never met. On this plate all 16
+    capture events are contested.
+
+    8000 steps is 4.0 s, which is not arbitrary either: the pharynx starts at its myogenic
+    0.5 Hz and is carried up by serotonin as the animals taste the lawn, so the first pump
+    lands at step 2881 and the fourth at 7207. A shorter run would compare four animals
+    that had never eaten.
+    """
+    import dataclasses
+    from worm.engine import Population, Simulation
+    from worm.world import World
+
+    p = Params()
+    p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+    w = World(p.world, np.random.default_rng(0))
+    x, y, r, density, attractant, length_scale = MULTI_LAWN
+    w.add_food_patch(x, y, r, density=density, attractant=attractant,
+                     length_scale=length_scale)
+    sims = [Simulation(p, seed=0, world=w, placement=place) for place in MULTI_PLACEMENT]
+    # check_every=None: the invariant sweep is the Python model's own check and belongs to
+    # tests/test_population.py. Running it here would only slow the reference down, and a
+    # state divergent enough to trip it would fail the comparison first and louder.
+    pop = Population(sims, check_every=None)
+
+    steps, sample = MULTI_STEPS, MULTI_SAMPLE
+    out = {"steps": steps, "sample": sample, "n": len(sims),
+           "lawn": list(MULTI_LAWN),
+           "placement": [list(place) for place in MULTI_PLACEMENT],
+           "food_start": round(float(w.food.sum()), 12),
+           "frames": []}
+    eaten_before = [0.0] * len(sims)
+    captures = 0
+    contested = 0
+    for i in range(steps):
+        pop.step()
+        nodes = [sim.body.nodes() for sim in sims]
+        # Contention, counted where it happens rather than inferred afterwards. A capture
+        # event is a step on which an animal took food off the plate; it is contested when
+        # some other animal's 3x3 neighbourhood overlaps the feeder's, because that is
+        # exactly the condition under which the order of settlement can change what either
+        # of them gets -- or what either of them senses on the next step, since the food
+        # field is also a sensory field.
+        cells = [_feeding_cell(w, node[0][0], node[0][1]) for node in nodes]
+        for k, sim in enumerate(sims):
+            if sim.food_eaten <= eaten_before[k]:
+                continue
+            captures += 1
+            if any(o != k and abs(cells[k][0] - cells[o][0]) <= 2
+                   and abs(cells[k][1] - cells[o][1]) <= 2 for o in range(len(sims))):
+                contested += 1
+        eaten_before = [sim.food_eaten for sim in sims]
+
+        if (i + 1) % sample == 0:
+            out["frames"].append({
+                "step": i + 1,
+                # The plate as a whole, so that "the lawn was actually drawn down" is a
+                # number both sides compute rather than an assumption. The two sides sum
+                # 65,536 cells in different orders, so this is compared loosely; what it
+                # is for is the drawdown, which is 6.4e-02 by the end.
+                "food": round(float(w.food.sum()), 12),
+                "a": [{
+                    "x": [round(float(v), 12) for v in nodes[k][:, 0]],
+                    "y": [round(float(v), 12) for v in nodes[k][:, 1]],
+                    "V": [round(float(v), 10) for v in sim.nervous.V],
+                    "gate": 1.0 if sim.senses.going_forward else 0.0,
+                    # lumen, ingested, eaten: what the pharynx holds, what reached the
+                    # intestine, and what the plate lost. Only the third is settled by the
+                    # batch, and comparing all three separates a wrong allocation from a
+                    # wrong transport.
+                    "ph": [round(float(sim.pharynx.lumen), 12),
+                           round(float(sim.pharynx.ingested), 12),
+                           round(float(sim.food_eaten), 12)],
+                    # Which cells this animal was feeding from. Emitted so that a
+                    # disagreement about *where* the 3x3 window sits fails as itself rather
+                    # than as an inexplicable difference in what was eaten.
+                    "cell": list(cells[k]),
+                    # And what is left in that window. The plate total moves by 6.4e-02 out
+                    # of 44, which a sum over 65,536 cells resolves poorly; nine cells
+                    # resolve the contested food exactly.
+                    "food9": round(_feeding_sum(w, *cells[k]), 12),
+                } for k, sim in enumerate(sims)],
+            })
+    out["captures"] = captures
+    out["contested"] = contested
+    out["food_end"] = round(float(w.food.sum()), 12)
+    out["eaten"] = [round(float(sim.food_eaten), 12) for sim in sims]
+    return out
+
+
 def main():
     json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case(),
                # 0.30 is the coefficient ModulatorParams.serotonin_mod1 documents as
                # adopted-then-shipped-at-zero. Running the reference there is the only way
                # this path gets compared at all.
-               "mod1": full_case(serotonin_mod1=0.30)},
+               "mod1": full_case(serotonin_mod1=0.30),
+               # Several animals on one plate. Everything above is one animal, and one
+               # animal cannot reach the batch settlement or the shared world advance.
+               "multi": multi_case()},
               sys.stdout)
     return 0
 

@@ -109,7 +109,7 @@ This is expensive to run — about fifteen minutes for the WebAssembly arm alone
 threaded — so it is not in CI. It is the check to run after touching anything in
 `stepNervous`, the noise, or the command layer.
 
-## Status: complete and matching
+## Status: matching for one animal, diverging for four
 
 Conformance, with noise off, comparing against the Python step for step:
 
@@ -132,6 +132,17 @@ ABLATED -- AVBL, AVAL, DB03, VB05, AVEL, RIML, I2L; 3000 steps
   worst muscle tension          5.000e-13
   direction gate disagreed on   0 of 15 samples
   ablated cells still active    0
+
+MULTI-ANIMAL -- 4 animals on one 1.5 mm lawn, stepAll, 8000 steps
+  worst node disagreement       9.737e-06 mm
+  worst membrane potential      4.740e-02 mV
+  worst feeding state           9.877e-06     (lumen, ingested, eaten)
+  worst contested-cell food     7.618e-03     (the 3x3 each animal fed from)
+  feeding window disagreed on   0 of 80 samples
+  direction gate disagreed on   0 of 80 samples
+  capture events                16, all 16 contested
+  first frame past tolerance    step 3200 of 8000  (before it, 5.006e-11)
+  FAIL
 ```
 
 The third case exists because ablation was the largest piece of this runtime that nothing
@@ -168,6 +179,55 @@ so the conformance suite runs a fourth case at the 0.30 that `params.py` documen
 rule that falls out is the same one as before and worth stating in general: **a parameter
 whose shipped value is zero is not covered by a check that only ever runs the shipped
 value.** Every remaining `if (G.ANY_*)` branch in this file is in that position.
+
+### The sixth case, and what it found on its first run
+
+Every case above runs **one animal**, because each compares against a Python `Simulation`
+and a `Simulation` is one animal. So the batch settlement, the shared world advance and
+every allocation that has to be split sat outside the guarantee entirely — the same shape
+of hole as the empty dish and the coefficient of zero, and the third time this file has had
+to write that sentence. `population.mjs` runs four animals and checks real invariants on
+them, but it has no Python to compare against, so it can only ask whether the runtime is
+self-consistent.
+
+The sixth case closes that: four animals within half a millimetre of each other on a 1.5 mm
+lawn, driven by `stepAll`, against a Python `Population` on the same plate. Contested on
+purpose and *measured* to be contested — all 16 capture events in the run happen while
+another animal's 3×3 feeding neighbourhood overlaps the feeder's — because four animals on
+four private lawns agree to **3.5e-18** whether the settlement is batched or served one at
+a time, so a spread-out version of this case would pass against the exact defect it exists
+to catch.
+
+**It fails.** The two implementations settle contested feeding onto *identical
+allocations* — which is what #71 established and what this case confirms, 0.00e+00 on every
+configuration where a single group of animals reaches a single set of cells — and then take
+that food out of **different cells**:
+
+| configuration | worst allocation gap | worst cell gap |
+|---|---|---|
+| one animal | 0.00e+00 | 0.00e+00 |
+| two animals, same cell (one group) | 0.00e+00 | 0.00e+00 |
+| two animals, far apart (disjoint) | 0.00e+00 | 0.00e+00 |
+| two animals, one cell apart | 0.00e+00 | **2.330e-04** over 12 cells |
+| two animals, diagonal neighbours | 0.00e+00 | **3.351e-04** over 14 cells |
+| the four on the conformance plate | 0.00e+00 | **7.456e-04** over 15 cells |
+
+`World.eat_batch` routes the withdrawal to minimise the largest fractional depletion of any
+cell, so every cell in the union ends at the same fraction (0.99930104 across the board on
+the two-animal case). `settleFeeding` withdraws each animal's share proportionally from its
+own neighbourhood, so a cell two animals reach loses more than one only one of them reaches
+(0.999068053 against 0.999534027). Same totals, same allocations, different hole in the
+plate — and the food field is also a *sensory* field, so it does not stay a cosmetic
+difference: on the conformance plate it is 5.006e-11 through step 2800, appears at the
+first contested pump on step 2881, and reaches 4.740e-02 mV on membrane potentials and
+9.877e-06 units on what each animal has eaten by step 8000.
+
+Replacing Python's `eat_batch` with a transcription of `settleFeeding` and regenerating the
+reference makes the case pass at 5.131e-13 mm, 6.145e-11 mV and 4.988e-13 on feeding —
+i.e. the rest of the multi-animal path, the shared world advance and the per-animal state
+included, is exact, and the disagreement is this one routing rule and nothing else.
+Whichever side is made to move, it is a runtime change and therefore a rebuilt
+`web/worm.wasm`, which is why the check arrives here before the fix does.
 
 ## What it costs
 
