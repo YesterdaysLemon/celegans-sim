@@ -155,8 +155,8 @@ def test_the_parser_is_not_lying():
     assert viewer == ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
                       'docker/nginx.conf', 'tools/check_cache_headers.mjs',
                       'tools/check_web.mjs', 'tools/smoke_server.mjs',
-                      'tools/smoke_web.mjs', 'package.json', 'package-lock.json',
-                      '.github/workflows/viewer.yml'], viewer
+                      'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs', 'package.json',
+                      'package-lock.json', '.github/workflows/viewer.yml'], viewer
 
 
 @pytest.mark.parametrize("glob,path,expected", [
@@ -207,6 +207,7 @@ REPRESENTATIVE = [
     ("worm/server.py", [PYTHON_WF, VIEWER_WF]),
     ("run.py", [VIEWER_WF]),
     ("tools/smoke_web.mjs", [VIEWER_WF]),
+    ("tools/sim_rate.test.mjs", [VIEWER_WF]),
     ("docker/nginx.conf", [VIEWER_WF]),
     # Dependency inputs. `npm ci` installs the lock file, not the manifest, so a
     # dependency bump that touches only the lock file still changes what every viewer job

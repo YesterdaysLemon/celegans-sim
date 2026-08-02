@@ -38,17 +38,54 @@ async function assetUrls() {
 const BUDGET_MS = 7;
 const CHUNK = 20;           // steps between clock checks; checking every step is not free
 
+/* How much *wall* time each rate estimate is averaged over.
+ *
+ * Long enough that the chunk quantisation washes out -- one chunk is 10 ms of animal, so a
+ * 60 Hz frame at 1x steps one chunk or two and a shorter window would read as a flutter
+ * between 0.6x and 1.2x. Short enough that a stalled second shows up as a stalled second.
+ *
+ * Even the window used to be measured against the stepping clock: 0.4 s of *stepping* is
+ * about 0.95 s of wall clock at a full 7 ms budget and 60 Hz, so the readout also updated
+ * at less than half the rate this constant reads as. */
+const RATE_WINDOW_S = 0.4;
+
 export class LocalEngine {
-  constructor() {
+  /* `clock` is the monotonic millisecond source used for the stepping budget and for the
+   * compute half of the rate accounting. It defaults to performance.now(), which is what
+   * the viewer wants and what the animation-frame timestamps handed to advance() share an
+   * origin with; nothing in web/ passes anything else. It is a parameter at all so the
+   * rate accounting can be driven by a scripted clock in tools/sim_rate.test.mjs -- the
+   * numbers below are ratios of two times, and a test that measured them against the real
+   * clock would be asserting how fast the machine running CI happens to be that day. */
+  constructor(clock) {
     this.ready = false;
     this.running = true;
     this.rate = 1.0;
+    /* Two rates, because there are two questions and this file used to answer the second
+     * one under the first one's name (#56):
+     *
+     *   achieved     simulated seconds per *wall* second, end to end. This is the header's
+     *                Sim rate, and it is the one that says whether the animal is keeping up
+     *                with real time. The denominator is the whole frame -- stepping,
+     *                rendering, compositing, idle, scheduling -- and backlog the budget
+     *                threw away stays in it, because the wall clock does not care that we
+     *                gave up on it.
+     *   computeRate  simulated seconds per second spent *inside* the stepping loop.
+     *                Headroom, not progress. 2.5x here beside 1.2x above means the machine
+     *                could run this animal twice as fast again and is being held by the
+     *                7 ms budget rather than by the model.
+     *
+     * They are not close. Dividing by stepping time alone reported a run that was plainly
+     * advancing at 0.600x as 1.43x, and -- worse -- reported a 1000 ms frame that stepped
+     * 140 ms of animal as 20x, because the stalled second never entered the denominator. */
     this.achieved = 0.0;
+    this.computeRate = 0.0;
     this.worms = [];
     this.meta = null;
     this._acc = 0;
     this._last = 0;
-    this._window = { steps: 0, t: 0 };
+    this._window = { steps: 0, wall: 0, cpu: 0 };
+    this._now = clock || (() => performance.now());
   }
 
   async init(nWorms = 2) {
@@ -100,7 +137,7 @@ export class LocalEngine {
                                         Math.cos(ang) * r, Math.sin(ang) * r, ang + 0.6));
     }
     this.ready = true;
-    this._last = performance.now();
+    this._last = this._now();
     return this;
   }
 
@@ -217,33 +254,68 @@ export class LocalEngine {
   }
   setMedium(ct, cn) { this.E.setMedium(ct, cn); }
 
-  /* Advance by wall-clock time. Returns the number of simulated seconds actually run,
-   * which is what the viewer reports as the achieved rate. */
+  /* Advance by wall-clock time. Returns the number of simulated seconds actually run.
+   *
+   * `nowMs` is the animation frame's timestamp. Both rate readouts are accumulated here --
+   * see the constructor for what each of them means and why they differ. */
   advance(nowMs) {
     if (!this.ready) return 0;
-    const wall = Math.min((nowMs - this._last) / 1000, 0.5);
+    // Floored at zero: a caller handing back a timestamp older than the last one would
+    // otherwise credit negative wall time and inflate the rate.
+    const elapsed = Math.max(0, (nowMs - this._last) / 1000);
     this._last = nowMs;
-    if (!this.running) { this.achieved = 0; return 0; }
-    this._acc += wall * this.rate;
+    const w = this._window;
+    if (!this.running) {
+      /* Paused time is not slow time, so it is charged to neither side of the ratio: 0x
+       * while paused, and the window starts over on resume rather than carrying up to
+       * RATE_WINDOW_S of pre-pause frames into the first estimate after it. Without the
+       * reset, pausing during a 1.0x stretch and resuming with the slider at 0.2x reports
+       * 0.90x for the first window on the far side -- almost entirely made of frames from
+       * before the pause. */
+      this.achieved = 0;
+      this.computeRate = 0;
+      w.steps = 0; w.wall = 0; w.cpu = 0;
+      return 0;
+    }
+    // The *accumulator* is capped at half a second: a frame longer than that is asking for
+    // more animal than any budget will step, and owing it forward is what turned a slow
+    // machine into a slideshow. The rate window below is deliberately not capped the same
+    // way -- see there.
+    this._acc += Math.min(elapsed, 0.5) * this.rate;
     const chunkT = this.dt * CHUNK;
-    const t0 = performance.now();
+    const t0 = this._now();
     let steps = 0;
     while (this._acc >= chunkT) {
       this.E.stepAll(CHUNK);
       this._acc -= chunkT;
       steps += CHUNK;
-      if (performance.now() - t0 >= BUDGET_MS) break;
+      if (this._now() - t0 >= BUDGET_MS) break;
     }
-    if (steps === 0) return 0;
     // Whatever could not be afforded is *dropped*, not owed. Carrying the debt forward is
-    // what turned a slow machine into a slideshow.
+    // what turned a slow machine into a slideshow. (Not reachable with steps === 0: the
+    // loop only exits early once it has run at least one chunk, so `_acc < chunkT` here.)
     if (this._acc > chunkT) this._acc = 0;
-    const spent = (performance.now() - t0) / 1000;
-    this._window.steps += steps;
-    this._window.t += Math.max(spent, 1e-6);
-    if (this._window.t > 0.4) {
-      this.achieved = this._window.steps * this.dt / this._window.t;
-      this._window.steps = 0; this._window.t = 0;
+    /* Every frame's wall time goes into the denominator, stepped or not, and uncapped.
+     *
+     * Stepped or not: at 0.2x a 60 Hz frame asks for 3.3 ms of animal against a 10 ms
+     * chunk, so two frames in three step nothing at all. Returning early on those -- which
+     * this used to do -- leaves only the frames that did work in the denominator and
+     * reports 0.6x for a run that is advancing at 0.2x by anyone's clock.
+     *
+     * Uncapped: a 1000 ms frame really is a second during which the animal advanced 140 ms,
+     * and saying so is the entire job of this number. It is the accumulator that must not
+     * chase that second, not the measurement of it. One outlier frame flushes the window
+     * immediately (it is longer than the window), so the readout recovers on the next one
+     * rather than smearing the stall over the following second. */
+    w.wall += elapsed;
+    w.steps += steps;
+    // Floored, because a clock with millisecond resolution can time a 20-step chunk as
+    // zero and the compute rate is not infinite, it is unmeasured.
+    if (steps) w.cpu += Math.max((this._now() - t0) / 1000, 1e-6);
+    if (w.wall > RATE_WINDOW_S) {
+      this.achieved = w.steps * this.dt / w.wall;
+      this.computeRate = w.cpu > 0 ? w.steps * this.dt / w.cpu : 0;
+      w.steps = 0; w.wall = 0; w.cpu = 0;
     }
     return steps * this.dt;
   }

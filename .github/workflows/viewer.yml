@@ -15,13 +15,13 @@ on:
     branches: [main]
     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
-            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'package.json',
-            'package-lock.json', '.github/workflows/viewer.yml']
+            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
+            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
   pull_request:
     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
-            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'package.json',
-            'package-lock.json', '.github/workflows/viewer.yml']
+            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
+            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
 
 jobs:
   viewer:
@@ -59,6 +59,14 @@ jobs:
 
       - name: module graph resolves and is acyclic
         run: node tools/check_web.mjs
+
+      # Sim rate is a ratio of two times, so it is testable without a browser and without a
+      # .wasm: LocalEngine takes a clock, and this drives it with a scripted one. The
+      # readout used to divide by the time spent stepping rather than by the wall clock,
+      # which is invisible to every other check in this file -- the page loads, the number
+      # moves, and only what it *means* is wrong (#56).
+      - name: the rate readouts measure what their labels claim
+        run: node --test tools/sim_rate.test.mjs
 
       # ubuntu-latest ships Chrome; puppeteer-core drives it rather than downloading its
 # own, which keeps `npm ci` at a couple of seconds.
