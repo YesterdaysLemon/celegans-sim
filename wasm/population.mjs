@@ -669,6 +669,89 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* --------------------------------------------------------------------------------- 12 --
+ * Animals are independent through the *touch* pathway too, and that is a separate claim
+ * from case 2.
+ *
+ * Case 2 already asserts that three animals stepped together follow the trajectories they
+ * follow alone. It cannot see this one. Its animals sit within 16 mm of the centre of a
+ * 45 mm dish, so `contact()` writes zeros for all of them on every step, and a defect that
+ * leaked contact forces from one animal to another would leak zeros. Every other check in
+ * this file has the same blind spot: nothing in this repository has ever run two animals
+ * that were touching anything.
+ *
+ * That blind spot was load-bearing. #33 lists `contactX`/`contactY` among the per-step
+ * scratch that can be hoisted to one shared module-level copy, and the shape supports it --
+ * `contact()` writes them, `stepBody` reads them. But `sense()` reads them as well, and
+ * `sense()` runs *before* `contact()` in `prepareStep`, so what the mechanosensory pathway
+ * reads is the previous step's wall force. Share those arrays and animal k's nose feels
+ * what animal k-1 is pressing against.
+ *
+ * They stayed per-worm, and this is the check that says so. It was watched failing with
+ * them hoisted: worst disagreement 8.722e+1, while all eleven checks above stayed green and
+ * `wasm/conform.mjs` passed outright, at its usual 5.0e-13 mm -- because conformance runs
+ * one animal, and with one animal sharing an array with yourself is identity. Eleven checks
+ * and a step-for-step comparison against the Python, and the only thing between that defect
+ * and the browser was this case.
+ *
+ * Deliberately no lawn: the coupling under test is mechanical, and feeding is case 2's
+ * subject. The animals are placed at different depths into the wall so their contact forces
+ * genuinely differ -- three animals pressing identically would agree with each other
+ * whether or not the arrays were shared, which is this file's recurring vacuous pass.
+ */
+{
+  // Mouth on the wall at angle a, radius r; the body trails inward (heading = a + pi), so
+  // the animal travels outward and keeps pressing. See case 11 for why heading reads
+  // backwards.
+  const WALL = [[0.35, 45.00], [2.20, 45.15], [4.10, 44.90]];
+  const WALL_STEPS = 4000;                 // 2.0 s -- long enough for all three to be pressing
+  const place = (E, i) => {
+    const [a, r] = WALL[i];
+    return E.createWorm(1000 + i * 7717, Math.cos(a) * r, Math.sin(a) * r, a + Math.PI);
+  };
+  const sample = (E, id) => ({
+    nodes: readArray(E, E.ptrNodesX(id), 49),
+    V: readArray(E, E.ptrV(id), 302),
+    touch: E.getSensed(id, 4),             // the smoothed contact the touch neurons see
+  });
+
+  const together = (() => {
+    const E = engine();
+    const ids = WALL.map((_, i) => place(E, i));
+    E.stepAll(WALL_STEPS);
+    return ids.map((id) => sample(E, id));
+  })();
+  const alone = WALL.map((_, i) => {
+    const E = engine();
+    const id = place(E, i);
+    E.stepAll(WALL_STEPS);
+    return sample(E, id);
+  });
+
+  let d = 0;
+  for (let i = 0; i < WALL.length; i++) {
+    d = Math.max(d, worst(together[i].nodes, alone[i].nodes));
+    d = Math.max(d, worst(together[i].V, alone[i].V));
+    d = Math.max(d, Math.abs(together[i].touch - alone[i].touch));
+  }
+  const touches = together.map((w) => w.touch);
+  // Two guards against a vacuous pass, and they are the whole point of the case. The first:
+  // every animal has to be in contact at all, or this is case 2 with a smaller lawn. The
+  // second: their contacts have to *differ*, or swapping one animal's forces for another's
+  // would be a no-op.
+  const feeling = touches.every((t) => t > 1e-3);
+  const spread = Math.max(...touches) - Math.min(...touches);
+  const distinct = spread / Math.max(...touches) > 0.1;
+  report(
+    `TOUCH IS PRIVATE -- ${WALL.length} animals pressing the dish wall, together against alone`,
+    d === 0 && feeling && distinct,
+    `  worst disagreement            ${d.toExponential(3)}   (nodes, V, touch readout)\n` +
+    `  every animal in contact       ${feeling}   [${touches.map((t) => t.toFixed(6)).join(', ')}]\n` +
+    `  contacts differ               ${distinct}   ` +
+    `(spread ${(100 * spread / Math.max(...touches)).toFixed(0)}% of the largest, needs > 10%)`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');

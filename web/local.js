@@ -189,9 +189,15 @@ export class LocalEngine {
     ];
   }
 
-  /* Worms come and go at runtime. They share the plate and the anatomy, so adding one
-   * costs a few kB of state and nothing else -- the 302x302 matrices are read-only and
-   * common to every animal. */
+  /* Worms come and go at runtime. They share the plate, the anatomy and the runtime's
+   * per-step scratch, so adding one costs state and nothing else -- but state is 239,360
+   * bytes, 234 kB, of which 210,936 is the head-reflex delay line. Measured off the
+   * allocator's per-worm stride by `node wasm/memory.mjs`; this comment claimed a few
+   * kilobytes until #33 went and checked, and it was out by a factor of a hundred.
+   *
+   * A hundred animals is 22.8 MB and this button will not stop you, which is the right
+   * policy for a viewer. Worth knowing that WebAssembly's memory.grow is one-way: a tab
+   * that has once held a large population holds that much until it is closed. */
   addWorm() {
     const a = Math.random() * Math.PI * 2;
     const r = 2 + Math.random() * 9;

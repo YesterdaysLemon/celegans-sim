@@ -282,8 +282,24 @@ model file went from 3.08 MB to **0.31 MB**.
 
 Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19 kB wasm.
 
-The 302² matrices are anatomy and shared between animals, so a second worm duplicates only
-state; that is why two in one dish costs what it does and no more.
+**In memory, an animal is 239,360 bytes -- 234 kB.** The 302² matrices are anatomy and
+shared between animals, and so is the runtime's per-step scratch, so a second worm
+duplicates only state. State is not small: 210,936 of those bytes are `headHist`, the
+560-sample delay line behind `head_delay = 0.28 s`, and the other 28 kB is everything else
+the animal remembers. A population of 100 is 22.8 MB, on top of a ~2.6 MB shared `World`.
+
+That figure is measured rather than estimated. `node wasm/memory.mjs` reads it off the
+allocator's own per-worm stride through `ptrV`, cross-checks it against the summed array
+dimensions in `class Worm`, and fails if this paragraph stops agreeing with it. This
+paragraph used to say a second worm cost almost nothing; it was out by a factor of a
+hundred and stayed that way because nothing ever read it (#33).
+
+It was 381,840 bytes until the 37 per-step scratch arrays were hoisted to module level.
+Worms are stepped strictly sequentially and single-threaded, so one copy of the working
+space is enough and 140,776 bytes an animal was buying nothing. Two arrays that look like
+scratch are **not**: `contactX`/`contactY` are read by `sense()` before `contact()` rewrites
+them, so they carry the previous step's wall forces and stay per-worm. See `wasm/memory.mjs`
+and case 12 of `wasm/population.mjs`.
 
 ## Running measurements on it
 

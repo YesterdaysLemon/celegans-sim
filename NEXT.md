@@ -5,10 +5,36 @@
 Not started, and deliberately not started yet — but the WebAssembly port changed what is
 cheap, and it is worth writing down what it made possible while that is fresh.
 
-**Animals are now nearly free.** The 302×302 matrices are *anatomy*: read-only, identical
-for every worm, shared. A second animal duplicates only state — a few kB — which is why
-four in a dish costs what one used to. A population is no longer an architectural problem,
-it is a throughput one, and throughput is 2.36× real time per animal.
+**Animals are cheap, and they are not free.** The 302×302 matrices are *anatomy*:
+read-only, identical for every worm, shared. A second animal duplicates only state -- but
+that state is **239,360 bytes, 234 kB**, measured off the allocator's own per-worm stride
+by `node wasm/memory.mjs`. This paragraph claimed a few kilobytes for a long time, and so
+did two other places; nobody had measured it, and it was out by a factor of a hundred
+(#33).
+
+That is a budget rather than a freebie, and `wasm/evolve.mjs` is already spending it: at
+its default of 8 animals that is 1.8 MB, and it takes `EVO_POP` from the environment with
+no ceiling. The real table:
+
+| population | memory |
+|---|---|
+| 10 | 2.3 MB |
+| 100 | 22.8 MB |
+| 256 | 58.4 MB |
+
+on top of a ~2.6 MB shared `World` (5 × 256² f64 grids) and whatever the canvas holds. Two
+things follow. **`memory.grow` is one-way**, so a run that peaks at 500 animals keeps that
+high-water mark for the life of the tab -- size the population for the peak, not the mean.
+And **55% of an animal is `headHist`**, the 560-sample delay line for `head_delay = 0.28 s`,
+which `README.md` names as one of the two fitted parameters it is least happy about
+("nothing that slow exists in a real stretch receptor"). The single largest cost of running
+a population is the model's least-defended constant; if that number ever comes down, the
+budget improves dramatically.
+
+It was 372 kB an animal until the per-step scratch was hoisted to module level -- 37% of a
+worm was working space that `stepAll`, being strictly sequential and single-threaded, only
+ever needs one copy of. A population is still not an architectural problem, it is a
+throughput one, and throughput is 2.36× real time per animal.
 
 **And the animal is already a file.** `tools/export_model.py` freezes the whole animal into
 one block of arrays. That file *is* a genome in every sense that matters here: change a
@@ -2109,8 +2135,9 @@ table's five rows fix themselves at once.
   and five ablation phenotypes come out of it. See `worm/pharynx.py`.
 - ~~Multi-worm. The engine is one `Simulation` object; nothing prevents several.~~
   **Done with the WebAssembly port.** The connectome is read-only and shared, so a second
-  animal duplicates a few kB of state; the viewer runs n of them and focuses one. This is
-  what makes the population direction at the top of this file thinkable.
+  animal duplicates only state -- 239,360 bytes of it, 234 kB, measured; the viewer runs n
+  of them and focuses one. This is what makes the population direction at the top of this
+  file thinkable, at the budget set out there.
 
 ---
 

@@ -19,9 +19,13 @@
  * Anything else would be measuring the random number generator.
  *
  * Layout: one shared Model (read-only, the payload), one shared World (the fields the
- * animals eat from), and N independent Worms. That last part is why two worms in one dish
- * is nearly free -- the 302x302 matrices are anatomy, identical for every animal, so only
- * the state is duplicated.
+ * animals eat from), one block of shared per-step scratch, and N independent Worms. The
+ * 302x302 matrices are anatomy, identical for every animal, so only state is duplicated --
+ * but state is not nothing. A second animal costs a measured 239,360 bytes, 234 kB, of
+ * which 210,936 is the head-delay line alone. See the scratch block below and #33; the
+ * figure is asserted by wasm/memory.mjs, which also checks that every document quoting it
+ * quotes this number, because the previous one was out by a factor of a hundred and stayed
+ * that way because nothing read it.
  */
 
 import * as G from "./model_gen";
@@ -375,6 +379,98 @@ class World {
 
 let world: World = new World();
 
+/* ------------------------------------------------------------------------ scratch ------
+ * Working space for one animal's step, shared by all of them.
+ *
+ * These 37 arrays used to be fields of `class Worm`, which made a worm cost 379,262 bytes
+ * of declared arrays -- 381,840 measured, allocator overhead included -- of which 140,776
+ * was per-step scratch: written from index 0 to the end and read back inside the same
+ * call, holding nothing between steps. Duplicating it per animal bought nothing, and it
+ * was 37% of the population budget. See #33.
+ *
+ * WHAT MAKES THIS SAFE. Worms are stepped strictly sequentially and single-threaded --
+ * `stepAll` runs `prepareStep` to completion for animal k before touching animal k+1, and
+ * there is no threading anywhere in this runtime. So one copy is enough, and the change is
+ * bit-identical: the same arithmetic reads the same values out of a different address.
+ *
+ * WHAT WOULD MAKE IT UNSAFE, and what to check before adding an array here. Every array
+ * below is *fully written before it is read within a single call*. An array that is read
+ * before it is written in a step is not scratch however much it looks like it: it is
+ * carrying state from the previous step, and sharing it would silently hand animal k the
+ * value animal k-1 left behind. Two of the arrays #33 lists as scratch are exactly that
+ * and have been kept per-worm -- see `contactX`/`contactY` in `class Worm`.
+ *
+ * The grouping below records, per group, *why* each is safe, because "it is scratch" is
+ * the claim that has to be re-checked whenever the order of a step changes. If Web Workers
+ * ever arrive (each worker owning a sub-population, as #33 suggests), each worker instance
+ * gets its own module state and this stays correct; interleaving two worms *within* one
+ * instance would not, and would break loudly rather than subtly only for the arrays that
+ * are read early -- which is why the read-before-write ones are not here.
+ *
+ * Not hoisted, and why: `act` (read by the viewer via `ptrAct`, and read again in
+ * `finishStep` after every animal's `prepareStep` has run), `nodesX`/`nodesY` (read via
+ * `ptrNodesX`/`ptrNodesY`, and by `settleFeeding` between the two halves of a batch step),
+ * and `moment` (an *input* on the `setMoment`/`stepBodyOnly` path). Every other array
+ * reachable through an exported pointer -- `V`, `mTen`, `kappa`, `theta` -- is state, not
+ * scratch, and was never a candidate.
+ */
+
+// -- mechanics. `dragMatrix` fills sUx..sNyv over all N_LINKS, then sPm/sQm/sAs/sBs over
+//    the whole n x n grid, and zeroes sDm before assembling into it; `stepBody` zeroes sQv
+//    before accumulating into it and hands sDm/sQv straight to the solver. Nothing here
+//    survives the call that wrote it.
+let sUx: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+let sUy: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+let sNxv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+let sNyv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
+let sDm: StaticArray<f64> = new StaticArray<f64>((G.N_LINKS + 2) * (G.N_LINKS + 2));
+let sQv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
+let sPm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+let sQm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+let sAs: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+let sBs: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+
+// -- nervous system. `sense` zeroes sIext at its first line and every other array here is
+//    written across all N_NEURONS by a loop or an spmv earlier in `stepNervous` than any
+//    read of it. sVold is the previous *voltage*, but it is copied out of `V` -- which is
+//    per-worm state -- at the top of the same call that reads it, so the buffer itself
+//    holds nothing between steps.
+let sIext: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sGs: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sEs: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sGtot: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sFx: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sDec: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sVn: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sVold: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sGapv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sGapAcc: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sRel: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sWbv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sWav: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sWbf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sWaf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+let sWhv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+
+// -- muscle. `stepMuscle` writes sMg/sMe over every row, then sMgt/sMfx/sMdec/sMVn over
+//    every cell, before the gap iteration reads any of them; `jointMoment` fills sRowD and
+//    sRowV over all MUS_N_ROWS before interpolating from them.
+let sMVn: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMg: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMe: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMgt: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMfx: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMdec: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sMgap: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
+let sRowD: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
+let sRowV: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
+
+// -- proprioception. sKn is the normalised curvature, recomputed from the per-worm `kappa`
+//    every call; sKh is read out of the per-worm `headHist` ring immediately after. The
+//    delay line is the state and stays per-worm -- it is also 55% of what a worm costs.
+let sKn: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+let sKh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+
 // ------------------------------------------------------------------------------- worm --
 
 class Worm {
@@ -384,22 +480,37 @@ class Worm {
   rng: Rng = new Rng(0);
   bx: f64 = 0.0; by: f64 = 0.0;
   theta: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
-  qdot: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
-  ux: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
-  uy: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
-  nxv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
-  nyv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS);
-  Dm: StaticArray<f64> = new StaticArray<f64>((G.N_LINKS + 2) * (G.N_LINKS + 2));
-  Qv: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
-  Pm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
-  Qm: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
-  As: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
-  Bs: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS * G.N_LINKS);
+  // Read after the step through ptrNodesX/ptrNodesY, and read by settleFeeding between the
+  // two halves of a batch step. Not scratch.
   nodesX: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
   nodesY: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
+  /* NOT SCRATCH, despite looking exactly like it, and despite #33 listing it as scratch.
+   *
+   * `contact()` writes these and `stepBody` reads them, which is the write-then-read shape
+   * everything in the scratch block above has. But `sense()` reads them too -- the
+   * mechanosensory sum at the top of the touch pathway -- and `sense()` runs *before*
+   * `contact()` in `prepareStep`. So what mechanosensation reads is the wall force computed
+   * at the end of the animal's *previous* step. These arrays carry state across steps.
+   *
+   * That one-step delay is the model, not an accident of this port: worm/engine.py:149
+   * passes `self._contact` to `senses.sense` and only recomputes it at :155, and
+   * `self._contact` is a per-Simulation attribute. Hoisting them would hand animal k the
+   * wall forces animal k-1 felt this step, and animal 0 those of the last animal in the
+   * previous step -- a cross-animal coupling through the touch pathway, in a runtime whose
+   * whole claim is that animals interact only through the plate.
+   *
+   * It would also have passed every check in this repository as of writing. conform.mjs
+   * runs one animal, where sharing is identity. population.mjs runs its animals within
+   * 16 mm of the centre of a 45 mm dish, so `contact` is identically zero in every one of
+   * its cases and the leak has nothing to leak. Case 12 was added with this change to give
+   * the decision something that fails; it was watched failing with these hoisted.
+   *
+   * 784 bytes per animal, which is what a correct 37% is worth against a broken 38%. */
   contactX: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
   contactY: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 1);
   kappa: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
+  // An *input* on the conformance path: setMoment writes it, stepBodyOnly reads it, and
+  // nothing in between recomputes it. Per-worm even though jointMoment fills it whole.
   moment: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
   // nervous
   V: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
@@ -407,24 +518,12 @@ class Worm {
   av: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   Dv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   Inoise: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
+  /* Read after the step through ptrAct, which is reason enough. It is also read in
+   * `finishStep` -- by `stepEggLaying`, for the HSN and VC pools -- and in a batch step
+   * every animal's `prepareStep` has run by then, so a shared buffer would hand every
+   * animal the last one's activations at the moment eggs are decided. Two independent
+   * reasons; the second is the one that would have bitten. */
   act: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  Iext: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  gs: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  Es: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  gtot: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  fx: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  dec: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  Vn: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  Vold: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  gapv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  gapAcc: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  rel: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  wbv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  wav: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  wbf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  waf: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  whv: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
-  kh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
   /* Ablation. Zeroing a cell's conductances is not enough on its own: a cell whose
    * synaptic and gap conductances are gone still receives whatever the sensory layer
    * injects, with only its leak to shunt it -- which is how ablating AVB once drove it
@@ -438,17 +537,7 @@ class Worm {
   mV: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
   mCa: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
   mTen: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mVn: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mg: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  me: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mgt: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mfx: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mdec: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  mgap: StaticArray<f64> = new StaticArray<f64>(G.N_MUSCLES);
-  rowD: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
-  rowV: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
   // senses
-  kn: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
   headSignal: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   propAdapt: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   headHist: StaticArray<f64> = new StaticArray<f64>((G.HEAD_DELAY_N + 1) * G.N_JOINTS);
@@ -562,7 +651,7 @@ class Worm {
       let noise = unchecked(this.Inoise[i]) * nd;
       if (noiseOn) noise += kick * this.rng.normal();
       unchecked(this.Inoise[i] = noise);
-      unchecked(this.Vold[i] = unchecked(this.V[i]));
+      unchecked(sVold[i] = unchecked(this.V[i]));
     }
 
     // G_syn and GE_syn are the same matrix scaled per element, so one pass over the
@@ -571,17 +660,17 @@ class Worm {
       let rel = unchecked(this.sv[c]);
       if (G.ANY_DEPRESS) rel *= unchecked(this.Dv[c]);
       if (this.anyDead && !unchecked(this.alive[c])) rel = 0.0;   // releases nothing
-      unchecked(this.rel[c] = rel);
+      unchecked(sRel[c] = rel);
     }
     for (let r = 0; r < n; r++) {
       let a1: f64 = 0.0, a2: f64 = 0.0;
       const e = mi(G.OFF_syn_ptr, r + 1);
       for (let k = mi(G.OFF_syn_ptr, r); k < e; k++) {
-        const rv = unchecked(this.rel[mi(G.OFF_syn_idx, k)]);
+        const rv = unchecked(sRel[mi(G.OFF_syn_idx, k)]);
         a1 += m(G.OFF_syn_val, k) * rv;
         a2 += m(G.OFF_syn_val2, k) * rv;
       }
-      unchecked(this.gs[r] = a1); unchecked(this.Es[r] = a2);
+      unchecked(sGs[r] = a1); unchecked(sEs[r] = a2);
     }
 
     /* MOD-1: the serotonin-gated chloride channel, as a conductance rather than a current
@@ -598,24 +687,24 @@ class Worm {
     const mod1 = this.gene(G.GENE_MOD_SEROTONIN_MOD1)
                  * (this.modSER > 0.0 ? this.modSER : 0.0);
     for (let i = 0; i < n; i++) {
-      const V = unchecked(this.Vold[i]);
+      const V = unchecked(sVold[i]);
       const gAd = m(G.OFF_g_adapt, i) * unchecked(this.av[i]);
       const gC = m(G.OFF_g_ca, i) * 0.5 *
                  (1.0 + Math.tanh((V - m(G.OFF_ca_vhalf, i)) / G.NEURAL_CA_SLOPE));
-      let gt = gLeak + unchecked(this.gapTot[i]) + unchecked(this.gs[i]) + gAd + gC;
-      let fx = gLeak * eLeak + unchecked(this.Es[i])
+      let gt = gLeak + unchecked(this.gapTot[i]) + unchecked(sGs[i]) + gAd + gC;
+      let fx = gLeak * eLeak + unchecked(sEs[i])
                + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
                + unchecked(this.Inoise[i])
-               + (this.anyDead && !unchecked(this.alive[i]) ? 0.0 : unchecked(this.Iext[i]));
+               + (this.anyDead && !unchecked(this.alive[i]) ? 0.0 : unchecked(sIext[i]));
       if (mod1 != 0.0) {
         const gm = m(G.OFF_mod1_unit, i) * mod1;
         gt += gm;
         fx += gm * G.NEURAL_E_INH;
       }
-      unchecked(this.gtot[i] = gt);
-      unchecked(this.fx[i] = fx);
-      unchecked(this.dec[i] = Math.exp(-gt * dt / (G.NEURAL_C_M * 1e-3)));
-      unchecked(this.Vn[i] = V);
+      unchecked(sGtot[i] = gt);
+      unchecked(sFx[i] = fx);
+      unchecked(sDec[i] = Math.exp(-gt * dt / (G.NEURAL_C_M * 1e-3)));
+      unchecked(sVn[i] = V);
     }
     for (let it = 0; it < G.GAP_ITERS; it++) {
       if (this.anyDead) {
@@ -624,18 +713,18 @@ class Worm {
           const e = mi(G.OFF_gap_ptr, r + 1);
           for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
             const c = mi(G.OFF_gap_idx, k);
-            if (unchecked(this.alive[c])) acc += m(G.OFF_gap_val, k) * unchecked(this.Vn[c]);
+            if (unchecked(this.alive[c])) acc += m(G.OFF_gap_val, k) * unchecked(sVn[c]);
           }
-          unchecked(this.gapAcc[r] = acc);
+          unchecked(sGapAcc[r] = acc);
         }
       } else {
-        spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, this.Vn, this.gapAcc);
+        spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, sVn, sGapAcc);
       }
       for (let r = 0; r < n; r++) {
-        const vInf = (unchecked(this.fx[r]) + unchecked(this.gapAcc[r])) / unchecked(this.gtot[r]);
-        unchecked(this.gapv[r] = vInf + (unchecked(this.Vold[r]) - vInf) * unchecked(this.dec[r]));
+        const vInf = (unchecked(sFx[r]) + unchecked(sGapAcc[r])) / unchecked(sGtot[r]);
+        unchecked(sGapv[r] = vInf + (unchecked(sVold[r]) - vInf) * unchecked(sDec[r]));
       }
-      for (let r = 0; r < n; r++) unchecked(this.Vn[r] = unchecked(this.gapv[r]));
+      for (let r = 0; r < n; r++) unchecked(sVn[r] = unchecked(sGapv[r]));
     }
 
     for (let i = 0; i < n; i++) {
@@ -644,10 +733,10 @@ class Worm {
         unchecked(this.sv[i] = 0.0);
         continue;
       }
-      unchecked(this.V[i] = clamp(unchecked(this.Vn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
+      unchecked(this.V[i] = clamp(unchecked(sVn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
       // Release is driven by the *pre-update* voltage, so the network has one consistent
       // step of delay everywhere rather than an index-order dependence.
-      const V = unchecked(this.Vold[i]);
+      const V = unchecked(sVold[i]);
       const phi = sigmoid(G.NEURAL_BETA * (V - m(G.OFF_V_th, i)));
       const nInf = 0.5 * (1.0 + Math.tanh((V - m(G.OFF_k_vhalf, i)) / G.NEURAL_K_SLOPE));
       unchecked(this.av[i] = nInf + (unchecked(this.av[i]) - nInf) * m(G.OFF_adapt_decay, i));
@@ -682,38 +771,38 @@ class Worm {
       if (G.ANY_PHASIC) {
         sp = clamp(G.MUS_S_EQ + m(G.OFF_mus_phasic_gain, c) * (sp - G.MUS_S_EQ), 0.0, 1.0);
       }
-      unchecked(this.rel[c] = sp);
+      unchecked(sRel[c] = sp);
     }
     for (let r = 0; r < mm; r++) {
       let a1: f64 = 0.0, a2: f64 = 0.0;
       const e = mi(G.OFF_mus_ptr, r + 1);
       for (let k = mi(G.OFF_mus_ptr, r); k < e; k++) {
         const c = mi(G.OFF_mus_idx, k);
-        const gv = m(G.OFF_mus_val, k) * unchecked(this.rel[c]);
+        const gv = m(G.OFF_mus_val, k) * unchecked(sRel[c]);
         a1 += gv;
         a2 += gv * m(G.OFF_mus_E_pre, c);
       }
-      unchecked(this.mg[r] = a1); unchecked(this.me[r] = a2);
+      unchecked(sMg[r] = a1); unchecked(sMe[r] = a2);
     }
     for (let i = 0; i < mm; i++) {
-      const gt = G.MUS_G_LEAK + unchecked(this.mg[i]) + m(G.OFF_mus_gap_total, i);
-      unchecked(this.mgt[i] = gt);
-      unchecked(this.mfx[i] = G.MUS_G_LEAK * G.MUS_E_LEAK + unchecked(this.me[i]));
-      unchecked(this.mdec[i] = Math.exp(-gt * dt / G.MUS_C_NF));
-      unchecked(this.mVn[i] = unchecked(this.mV[i]));
+      const gt = G.MUS_G_LEAK + unchecked(sMg[i]) + m(G.OFF_mus_gap_total, i);
+      unchecked(sMgt[i] = gt);
+      unchecked(sMfx[i] = G.MUS_G_LEAK * G.MUS_E_LEAK + unchecked(sMe[i]));
+      unchecked(sMdec[i] = Math.exp(-gt * dt / G.MUS_C_NF));
+      unchecked(sMVn[i] = unchecked(this.mV[i]));
     }
     for (let it = 0; it < 2; it++) {
       for (let r = 0; r < mm; r++) {
         let acc: f64 = 0.0;
         const row = B + G.OFF_mus_G_gap + (<usize>(r * mm) << 3);
-        for (let c = 0; c < mm; c++) acc += load<f64>(row + (<usize>c << 3)) * unchecked(this.mVn[c]);
-        const vInf = (unchecked(this.mfx[r]) + acc) / unchecked(this.mgt[r]);
-        unchecked(this.mgap[r] = vInf + (unchecked(this.mV[r]) - vInf) * unchecked(this.mdec[r]));
+        for (let c = 0; c < mm; c++) acc += load<f64>(row + (<usize>c << 3)) * unchecked(sMVn[c]);
+        const vInf = (unchecked(sMfx[r]) + acc) / unchecked(sMgt[r]);
+        unchecked(sMgap[r] = vInf + (unchecked(this.mV[r]) - vInf) * unchecked(sMdec[r]));
       }
-      for (let r = 0; r < mm; r++) unchecked(this.mVn[r] = unchecked(this.mgap[r]));
+      for (let r = 0; r < mm; r++) unchecked(sMVn[r] = unchecked(sMgap[r]));
     }
     for (let i = 0; i < mm; i++) {
-      unchecked(this.mV[i] = unchecked(this.mVn[i]));
+      unchecked(this.mV[i] = unchecked(sMVn[i]));
       const target = sigmoid(G.MUS_BETA * (unchecked(this.mV[i]) - G.MUS_V_HALF));
       unchecked(this.mCa[i] = target + (unchecked(this.mCa[i]) - target) * G.MUS_DECAY_CA);
       unchecked(this.mTen[i] = unchecked(this.mCa[i])
@@ -734,8 +823,8 @@ class Worm {
         if (load<u8>(rd + <usize>c)) sd += unchecked(this.mTen[c]);
         if (load<u8>(rv + <usize>c)) sv += unchecked(this.mTen[c]);
       }
-      unchecked(this.rowD[r] = sd / m(G.OFF_mus_row_n_d, r));
-      unchecked(this.rowV[r] = sv / m(G.OFF_mus_row_n_v, r));
+      unchecked(sRowD[r] = sd / m(G.OFF_mus_row_n_d, r));
+      unchecked(sRowV[r] = sv / m(G.OFF_mus_row_n_v, r));
     }
     // Linear interpolation of the row tensions onto the mechanical joints, matching
     // np.interp: clamped at both ends, rows are sorted by body position.
@@ -748,8 +837,8 @@ class Worm {
       f = clamp(f, 0.0, 1.0);
       if (s <= m(G.OFF_mus_row_pos, 0)) f = 0.0;
       if (s >= m(G.OFF_mus_row_pos, rows - 1)) { k = rows - 2; f = 1.0; }
-      const dj = unchecked(this.rowD[k]) + f * (unchecked(this.rowD[k + 1]) - unchecked(this.rowD[k]));
-      const vj = unchecked(this.rowV[k]) + f * (unchecked(this.rowV[k + 1]) - unchecked(this.rowV[k]));
+      const dj = unchecked(sRowD[k]) + f * (unchecked(sRowD[k + 1]) - unchecked(sRowD[k]));
+      const vj = unchecked(sRowV[k]) + f * (unchecked(sRowV[k + 1]) - unchecked(sRowV[k]));
       unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj));
     }
   }
@@ -791,28 +880,28 @@ class Worm {
   dragMatrix(): void {
     const n = G.N_LINKS, l = G.BODY_L, N = n + 2;
     const cT = this.cT, cN = this.cN;
-    const D = this.Dm;
+    const D = sDm;
     for (let i = 0; i < N * N; i++) unchecked(D[i] = 0.0);
 
     for (let i = 0; i < n; i++) {
       const th = unchecked(this.theta[i]);
       const c = Math.cos(th), s = Math.sin(th);
-      unchecked(this.ux[i] = c); unchecked(this.uy[i] = s);
-      unchecked(this.nxv[i] = -s); unchecked(this.nyv[i] = c);
+      unchecked(sUx[i] = c); unchecked(sUy[i] = s);
+      unchecked(sNxv[i] = -s); unchecked(sNyv[i] = c);
     }
     // P[m,k] = n_m . u_k,  Q[m,k] = n_m . n_k, and the two masked copies.
     for (let mm = 0; mm < n; mm++) {
-      const nx = unchecked(this.nxv[mm]), ny = unchecked(this.nyv[mm]);
+      const nx = unchecked(sNxv[mm]), ny = unchecked(sNyv[mm]);
       for (let k = 0; k < n; k++) {
-        const p = nx * unchecked(this.ux[k]) + ny * unchecked(this.uy[k]);
-        const q = nx * unchecked(this.nxv[k]) + ny * unchecked(this.nyv[k]);
+        const p = nx * unchecked(sUx[k]) + ny * unchecked(sUy[k]);
+        const q = nx * unchecked(sNxv[k]) + ny * unchecked(sNyv[k]);
         const idx = mm * n + k;
-        unchecked(this.Pm[idx] = p); unchecked(this.Qm[idx] = q);
+        unchecked(sPm[idx] = p); unchecked(sQm[idx] = q);
         // The rotational block multiplies two lever arms that must *share* one factor of
         // rho_k between them, so it uses the square-root mask -- (A A^T)[m,p] then sums
         // rho_k rather than rho_k^2.
-        unchecked(this.As[idx] = p * m(G.OFF_body_mask_sqrt, idx));
-        unchecked(this.Bs[idx] = q * m(G.OFF_body_mask_sqrt, idx));
+        unchecked(sAs[idx] = p * m(G.OFF_body_mask_sqrt, idx));
+        unchecked(sBs[idx] = q * m(G.OFF_body_mask_sqrt, idx));
       }
     }
 
@@ -820,8 +909,8 @@ class Worm {
     let txx: f64 = 0.0, txy: f64 = 0.0, tyy: f64 = 0.0;
     for (let k = 0; k < n; k++) {
       const rho = m(G.OFF_body_rho, k);
-      const ux = unchecked(this.ux[k]), uy = unchecked(this.uy[k]);
-      const nx = unchecked(this.nxv[k]), ny = unchecked(this.nyv[k]);
+      const ux = unchecked(sUx[k]), uy = unchecked(sUy[k]);
+      const nx = unchecked(sNxv[k]), ny = unchecked(sNyv[k]);
       txx += cT * rho * ux * ux + cN * rho * nx * nx;
       txy += cT * rho * ux * uy + cN * rho * nx * ny;
       tyy += cT * rho * uy * uy + cN * rho * ny * ny;
@@ -836,14 +925,14 @@ class Worm {
       for (let k = 0; k < n; k++) {
         const idx = mm * n + k;
         const mr = m(G.OFF_body_mask_rho, idx);
-        const a = unchecked(this.Pm[idx]) * mr;
-        const b2 = unchecked(this.Qm[idx]) * mr;
-        cx += cT * a * unchecked(this.ux[k]) + cN * b2 * unchecked(this.nxv[k]);
-        cy += cT * a * unchecked(this.uy[k]) + cN * b2 * unchecked(this.nyv[k]);
+        const a = unchecked(sPm[idx]) * mr;
+        const b2 = unchecked(sQm[idx]) * mr;
+        cx += cT * a * unchecked(sUx[k]) + cN * b2 * unchecked(sNxv[k]);
+        cy += cT * a * unchecked(sUy[k]) + cN * b2 * unchecked(sNyv[k]);
       }
       const rho = m(G.OFF_body_rho, mm);
-      cx = l2 * (cx + 0.5 * cN * rho * unchecked(this.nxv[mm]));
-      cy = l2 * (cy + 0.5 * cN * rho * unchecked(this.nyv[mm]));
+      cx = l2 * (cx + 0.5 * cN * rho * unchecked(sNxv[mm]));
+      cy = l2 * (cy + 0.5 * cN * rho * unchecked(sNyv[mm]));
       unchecked(D[(2 + mm) * N + 0] = cx);
       unchecked(D[(2 + mm) * N + 1] = cy);
       unchecked(D[0 * N + (2 + mm)] = cx);
@@ -856,10 +945,10 @@ class Worm {
       for (let b2 = a; b2 < n; b2++) {
         let acc: f64 = 0.0;
         for (let k = 0; k < n; k++) {
-          acc += cT * unchecked(this.As[a * n + k]) * unchecked(this.As[b2 * n + k])
-               + cN * unchecked(this.Bs[a * n + k]) * unchecked(this.Bs[b2 * n + k]);
+          acc += cT * unchecked(sAs[a * n + k]) * unchecked(sAs[b2 * n + k])
+               + cN * unchecked(sBs[a * n + k]) * unchecked(sBs[b2 * n + k]);
         }
-        acc += cN * 0.5 * unchecked(this.Qm[a * n + b2]) * m(G.OFF_body_rho_max_off, a * n + b2);
+        acc += cN * 0.5 * unchecked(sQm[a * n + b2]) * m(G.OFF_body_rho_max_off, a * n + b2);
         if (a == b2) acc += cN * m(G.OFF_body_rho, a) / 3.0;
         const v = l3 * acc;
         unchecked(D[(2 + a) * N + (2 + b2)] = v);
@@ -875,7 +964,7 @@ class Worm {
   stepBody(dt: f64): void {
     const n = G.N_LINKS, N = n + 2, l = G.BODY_L, J = G.N_JOINTS;
     this.dragMatrix();
-    const Q = this.Qv;
+    const Q = sQv;
     for (let i = 0; i < N; i++) unchecked(Q[i] = 0.0);
 
     // Elastic restoring torque plus the active moment, mapped through Dif^T.
@@ -894,18 +983,17 @@ class Worm {
     for (let mm = n - 1; mm >= 0; mm--) {
       sx += unchecked(this.contactX[mm + 1]);
       sy += unchecked(this.contactY[mm + 1]);
-      unchecked(Q[2 + mm] += l * (unchecked(this.nxv[mm]) * sx + unchecked(this.nyv[mm]) * sy));
+      unchecked(Q[2 + mm] += l * (unchecked(sNxv[mm]) * sx + unchecked(sNyv[mm]) * sy));
     }
 
     for (let a = 0; a < n; a++) {
       for (let b2 = 0; b2 < n; b2++) {
         const idx = a * n + b2;
-        unchecked(this.Dm[(2 + a) * N + (2 + b2)] +=
+        unchecked(sDm[(2 + a) * N + (2 + b2)] +=
           m(G.OFF_body_B_mat, idx) + dt * m(G.OFF_body_K_mat, idx));
       }
     }
-    if (!solveInPlace(this.Dm, Q, N)) return;
-    for (let i = 0; i < N; i++) unchecked(this.qdot[i] = unchecked(Q[i]));
+    if (!solveInPlace(sDm, Q, N)) return;
     this.bx += unchecked(Q[0]) * dt;
     this.by += unchecked(Q[1]) * dt;
     for (let i = 0; i < n; i++) unchecked(this.theta[i] += unchecked(Q[2 + i]) * dt);
@@ -953,11 +1041,11 @@ class Worm {
 
   /* ------------------------------------------------------------------------ senses --- */
   @inline addTo(off: usize, len: i32, v: f64): void {
-    for (let i = 0; i < len; i++) unchecked(this.Iext[mi(off, i)] += v);
+    for (let i = 0; i < len; i++) unchecked(sIext[mi(off, i)] += v);
   }
   sense(): void {
     const n = G.N_NEURONS, dt = G.DT;
-    for (let i = 0; i < n; i++) unchecked(this.Iext[i] = 0.0);
+    for (let i = 0; i < n; i++) unchecked(sIext[i] = 0.0);
     const nx = unchecked(this.nodesX[0]), ny = unchecked(this.nodesY[0]);
 
     // -- chemosensation. Sensation is differential: each channel keeps an adapting
@@ -1097,25 +1185,25 @@ class Worm {
     // -- proprioception. Normalised curvature; 5 /mm is roughly the peak a crawling worm
     //    reaches. Adapt out the static component before the receptor saturates on it.
     const J = G.N_JOINTS;
-    for (let j = 0; j < J; j++) unchecked(this.kn[j] = clamp(unchecked(this.kappa[j]) / 5.0, -2.0, 2.0));
+    for (let j = 0; j < J; j++) unchecked(sKn[j] = clamp(unchecked(this.kappa[j]) / 5.0, -2.0, 2.0));
     const short = this.wavelengthShortening();
-    spmv(G.OFF_wb_ptr, G.OFF_wb_idx, G.OFF_wb_val, n, this.kn, this.wbv);
-    spmv(G.OFF_wa_ptr, G.OFF_wa_idx, G.OFF_wa_val, n, this.kn, this.wav);
+    spmv(G.OFF_wb_ptr, G.OFF_wb_idx, G.OFF_wb_val, n, sKn, sWbv);
+    spmv(G.OFF_wa_ptr, G.OFF_wa_idx, G.OFF_wa_val, n, sKn, sWav);
     if (short > 1e-6) {
       // Basal slowing: shorten the wave rather than weaken the drive, because the
       // frequency is mechanics-set and will not move.
-      spmv(G.OFF_wbf_ptr, G.OFF_wbf_idx, G.OFF_wbf_val, n, this.kn, this.wbf);
-      spmv(G.OFF_waf_ptr, G.OFF_waf_idx, G.OFF_waf_val, n, this.kn, this.waf);
+      spmv(G.OFF_wbf_ptr, G.OFF_wbf_idx, G.OFF_wbf_val, n, sKn, sWbf);
+      spmv(G.OFF_waf_ptr, G.OFF_waf_idx, G.OFF_waf_val, n, sKn, sWaf);
       for (let r = 0; r < n; r++) {
-        unchecked(this.wbv[r] = (1.0 - short) * unchecked(this.wbv[r]) + short * unchecked(this.wbf[r]));
-        unchecked(this.wav[r] = (1.0 - short) * unchecked(this.wav[r]) + short * unchecked(this.waf[r]));
+        unchecked(sWbv[r] = (1.0 - short) * unchecked(sWbv[r]) + short * unchecked(sWbf[r]));
+        unchecked(sWav[r] = (1.0 - short) * unchecked(sWav[r]) + short * unchecked(sWaf[r]));
       }
     }
     for (let r = 0; r < n; r++) {
-      const wb = unchecked(this.wbv[r]), wa = unchecked(this.wav[r]);
+      const wb = unchecked(sWbv[r]), wa = unchecked(sWav[r]);
       const raw = wb * fwd + wa * bwd;
       unchecked(this.propAdapt[r] += (raw - unchecked(this.propAdapt[r])) * G.PROP_ADAPT_RATE);
-      unchecked(this.Iext[r] += Math.tanh(raw - unchecked(this.propAdapt[r]))
+      unchecked(sIext[r] += Math.tanh(raw - unchecked(this.propAdapt[r]))
                 * this.gene(G.GENE_SEN_PROPRIO_GAIN) * m(G.OFF_g_scale_prop, r));
     }
 
@@ -1126,7 +1214,7 @@ class Worm {
       // Buffer the curvature, not the reduced signal, so the delay sits where a
       // transduction delay physically would -- between strain and receptor.
       const wslot = this.headHistI * J;
-      for (let j = 0; j < J; j++) unchecked(this.headHist[wslot + j] = unchecked(this.kn[j]));
+      for (let j = 0; j < J; j++) unchecked(this.headHist[wslot + j] = unchecked(sKn[j]));
       this.headHistI = (this.headHistI + 1) % (G.HEAD_DELAY_N + 1);
       headOff = this.headHistI * J;
     }
@@ -1136,24 +1224,24 @@ class Worm {
       headGain *= f > 0.0 ? f : 0.0;
     }
     for (let j = 0; j < J; j++) {
-      unchecked(this.kh[j] = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j])
-                                                : unchecked(this.kn[j]));
+      unchecked(sKh[j] = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j])
+                                            : unchecked(sKn[j]));
     }
     if (G.HEAD_DISTRIBUTED) {
-      spmv(G.OFF_whead_ptr, G.OFF_whead_idx, G.OFF_whead_val, n, this.kh, this.whv);
+      spmv(G.OFF_whead_ptr, G.OFF_whead_idx, G.OFF_whead_val, n, sKh, sWhv);
       for (let r = 0; r < n; r++) {
-        const raw = unchecked(this.whv[r]);
+        const raw = unchecked(sWhv[r]);
         unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
-        unchecked(this.Iext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+        unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
                   * m(G.OFF_g_scale_head, r));
       }
     } else {
       let raw: f64 = 0.0;
-      for (let j = 0; j < J; j++) raw += m(G.OFF_head_window, j) * unchecked(this.kh[j]);
+      for (let j = 0; j < J; j++) raw += m(G.OFF_head_window, j) * unchecked(sKh[j]);
       unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
       const v = Math.tanh(unchecked(this.headSignal[0])) * headGain;
       for (let r = 0; r < n; r++) {
-        unchecked(this.Iext[r] += m(G.OFF_W_head_sign, r) * m(G.OFF_g_scale_head, r) * v);
+        unchecked(sIext[r] += m(G.OFF_W_head_sign, r) * m(G.OFF_g_scale_head, r) * v);
       }
     }
   }
