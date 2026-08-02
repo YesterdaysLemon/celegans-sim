@@ -201,6 +201,13 @@ REPRESENTATIVE = [
     ("wasm/assembly/index.ts", [PYTHON_WF, VIEWER_WF]),
     ("wasm/population.mjs", [VIEWER_WF]),
     ("wasm/conform.mjs", [VIEWER_WF]),
+    # The evolution driver, which is where the fitness measure lives, and #37's regression
+    # property beside it. Both run in the conformance job rather than the viewer one,
+    # because the property needs a .model and a .wasm built from the same tree: it varies
+    # `volume_per_pump` by patching the compiled constant, that scalar being deliberately
+    # absent from `GENES` and from the payload alike.
+    ("wasm/evolve.mjs", [VIEWER_WF]),
+    ("wasm/energy-fitness.test.mjs", [VIEWER_WF]),
     # The viewer, its server, and the checks that run against them.
     ("web/local.js", [VIEWER_WF]),
     ("web/viewer/dish.js", [VIEWER_WF]),
