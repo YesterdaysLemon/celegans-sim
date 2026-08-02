@@ -12,6 +12,40 @@ def params():
     return Params()
 
 
+def test_heading_argument_points_the_body_backwards(params):
+    """`heading` is where the body trails; the animal faces `heading + pi`.
+
+    Pinned because nothing pinned it and two callers got it wrong. `position` is node 0,
+    which `nodes()` documents as the nose, and the body is laid out along `+heading` from
+    there -- so the constructor argument named for where the animal points sets the
+    direction it points *away* from. Everything that actually asks for a direction uses
+    `body_direction`, which is right, so the convention was exercised constantly and
+    asserted nowhere; the only two places it ever surfaced were a caller translating "aim
+    at X" into a heading, and both aimed at the reflection of X.
+
+    Geometry alone settles it, so this costs nothing: `body_direction` is the travel axis
+    by `engine.py`'s own definition of forward, and it is antiparallel to `heading`.
+    """
+    for heading in (0.0, 0.7, np.pi / 2, 2.5, np.pi, -1.2):
+        b = Body(params.body, MEDIA["agar"], position=(3.0, -1.0), heading=heading)
+
+        # The nose is at `position`, not the centroid and not the tail.
+        assert np.allclose(b.nodes()[0], (3.0, -1.0))
+
+        # ...and the rest of the body lies on the far side of it from where it will go.
+        forward = np.arctan2(*b.body_direction()[::-1])
+        wrapped = (forward - (heading + np.pi) + np.pi) % (2.0 * np.pi) - np.pi
+        assert abs(wrapped) < 1e-12, (
+            "body_direction is %.6f rad for heading %.6f; expected heading + pi"
+            % (forward, heading))
+
+    # The accessor named `heading` returns the argument, not the facing. If this ever
+    # starts returning the travel axis instead, the docstring on it is the thing to fix
+    # first -- it has said both at different times.
+    b = Body(params.body, MEDIA["agar"], heading=0.9)
+    assert b.heading() == pytest.approx(0.9)
+
+
 def test_body_is_inextensible(params):
     """Length is exact by construction, not enforced by stiff springs."""
     b = Body(params.body, MEDIA["agar"])

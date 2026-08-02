@@ -615,6 +615,60 @@ function attractantAfter(nWorms) {
   );
 }
 
+/* --------------------------------------------------------------------------------- 11 --
+ * `createWorm`'s fourth argument points the animal backwards, and it is time that was
+ * written down somewhere that fails.
+ *
+ * Node 0 is the mouth and sits at (x, y); `updateNodes` lays the rest of the body out
+ * along `heading` behind it. So `heading` is the direction the body *trails* and the
+ * animal travels at `heading + pi`. Python's `Body` does exactly the same thing, so this
+ * is one convention consistently implemented and, until now, documented nowhere and
+ * asserted nowhere.
+ *
+ * The cost of that was not hypothetical. Two callers translated "aim this animal at X"
+ * into `heading = bearing of X` and aimed at the reflection of X: a foraging calibration
+ * whose published conclusion had to be retracted, and the evolution assay's plate layout,
+ * whose comment says it points animals *off* their lawn while the code drove every one of
+ * them through the middle of it -- a factor of ten in the fitness being selected on.
+ *
+ * Bare agar, no food, no repellent, noise off: nothing here steers the animal, so the only
+ * thing that can set the direction it leaves in is the layout. Cosine against the expected
+ * heading rather than a bearing difference, because an undulating animal yaws about its
+ * own track by a degree or two and a raw angle comparison would have to be loosened until
+ * it stopped discriminating. The gap being caught is half a turn; 0.95 has enormous room.
+ */
+{
+  const E = engine();                       // deliberately no plate(): nothing to steer by
+  const SECONDS = 6.0;
+  const ids = SPREAD.map(([x, y, h], i) => E.createWorm(1000 + i * 7717, x, y, h));
+  const from = ids.map((id) => [E.getX(id), E.getY(id)]);
+  E.stepAll(Math.round(SECONDS / head.scalars.dt));
+
+  const rows = ids.map((id, i) => {
+    const dx = E.getX(id) - from[i][0], dy = E.getY(id) - from[i][1];
+    const dist = Math.hypot(dx, dy);
+    const h = SPREAD[i][2];
+    // Unit vector the animal should travel along if it faces `heading + pi`.
+    const ex = Math.cos(h + Math.PI), ey = Math.sin(h + Math.PI);
+    return { h, dist, cos: dist > 0 ? (dx * ex + dy * ey) / dist : 0.0 };
+  });
+
+  // A stationary animal has no bearing, so an implementation that simply stopped moving
+  // would sail through a pure direction test. Require real displacement first.
+  const moved = rows.every((r) => r.dist > 0.5);
+  const aligned = rows.every((r) => r.cos > 0.95);
+
+  report(
+    'HEADING POINTS THE BODY, NOT THE FACE -- every animal travels at heading + pi',
+    moved && aligned,
+    rows.map((r, i) =>
+      `  worm ${i}  heading ${r.h.toFixed(2)}  travelled ${r.dist.toFixed(2)} mm  ` +
+      `cos to heading+pi ${r.cos.toFixed(4)}`).join('\n') +
+    `\n  all moved > 0.5 mm in ${SECONDS} s   ${moved}\n` +
+    `  all aligned within cos 0.95    ${aligned}`,
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok ? '\nThe population behaves as a population.'
                : '\nThe population does NOT behave as a population.');
