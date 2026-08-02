@@ -417,7 +417,15 @@ def export(path=OUT, params=None):
     # of the ten rates, because this tau is by far the longest. Exporting it puts both
     # sides back on one number, which is what this file is for.
     b.f("egl_resource_recover", egl._recover)
-    b.i("egl_rest_samples", ep.rest_samples)
+    # The window in steps, derived from the duration rather than written down as a step
+    # count -- see EggLayingParams.rest_seconds. Exported derived so the runtime does not
+    # have to know dt to reproduce it, and so a change of dt moves both sides together.
+    b.i("egl_rest_samples", egl._rest_steps)
+    # The vulval muscle's decay per step. The runtime used to integrate this filter by
+    # forward Euler, `vm += (target - vm) * (dt / vm_tau)`, which is the model's only
+    # non-exponential first-order state and diverges for vm_tau < dt/2 -- profitably, by
+    # laying eggs. Exported so both implementations relax the same way. See #42.
+    b.f("egl_vm_decay", egl._vm_decay)
     # The browser keeps eggs in a fixed ring rather than a growing list: a tab left
     # open overnight lays thousands, and the plate is a picture, not a record.
     b.i("max_eggs", 4096)

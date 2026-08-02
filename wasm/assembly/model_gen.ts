@@ -235,6 +235,7 @@ export const EGL_RESOURCE_TAU: f64 = 900.0;
 export const EGL_SEROTONIN_GAIN: f64 = 0.8;
 export const EGL_UTERUS_CAPACITY: f64 = 15.0;
 export const EGL_VC_GAIN: f64 = 0.15;
+export const EGL_VM_DECAY: f64 = 0.9985724484938566;
 export const EGL_VM_TAU: f64 = 0.35;
 export const EGL_VM_THRESHOLD: f64 = 0.55;
 export const HAB_RECOVER: f64 = 0.016666666666666666;

@@ -1879,7 +1879,13 @@ class EggLayingParams:
     resource_on: float = 0.85        # and cannot begin again until back above this
     refractory: float = 6.0          # s    minimum spacing between events
 
-    rest_samples: int = 4000         # steps averaged to find each pool's resting level
+    # Seconds, not steps. This was `rest_samples: int = 4000`, counted in timesteps, so
+    # the averaging window was 2 s at dt = 0.5 ms and 8 s at dt = 2 ms -- the same
+    # dt-dependence this project has already had to fix three times, most expensively in
+    # BodyParams.dt, where NEXT.md day ten withdrew three days of conclusions over it. The
+    # window is a property of the animal's settling time, not of how finely it is being
+    # integrated. 2.0 s reproduces the old default exactly at the shipped dt.
+    rest_seconds: float = 2.0        # s    averaged to find each pool's resting level
 
 
 @dataclass(frozen=True)
@@ -1961,7 +1967,7 @@ class Params:
 
         for path, minimum in (
             ("neural.gap_iters", 1), ("body.n_links", 2), ("body.substeps", 1),
-            ("world.grid", 2), ("egglaying.rest_samples", 1),
+            ("world.grid", 2),
         ):
             value = values[path]
             if not isinstance(value, Integral) or isinstance(value, bool) or value < minimum:

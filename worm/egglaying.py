@@ -97,7 +97,12 @@ class EggLaying:
 
         # Resting activation of each pool, so the drive is a *deviation* and an unchanged
         # network produces an unchanged output. Same convention as the pharynx.
-        self.hsn_rest = 0.0
+        # There is deliberately no `hsn_rest`. HSN enters as *absolute* activation, not
+        # as a deviation -- see the note on `a_hsn` below, where that asymmetry is the
+        # whole phenotype -- so a resting level for it would have nothing to subtract from.
+        # One was accumulated here every step for the first two seconds and never read by
+        # anything, which reads as though a baseline is being removed somewhere when none
+        # is. The runtime never had it, so dropping it also puts the two back in step.
         self.vc_rest = 0.0
         self._rest_n = 0
 
@@ -113,6 +118,21 @@ class EggLaying:
         # -expm1, not 1 - exp: see the note in senses.py. This is the worst of the
         # ten, at dt/tau = 5.6e-07 -- six significant digits cancelled away.
         self._recover = -np.expm1(-dt / p.resource_tau)
+        # Exponential Euler, like every other first-order state in this model. The
+        # forward-Euler form this replaces -- `vm += (target - vm) * (dt / vm_tau)` --
+        # amplifies by |1 - dt/vm_tau| and diverges outright for vm_tau < dt/2.
+        #
+        # Divergence here does not raise, does not produce a NaN, and does not visibly
+        # break the animal. It *lays eggs*: `vm` is reset to 0 on every lay, so the
+        # instability self-limits by firing the Schmitt trigger every `refractory`
+        # seconds. Measured at vm_tau = 1e-4, 12 s, seed 3: locomotion bit-identical to
+        # wild type and egg count 1 against 0 for the control. On any fitness function
+        # counting eggs that is a numerical blow-up which is *profitable* and invisible,
+        # which is exactly the failure NEXT.md names in advance.
+        self._vm_decay = float(np.exp(-dt / p.vm_tau))
+        # Steps, derived from a duration, rather than a count of steps written down
+        # directly. See EggLayingParams.rest_seconds.
+        self._rest_steps = int(round(p.rest_seconds / dt))
 
     # ------------------------------------------------------------------------ helpers
     def _live(self, idx: np.ndarray, alive: np.ndarray | None) -> np.ndarray:
@@ -138,10 +158,9 @@ class EggLaying:
         self.t += self.dt
 
         # Resting levels, averaged over the first stretch of the run rather than assumed.
-        if self._rest_n < p.rest_samples:
+        if self._rest_n < self._rest_steps:
             self._rest_n += 1
             k = 1.0 / self._rest_n
-            self.hsn_rest += (float(activation[self.hsn].mean()) - self.hsn_rest) * k
             if self.vc.size:
                 self.vc_rest += (float(activation[self.vc].mean()) - self.vc_rest) * k
 
@@ -184,7 +203,7 @@ class EggLaying:
         # makes a starved animal lay freely.
         gate = p.off_food_floor + (1.0 - p.off_food_floor) * float(np.clip(on_food, 0.0, 1.0))
         target = float(np.clip(drive, 0.0, 1.0)) * gate
-        self.vm += (target - self.vm) * (self.dt / p.vm_tau)
+        self.vm = target + (self.vm - target) * self._vm_decay
 
         # The resource recovers towards 1 with a time constant of minutes. This is the
         # only slow state here and it is what turns a rate into phases.
