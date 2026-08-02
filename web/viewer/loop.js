@@ -109,7 +109,7 @@ function localTick(now) {
     if (tr.length > 420) tr.shift();
   });
   updateFreq(f0.kappa[Math.floor(f0.kappa.length / 2)], f0.t);
-  updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running);
+  updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running, eng.computeRate);
 
   // Eggs arrive a handful an hour, so this is cheap, but it is read every frame anyway
   // because the alternative -- caching it on a clock like the fields -- would make a newly

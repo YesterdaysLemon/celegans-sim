@@ -92,6 +92,116 @@ GENES = (
     "sen_touch_gain",
 )
 
+# ------------------------------------------------------------------ parameter groups --
+#
+# Every scalar this file lifts off a params dataclass is named in one of these tuples, and
+# every one of them leaves through `_export_scalars`, which raises on a name that does not
+# resolve. That is the whole of issue #31: two of these lists used to sit behind
+# `if hasattr(sp, k)`, so a name that matched nothing produced no entry, no warning and no
+# failure. `sen_nose_touch_gain` was lost that way and nobody noticed until the list was
+# read against the dataclass by hand.
+#
+# The failure mode is quiet in proportion to how much it matters. `GENES` above is a list
+# of names in this same file: a gene that is typo'd, renamed, or moved to a different
+# dataclass would drop out of the export, the runtime would keep its compiled-in literal,
+# and every mutation on that gene would do exactly nothing -- a flat dimension with no
+# error anywhere, indistinguishable from a gene under no selection. `GENES` has been
+# validated rather than filtered since it was written (see the KeyError in `export`); these
+# lists now are too, which is the same claim applied one layer down.
+#
+# They are module level rather than inline in `export()` so that a test can resolve every
+# name against a real `Params()` without building a simulation, and so `SCALAR_GROUPS`
+# below can say which dataclass each list is read off.
+NEURAL_SCALARS = ("beta", "ca_slope", "k_slope", "E_K", "E_Ca", "E_inh", "a_rise",
+                  "a_decay", "noise_tau", "noise_sigma", "depression_tau", "C_m")
+MUSCLE_SCALARS = ("g_leak", "E_leak", "beta", "v_half", "rest_tension")
+# `nose_touch_gain` was the last name on the sensory list below and has been removed rather
+# than added, because there is nothing for it to carry yet. Both implementations drive nose
+# touch with the *same* expression -- `worm/senses.py:284` uses `p.touch_gain * 0.5`
+# and `wasm/assembly/index.ts:1035` uses `gene(GENE_SEN_TOUCH_GAIN) * 0.5` -- so the 0.5 is
+# a shared literal, not a runtime constant standing in for a parameter Python has. Giving
+# the nose its own gain is a new degree of freedom: it needs a field on `SensoryParams`, a
+# use in `worm/senses.py`, a matching edit in the runtime, and it changes the .model
+# payload, so it belongs in its own change with its own conformance run. Exporting a
+# parameter nothing reads would only move the silence.
+SENSORY_SCALARS = ("chemo_gain", "thermo_gain", "cultivation_temp", "oxygen_gain",
+                   "oxygen_preferred", "oxygen_d_gain", "repellent_d_gain", "food_gain",
+                   "proprio_gain", "head_proprio_gain", "tonic_forward", "tonic_backward",
+                   "cord_drive", "gate_slope", "gate_bias", "gate_hysteresis",
+                   "turn_bias_limit", "touch_gain", "omega_current",
+                   "omega_ventral_fraction", "omega_reflex_suppression")
+MODULATOR_SCALARS = ("dopamine_slowing", "serotonin_slowing", "dopamine_wavelength",
+                     "serotonin_turning", "octopamine_speeding", "pdf_roaming",
+                     "serotonin_mod1")
+PHARYNX_SCALARS = ("myogenic_rate", "mc_rate_gain", "i2_rate_gain", "serotonin_to_mc",
+                   "octopamine_to_mc", "max_rate", "pump_duration", "m3_duration_gain",
+                   "volume_per_pump", "m4_transport", "m4_gain", "lumen_capacity")
+EGGLAYING_SCALARS = ("myogenic", "hsn_gain", "serotonin_gain", "vc_gain", "vm_tau",
+                     "vm_threshold", "off_food_floor", "eggs_per_food", "uterus_capacity",
+                     "eggs_initial", "resource_tau", "resource_cost", "resource_off",
+                     "resource_on", "refractory")
+WORLD_SCALARS = ("radius", "diffusion_attractant", "diffusion_repellent",
+                 "decay_attractant", "ingestion_rate", "field_dt", "temp_cold",
+                 "temp_warm", "o2_ambient", "o2_depth", "o2_length_scale")
+
+# (attribute on `Params`, exported prefix, names). The exporter does not loop over this --
+# each group is emitted at the point in `export()` where its section belongs, because the
+# order of `b.f` calls is the order of the JSON header and the order of the header is part
+# of the file. This exists so a check can ask "does every name in every group resolve, and
+# did every one of them reach the header under this prefix" without re-deriving the lists.
+SCALAR_GROUPS = (
+    ("neural", "neural_", NEURAL_SCALARS),
+    ("muscle", "mus_", MUSCLE_SCALARS),
+    ("sensory", "sen_", SENSORY_SCALARS),
+    ("modulator", "mod_", MODULATOR_SCALARS),
+    ("pharynx", "ph_", PHARYNX_SCALARS),
+    ("egglaying", "egl_", EGGLAYING_SCALARS),
+    ("world", "world_", WORLD_SCALARS),
+)
+
+# Exported names (prefix included) that are allowed to be absent from their dataclass.
+#
+# Empty, and the emptiness is the point: nothing in this model is optional today, so any
+# name that fails to resolve is a mistake and gets an exception. The set exists so that the
+# *next* genuinely optional parameter -- a field on a branch, a medium-specific constant --
+# has somewhere to go that is not a `hasattr` guard. A name listed here still costs a line
+# in the build log every time it is skipped, so an omission shows up somewhere rather than
+# nowhere, which is the only difference that matters.
+OPTIONAL_SCALARS = frozenset()
+
+
+def _export_scalars(b, obj, names, prefix, optional=OPTIONAL_SCALARS):
+    """Write `prefix + name` for every name in `names`, read off `obj`.
+
+    A name that `obj` does not define is an error, not an omission. Every missing name is
+    reported at once rather than one exception per run, because these lists are edited in
+    batches (a rename across a dataclass touches several) and finding them one rebuild at a
+    time is how the last one survived.
+    """
+    # An empty group would report no missing names and export nothing, which is a pass
+    # that means nothing -- exactly the shape of failure this function exists to remove.
+    # No caller passes one; if some future refactor makes a group empty, say so loudly
+    # instead of validating thin air.
+    if not names:
+        raise ValueError("no parameter names to export for prefix %r: an empty group "
+                         "exports nothing and would validate clean" % prefix)
+    missing = [k for k in names if not hasattr(obj, k)]
+    hard = [k for k in missing if prefix + k not in optional]
+    if hard:
+        raise KeyError(
+            "%s has no %s (would be exported as %s). Either the name is wrong or the "
+            "parameter is gone; if it is genuinely optional, name it in OPTIONAL_SCALARS "
+            "so the omission is at least printed."
+            % (type(obj).__name__, ", ".join(hard),
+               ", ".join(prefix + k for k in hard)))
+    for k in names:
+        if k in missing:
+            print("export_model: optional %s absent from %s -- not exported"
+                  % (prefix + k, type(obj).__name__))
+            continue
+        b.f(prefix + k, getattr(obj, k))
+    return b
+
 
 class Blob:
     """Collects named arrays and scalars, then writes header + payload."""
@@ -210,9 +320,7 @@ def export(path=OUT, params=None):
     b.arr("V_init", nrv.V).arr("s_init", nrv.s).arr("a_init", nrv.a)
     b.f("n0", float(np.asarray(nrv.n0).ravel()[0]))
     np_ = p.neural
-    for k in ("beta", "ca_slope", "k_slope", "E_K", "E_Ca", "E_inh", "a_rise", "a_decay",
-              "noise_tau", "noise_sigma", "depression_tau", "C_m"):
-        b.f("neural_" + k, getattr(np_, k))
+    _export_scalars(b, np_, NEURAL_SCALARS, "neural_")
     b.f("v_clamp_lo", np_.v_clamp[0]).f("v_clamp_hi", np_.v_clamp[1])
     b.i("gap_iters", np_.gap_iters)
     b.i("any_depress", 1 if nrv._any_depress else 0)
@@ -229,9 +337,7 @@ def export(path=OUT, params=None):
     b.f("mus_s_eq", mus.s_eq)
     b.f("mus_decay_ca", mus._decay_ca).f("mus_decay_te", mus._decay_te)
     b.f("mus_C_nF", mus._C_nF)
-    mp = p.muscle
-    for k in ("g_leak", "E_leak", "beta", "v_half", "rest_tension"):
-        b.f("mus_" + k, getattr(mp, k))
+    _export_scalars(b, p.muscle, MUSCLE_SCALARS, "mus_")
     b.i("mus_n_rows", len(mus._rows))
     b.i("any_phasic", 1 if mus._any_phasic else 0)
 
@@ -269,15 +375,7 @@ def export(path=OUT, params=None):
     b.i("habituates", 1 if sen._habituates else 0)
     b.i("head_distributed", 1 if p.sensory.head_distributed else 0)
     b.i("gate_latched", 1 if p.sensory.gate_latched else 0)
-    sp = p.sensory
-    for k in ("chemo_gain", "thermo_gain", "cultivation_temp", "oxygen_gain",
-              "oxygen_preferred", "oxygen_d_gain", "repellent_d_gain", "food_gain",
-              "proprio_gain", "head_proprio_gain", "tonic_forward", "tonic_backward",
-              "cord_drive", "gate_slope", "gate_bias", "gate_hysteresis",
-              "turn_bias_limit", "touch_gain", "omega_current", "omega_ventral_fraction",
-              "omega_reflex_suppression", "nose_touch_gain"):
-        if hasattr(sp, k):
-            b.f("sen_" + k, getattr(sp, k))
+    _export_scalars(b, p.sensory, SENSORY_SCALARS, "sen_")
 
     # -- neuron index sets the step needs ------------------------------------------------
     sets = {
@@ -303,26 +401,22 @@ def export(path=OUT, params=None):
     # without a re-export. `mod1_peak` was the product, which baked the coefficient into
     # the payload and is why this path could never be exercised in the browser.
     b.arr("mod1_unit", mod._mod1_unit)
-    mo = p.modulator
-    for k in ("dopamine_slowing", "serotonin_slowing", "dopamine_wavelength",
-              "serotonin_turning", "octopamine_speeding", "pdf_roaming",
-              "serotonin_mod1"):
-        b.f("mod_" + k, getattr(mo, k))
+    _export_scalars(b, p.modulator, MODULATOR_SCALARS, "mod_")
 
     # -- pharynx --------------------------------------------------------------------------
-    pp = p.pharynx
-    for k in ("myogenic_rate", "mc_rate_gain", "i2_rate_gain", "serotonin_to_mc",
-              "octopamine_to_mc", "max_rate", "pump_duration", "m3_duration_gain",
-              "volume_per_pump", "m4_transport", "m4_gain", "lumen_capacity"):
-        b.f("ph_" + k, getattr(pp, k))
+    _export_scalars(b, p.pharynx, PHARYNX_SCALARS, "ph_")
 
     # -- egg-laying -----------------------------------------------------------------------
     ep = p.egglaying
-    for k in ("myogenic", "hsn_gain", "serotonin_gain", "vc_gain", "vm_tau",
-              "vm_threshold", "off_food_floor", "eggs_per_food", "uterus_capacity",
-              "eggs_initial", "resource_tau", "resource_cost", "resource_off",
-              "resource_on", "refractory"):
-        b.f("egl_" + k, getattr(ep, k))
+    _export_scalars(b, ep, EGGLAYING_SCALARS, "egl_")
+    # The recovery rate itself, not just the tau it comes from. The runtime used to derive
+    # it -- `1.0 - Math.exp(-dt / EGL_RESOURCE_TAU)`, recomputed two thousand times a
+    # second for a constant -- which was tolerable only while Python computed it the same
+    # lossy way. It no longer does, so deriving it there would manufacture a 6.5e-12
+    # divergence between the two implementations out of nothing: the largest cancellation
+    # of the ten rates, because this tau is by far the longest. Exporting it puts both
+    # sides back on one number, which is what this file is for.
+    b.f("egl_resource_recover", egl._recover)
     b.i("egl_rest_samples", ep.rest_samples)
     # The browser keeps eggs in a fixed ring rather than a growing list: a tab left
     # open overnight lays thousands, and the plate is a picture, not a record.
@@ -330,11 +424,7 @@ def export(path=OUT, params=None):
 
     # -- world ---------------------------------------------------------------------------
     wp = p.world
-    for k in ("radius", "diffusion_attractant", "diffusion_repellent",
-              "decay_attractant", "ingestion_rate", "field_dt",
-              "temp_cold", "temp_warm", "o2_ambient", "o2_depth", "o2_length_scale"):
-        if hasattr(wp, k):
-            b.f("world_" + k, getattr(wp, k))
+    _export_scalars(b, wp, WORLD_SCALARS, "world_")
     b.i("world_grid", wp.grid)
     b.f("world_extent", sim.world.extent)
 
