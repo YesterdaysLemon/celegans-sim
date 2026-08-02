@@ -134,8 +134,8 @@ ABLATED -- AVBL, AVAL, DB03, VB05, AVEL, RIML, I2L; 3000 steps
   ablated cells still active    0
 
 MULTI-ANIMAL -- 4 animals on one 1.5 mm lawn, stepAll, 8000 steps
-  worst node disagreement       5.131e-13 mm
-  worst membrane potential      6.145e-11 mV
+  worst node disagreement       5.092e-13 mm
+  worst membrane potential      5.981e-11 mV
   worst feeding state           4.988e-13     (lumen, ingested, eaten)
   worst contested-cell food     4.956e-13     (the 3x3 each animal fed from)
   worst plate total             4.690e-13     (65536 cells, summed two ways)
@@ -223,10 +223,10 @@ first contested pump on step 2881, and reached 4.740e-02 mV on membrane potentia
 9.877e-06 units on what each animal had eaten by step 8000.
 
 It was isolated rather than inferred: replacing Python's `eat_batch` with a transcription of
-`settleFeeding` and regenerating the reference made the case pass at 5.131e-13 mm,
-6.145e-11 mV and 4.988e-13 on feeding, so the rest of the multi-animal path — shared world
-advance, per-animal state, ordering — was exact and the disagreement was that one routing
-rule and nothing else.
+`settleFeeding` and regenerating the reference made the case pass at 5.1e-13 mm, 6.1e-11 mV
+and 4.988e-13 on feeding, so the rest of the multi-animal path — shared world advance,
+per-animal state, ordering — was exact and the disagreement was that one routing rule and
+nothing else. That is what was then done.
 
 ### Which side moved, and what it cost
 
