@@ -28,7 +28,13 @@
       <div class="stat pump"><div class="label">Pumping <i id="pump-dot"></i></div><div class="value" id="s-pump">0<small>/min</small></div></div>
       <div class="stat"><div class="label">Eaten</div><div class="value" id="s-food">0</div></div>
       <div class="stat pump"><div class="label">Eggs <i id="egg-dot"></i></div><div class="value" id="s-eggs">0<small>&nbsp;held 3</small></div></div>
-      <div class="stat"><div class="label">Sim rate</div><div class="value" id="s-rate">0<small>&times;</small></div></div>
+      <!-- Two rates, and they are different numbers: Sim rate is simulated seconds per
+           second of *your* clock -- stepping, drawing, waiting for the next frame and all
+           -- so it is the one that says whether the animal is keeping up with real time.
+           Compute is simulated seconds per second actually spent stepping, which is
+           headroom: 0.6x beside 1.4x is a machine that is not the bottleneck. -->
+      <div class="stat" title="Simulated seconds per second of wall clock, including rendering and idle time"><div class="label">Sim rate</div><div class="value" id="s-rate">0<small>&times;</small></div></div>
+      <div class="stat" title="Simulated seconds per second spent inside the stepping loop -- compute headroom, not progress"><div class="label">Compute</div><div class="value" id="s-compute">&mdash;<small>&times;</small></div></div>
     </div>
   </header>
 

@@ -51,7 +51,15 @@ export function updateFreq(k, t) {
   S.freq = span > 0 ? crossings / (2 * span) : 0;
 }
 
-export function updateStats(t, speed, food, dir, achieved, running) {
+/* `achieved` is simulated seconds per wall second -- what the header calls Sim rate, and
+ * the only one of the two that answers "is this keeping up with real time".
+ *
+ * `compute` is simulated seconds per second spent stepping, which is headroom rather than
+ * progress and is therefore shown under its own label. It is optional because only the
+ * local engine measures it: the Python server sends one rate over the socket, already
+ * against its own wall clock (worm/server.py::_loop). An em dash there rather than 0.0x,
+ * because not measured and not moving are different claims. */
+export function updateStats(t, speed, food, dir, achieved, running, compute) {
   el('s-time').innerHTML = `${t.toFixed(1)}<small>s</small>`;
   el('s-speed').innerHTML = `${(speed * 1000).toFixed(0)}<small>µm/s</small>`;
   el('s-freq').innerHTML = S.freq > 0.02
@@ -60,6 +68,8 @@ export function updateStats(t, speed, food, dir, achieved, running) {
   el('s-dir').style.color = dir < -0.5 ? C('--warning') : C('--text-primary');
   el('s-food').textContent = food.toFixed(1);
   el('s-rate').innerHTML = `${achieved.toFixed(1)}<small>×</small>`;
+  el('s-compute').innerHTML = compute > 0
+    ? `${compute.toFixed(1)}<small>×</small>` : `—<small>×</small>`;
   const btn = el('b-play');
   if ((btn.getAttribute('aria-pressed') === 'true') !== !!running) {
     btn.setAttribute('aria-pressed', String(!!running));

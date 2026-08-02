@@ -24,7 +24,7 @@ belongs on `S` instead.
 | `viewer/controls.js` | every event listener; worm selector, ablation mode, tooltip | state, themes, dish, panels, stats, transport |
 | `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls |
 | `app.js` | bootstrap: pick a transport, wire, start | all of the above |
-| `local.js` | the WASM engine itself — model loading, stepping budget, frame extraction | — |
+| `local.js` | the WASM engine itself — model loading, stepping budget, the two rate readouts, frame extraction | — |
 
 ## Where a fix goes
 
