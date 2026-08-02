@@ -61,6 +61,25 @@ def radius_profile(s: np.ndarray, r_max: float) -> np.ndarray:
 
 
 class Body:
+    """An inextensible active elastica, laid out nose-first from `position`.
+
+    `heading` sets every link angle, and link angles run **nose to tail**: `position` is
+    node 0, which is the nose, and `nodes()` walks the body out along `+heading` behind
+    it. So `heading` is the direction the animal's body *trails*, and the animal faces --
+    and travels -- at `heading + pi`.
+
+    That is worth stating in the signature because the name invites the opposite reading
+    and nothing used to contradict it. Measured, one animal at the origin with no food and
+    no noise, after ten seconds: `heading=0` puts the nose at (-3.23, +0.10),
+    `heading=pi/2` at (-0.10, -3.23), `heading=pi` at (+3.23, -0.10). Every bearing is its
+    heading plus pi. Callers that meant "point this animal at X" and passed the bearing of
+    X aimed it at the reflection of X, and two of them did: the foraging calibration in
+    #69, whose conclusion had to be retracted, and the evolution assay's plate layout,
+    which aimed every animal through the middle of the lawn it was supposed to be walking
+    away from. See `body_direction`, which is the accessor to use for the travel axis, and
+    `tests/test_physics.py::test_heading_argument_points_the_body_backwards`.
+    """
+
     def __init__(self, p: BodyParams, medium: MediumParams,
                  position=(0.0, 0.0), heading: float = 0.0):
         self.p = p
@@ -129,7 +148,18 @@ class Body:
         return (self.theta[1:] - self.theta[:-1]) / self.l
 
     def heading(self) -> float:
-        """Direction the head is pointing."""
+        """The first link's angle: the direction the body trails, *not* where it faces.
+
+        The animal faces `heading() + pi`. This used to be documented as "direction the
+        head is pointing", which is the opposite of what it returns, sitting twenty lines
+        from `body_direction` -- documented as "the travel axis" and computing the other
+        bearing. Both claimed to be forward and they disagreed by half a turn.
+
+        Nothing ever failed on it because this accessor has no callers: every site that
+        wants a direction uses `body_direction`. That is exactly why the wrong docstring
+        survived, and exactly why it was still able to mislead anyone reading this file to
+        learn the convention. Use `body_direction` for the travel axis.
+        """
         return float(self.theta[0])
 
     def body_direction(self) -> np.ndarray:
