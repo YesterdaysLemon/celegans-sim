@@ -160,7 +160,32 @@ class Muscles:
             hi = np.where(below, hi, mid)
         scale = 0.5 * (lo + hi)
         # A cell with no excitatory input at all cannot be balanced; leave it alone.
-        scale = np.where(g_exc > 1e-9, scale, 1.0)
+        balanceable = g_exc > 1e-9
+        scale = np.where(balanceable, scale, 1.0)
+
+        # Bisection over a fixed bracket returns an endpoint when the target lies outside
+        # it, and says nothing at all. That is not hypothetical: `rest_tension = 1.0` is
+        # unattainable and produced a paralysed straight animal -- |kappa|max 0.0, speed
+        # 0.0000 -- with no warning, and `rest_tension = 0.0` gives speed 0.0000 the same
+        # way. Two different silent phenotypes out of one unsolved equation, each of which
+        # reads as a modelling result.
+        #
+        # Checking the residual rather than the bracket, because landing on an endpoint
+        # only matters if the answer there is wrong. The tolerance is deliberately loose:
+        # 70 bisections of [1e-4, 5e3] leave an interval near 1e-17 relative, so anything
+        # failing this is out of range rather than merely imprecise.
+        residual = np.abs(tension(scale) - p.rest_tension)
+        unreachable = balanceable & (residual > 1e-6)
+        if np.any(unreachable):
+            lo_t = tension(np.full_like(scale, 1e-4))
+            hi_t = tension(np.full_like(scale, 5e3))
+            raise ValueError(
+                "rest_tension = %.6g is unreachable for %d of %d muscle cells. Over the "
+                "bracket [1e-4, 5e3] those cells span tension %.6g..%.6g, so no scaling of "
+                "their excitatory conductance reaches the target; the solve would have "
+                "returned a bracket endpoint and left the animal silently paralysed."
+                % (p.rest_tension, int(unreachable.sum()), int(balanceable.sum()),
+                   float(lo_t[unreachable].min()), float(hi_t[unreachable].max())))
         self.G[:, exc] *= scale[:, None]
 
     def step(self, s_pre: np.ndarray, dt: float | None = None) -> None:

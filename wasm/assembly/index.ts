@@ -1321,7 +1321,14 @@ class Worm {
                 + G.EGL_SEROTONIN_GAIN * this.modSER - G.EGL_VC_GAIN * dVc;
     const gate = G.EGL_OFF_FOOD_FLOOR + (1.0 - G.EGL_OFF_FOOD_FLOOR) * clamp(onFood, 0.0, 1.0);
     const target = clamp(drive, 0.0, 1.0) * gate;
-    this.eglVm += (target - this.eglVm) * (dt / G.EGL_VM_TAU);
+    /* Exponential Euler, matching worm/egglaying.py. This was
+     * `this.eglVm += (target - this.eglVm) * (dt / G.EGL_VM_TAU)` -- forward Euler, the
+     * only such integrator in the model, amplifying by |1 - dt/vm_tau| and diverging for
+     * vm_tau < dt/2. It does not raise or produce a NaN when it does; it lays eggs,
+     * because vm is reset to 0 on every lay and the instability self-limits by firing the
+     * trigger every refractory period. Profitable and invisible, on any fitness that
+     * counts eggs. See #42. */
+    this.eglVm = target + (this.eglVm - target) * G.EGL_VM_DECAY;
 
     /* The exported rate, not a locally derived one. This used to be
      * `1.0 - Math.exp(-dt / G.EGL_RESOURCE_TAU)` -- an exp evaluated two thousand times a
