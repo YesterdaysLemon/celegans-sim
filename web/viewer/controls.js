@@ -68,6 +68,39 @@ function focusWorm(i) {
   updateAblateUI();
 }
 
+/* Bring focus back into range after the population changed from outside these controls,
+ * and report whether there is an animal left to be focused on.
+ *
+ * The renderer used to do this itself, with `if (S.focus >= eng.worms.length) S.focus = 0`
+ * -- which moves focus without rebuilding anything. Every other path that changes focus
+ * goes through `focusWorm`, which also refreshes the selector's `aria-pressed`, the
+ * neuron panel's "N ablated in worm K" hint, and Restore's disabled state. That one line
+ * left all three describing the animal that *used* to be focused, so the panels would be
+ * showing one animal's traces under another animal's label -- plausible-looking and about
+ * the wrong worm, which is the same failure as the shared ablation record in #46.
+ *
+ * It has never fired, because `#b-worm-del` clamps `S.focus` before the renderer can see
+ * an out-of-range value. It stops being unreachable the moment the population changes from
+ * anywhere else, which is exactly what #35's `removeWorm`/`hatchEgg` exist to allow: a
+ * generational loop culling between frames drives focus out of range at essentially every
+ * generation boundary.
+ *
+ * Living in controls.js rather than in the loop is the point. The renderer should not be
+ * deciding what the controls say, and when it did, it did not say it.
+ */
+export function clampFocus() {
+  const n = S.engine ? S.engine.worms.length : 0;
+  if (S.focus >= 0 && S.focus < n) return true;
+  if (n > 0) { focusWorm(0); return true; }
+  // An empty dish. #35 lets the population reach zero, so this needs a defined answer
+  // rather than an index into nothing: keep focus somewhere valid for when an animal
+  // arrives, and rebuild the controls so they stop claiming one that is not there.
+  S.focus = 0;
+  buildWormSel();
+  updateAblateUI();
+  return false;
+}
+
 function updateAblateUI() {
   const b = el('b-ablate');
   const many = S.engine && S.engine.worms.length > 1;

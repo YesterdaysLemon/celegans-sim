@@ -1405,6 +1405,12 @@ export function addFood(x: f64, y: f64, r: f64, d: f64, att: f64, ls: f64): void
 export function addRepellent(x: f64, y: f64, s: f64, ls: f64): void {
   world.addRepellent(x, y, s, ls);
 }
+/* Place an animal with its mouth at (x, y). `heading` is the direction its body *trails*,
+ * so the animal faces -- and travels -- at `heading + PI`. The name reads the other way
+ * and there is no getting around that without breaking every caller, so it is written
+ * down here, in Body's docstring on the Python side, and in a check that fails: see
+ * population.mjs case 11 and test_physics.py's heading test. Callers that translated "aim
+ * at X" into the bearing of X aimed at its reflection, and two of them shipped. */
 export function createWorm(seed: i32, x: f64, y: f64, heading: f64): i32 {
   const wm = new Worm(<u64>seed, x, y, heading);
   const id = nextWormId++;

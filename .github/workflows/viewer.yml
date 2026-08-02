@@ -16,12 +16,12 @@ on:
     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
             'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
-            'package.json', '.github/workflows/viewer.yml']
+            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
   pull_request:
     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
             'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
-            'package.json', '.github/workflows/viewer.yml']
+            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
 
 jobs:
   viewer:
