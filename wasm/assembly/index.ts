@@ -1715,6 +1715,55 @@ class Worm {
         unchecked(this.contactY[i] = 0.0);
       }
     }
+    this.selfContact();
+  }
+
+  /* The body pushing back on its own far side.
+   *
+   * Mirrors `Body.self_contact_force`, and accumulates into the same `contactX`/`contactY`
+   * the wall writes, because both are node forces in the same units at the same stiffness.
+   * Called at the end of `contact()` so the wall's assignment has already happened -- this
+   * one adds, it does not assign.
+   *
+   * Pair order is (i ascending, then j ascending) with i < j, matching what `np.nonzero`
+   * hands `np.add.at` on the Python side. Floating-point addition is not associative, so
+   * that ordering is part of the conformance contract and not an implementation detail.
+   *
+   * ELIGIBILITY. A pair only counts once its separation *along* the body exceeds
+   * SELF_CONTACT_MARGIN times its own combined width. Requiring merely that it exceed the
+   * width admits pairs clearing by a rounding error -- nodes 31 and 34 clear it by 0.0003
+   * mm -- and ordinary undulation then closes that, firing the force on a normally
+   * crawling animal. See the note in worm/body.py.
+   *
+   * The bounding-box reject before the square root changes no result: if |dx| exceeds the
+   * contact distance then so does the distance, so the penetration was going to be
+   * negative anyway. It is there because this is O(n^2) in the 2 kHz hot loop and almost
+   * every pair fails it.
+   */
+  selfContact(): void {
+    const n = G.N_LINKS;
+    const stiff: f64 = 40.0, margin: f64 = 2.0, l = G.BODY_L;
+    for (let i = 0; i <= n; i++) {
+      const xi = unchecked(this.nodesX[i]), yi = unchecked(this.nodesY[i]);
+      const ri = m(G.OFF_body_node_radius, i);
+      for (let j = i + 1; j <= n; j++) {
+        const cd = ri + m(G.OFF_body_node_radius, j);
+        if (<f64>(j - i) * l <= margin * cd) continue;
+        const dx = xi - unchecked(this.nodesX[j]);
+        if (dx > cd || dx < -cd) continue;
+        const dy = yi - unchecked(this.nodesY[j]);
+        if (dy > cd || dy < -cd) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const pen = cd - dist;
+        if (pen <= 0.0) continue;
+        const inv = 1.0 / (dist > 1e-9 ? dist : 1e-9);
+        const px = stiff * pen * dx * inv, py = stiff * pen * dy * inv;
+        unchecked(this.contactX[i] += px);
+        unchecked(this.contactY[i] += py);
+        unchecked(this.contactX[j] -= px);
+        unchecked(this.contactY[j] -= py);
+      }
+    }
   }
 }
 
