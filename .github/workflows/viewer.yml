@@ -10,18 +10,34 @@
 
 name: viewer
 
+# MANUAL ONLY -- the automatic triggers are commented out, not deleted.
+#
+# This account's Actions minutes are exhausted, so every push and every pull request was
+# starting a run that died in a couple of seconds having executed no steps at all: the API
+# reports `steps: []` with no failed step, because the job never got a runner. The effect
+# was a permanent red cross on main that said nothing about the code, which is worse than
+# no signal -- a check that always fails is as uninformative as one that always passes, and
+# it trains you to ignore the one time it means something.
+#
+# Restoring this is deleting the `#` from the block below. The jobs themselves are
+# untouched and still correct; nothing here was weakened to make it pass. Until then the
+# checks are run locally -- see "Running the checks yourself" in the README.
+#
+# on:
+#   push:
+#     branches: [main]
+#     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
+#             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
+#             'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
+#             'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
+#   pull_request:
+#     paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
+#             'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
+#             'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
+#             'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
+
 on:
-  push:
-    branches: [main]
-    paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
-            'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
-            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
-            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
-  pull_request:
-    paths: ['web/**', 'wasm/**', 'worm/server.py', 'run.py', 'requirements.txt',
-            'docker/nginx.conf', 'tools/check_cache_headers.mjs', 'tools/check_web.mjs',
-            'tools/smoke_server.mjs', 'tools/smoke_web.mjs', 'tools/sim_rate.test.mjs',
-            'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
+  workflow_dispatch:
 
 jobs:
   viewer:

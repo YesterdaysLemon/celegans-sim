@@ -1,18 +1,27 @@
 # Clean-install gate for the Python model and its pinned anatomical inputs.
 name: python
 
+# MANUAL ONLY -- the automatic triggers are commented out, not deleted. See the same note
+# in viewer.yml: this account's Actions minutes are exhausted, so runs were dying in
+# seconds without executing a step and leaving a red cross that carried no information.
+#
+# Restoring this is deleting the `#` from the block below. The jobs are untouched.
+#
+# on:
+#   push:
+#     branches: [main]
+#     paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
+#             'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+#             'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
+#             '.github/workflows/python.yml']
+#   pull_request:
+#     paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
+#             'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+#             'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
+#             '.github/workflows/python.yml']
+
 on:
-  push:
-    branches: [main]
-    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
-            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
-            'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
-            '.github/workflows/python.yml']
-  pull_request:
-    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
-            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
-            'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
-            '.github/workflows/python.yml']
+  workflow_dispatch:
 
 jobs:
   discover-tests:
