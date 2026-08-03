@@ -1987,15 +1987,36 @@ But with the gait running and a moment added on top, over five seeds:
 | 0.43 | 18.7 ± 1.3 | 0.050 | +0.63 | 30.1 |
 | 2.60 | 1.6 ± 1.1 | 0.006 | 0.00 | 119.4 |
 
-**It peaks at 47.5 deg/s and comes back down.** A real omega needs about 90. Four profiles
+**It peaks at 47.5 deg/s and comes back down.** A real omega needs about 90. Five profiles
 were tried, and where the moment goes matters more than how much of it there is:
 
-| profile | peak deg/s | at µN·mm |
-|---|---:|---:|
-| whole body | **47.5 ± 5.7** | 0.15 |
-| travelling pulse | 25.5 ± 5.1 | 0.30 |
-| anterior third | 21.8 ± 4.5 | 0.15 |
-| posterior third | 7.7 ± 0.7 | 0.43 |
+| profile | peak deg/s | at µN·mm | best row set aside, and why |
+|---|---:|---:|---|
+| whole body | **47.5 ± 5.7** | 0.15 | — |
+| phase-locked | 22.8 ± 6.5 | 0.43 | **48.6 ± 3.0** at 0.80, path 0.148 under half free-running |
+| travelling pulse | 25.5 ± 5.1 | 0.30 | 49.5 ± 32.0 at 2.60, spread 65% of mean |
+| anterior third | 21.8 ± 4.5 | 0.15 | — |
+| posterior third | 7.7 ± 0.7 | 0.43 | — |
+
+**The two numbers that matter are 47.5 and 48.6, and they come from opposite strategies.**
+The whole-body profile is the crudest thing available — a constant moment on every joint,
+blind to what the body is doing. The phase-locked one is the opposite: it reads the animal's
+own curvature every step and adds moment only where the body is already bending dorsally,
+saturating at the gait's own amplitude, so it deepens one side of the wave and never fights
+the other. They agree to within their error bars, and the phase-locked figure has the
+tightest spread in the whole sweep at ±3.0, six percent of its mean.
+
+Two unrelated routes arriving at the same wall is much better evidence than one route hitting
+it. That is the result: **about 48 deg/s, a little over half what the animal does, and it does
+not care how the moment is delivered.**
+
+The 48.6 is reported as set aside rather than as the headline because path speed had fallen
+to 40% of free-running, under the 50% floor. That floor is a judgement and a reader may
+reasonably disagree with it — the gait was still alive there, TWI +0.83, and the animal was
+still moving. The tool prints the row and the reason precisely so the judgement is arguable
+instead of invisible; a cap that hides its best excluded cell reads as *nothing better was
+found*, which is a different claim from *something better was found and rejected for this
+reason*.
 
 The posterior third is the control and behaves like one: a moment back there does almost
 nothing, so this is not a measurement that would report a turn from any push at all. The
@@ -2039,12 +2060,19 @@ because if the ceiling moves with the medium then it is hydrodynamic and the mod
 what is capping the turn; if it does not, it is the body's own elasticity. Neither answer is
 a bending axis.
 
-The caveat that remains, now that the travelling one is closed: all four profiles are
-*open-loop*. They are added to the muscles' own moment without regard to where the body
-already is, so a pulse can arrive at a segment that is bending the wrong way and fight it. A
-profile phase-locked to the animal's own wave — pushing where the wave is already going —
-has not been tried, and it is the last cheap thing that could raise the ceiling. It is still
-far cheaper than a three-dimensional body, and it should come first.
+Both recorded caveats are now closed. The travelling profile tested whether the ceiling was
+an artifact of holding the moment still: it is not. The phase-locked profile tested whether
+it was an artifact of driving open-loop, a moment arriving at segments already bending the
+wrong way and fighting them: it is not that either, and closing the loop bought about a
+degree per second over the crudest possible alternative.
+
+What is genuinely left is the question the number itself poses. Turn rate is v·κ, curvature
+is cheap, and speed is what gets spent — so the ceiling is a statement about how much forward
+progress this body loses per unit of bend. That is drag anisotropy, `K = c_normal /
+c_tangential`, which is 40 on agar and 1.58 in buffer. **The measurement is to sweep the
+medium and watch where the peak goes.** If the ceiling rises in buffer, it is hydrodynamic
+and the model's agar is what caps the turn; if it does not move, it is the body's own
+elasticity and `EI` is the parameter. Either answer is cheap, and neither is a bending axis.
 
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 

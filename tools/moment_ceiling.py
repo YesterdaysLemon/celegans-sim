@@ -71,7 +71,12 @@ TARGET_RATE = 90.0
 TARGET_KAPPA = 4.5
 
 
-KINDS = ("whole body", "anterior", "posterior", "travelling")
+KINDS = ("whole body", "anterior", "posterior", "travelling", "phase-locked")
+
+# Curvature at which the phase-locked profile reaches full moment, in /mm. The free-running
+# gait peaks near 12.5, so this saturates at roughly the animal's own bend rather than at
+# some larger number it never reaches.
+KAPPA_REF = 12.5
 
 # Width of the travelling pulse, as a fraction of body length, and how long it takes to run
 # head to tail. Two seconds is the duration of a real omega, so the pulse crosses the animal
@@ -80,13 +85,22 @@ PULSE_WIDTH = 0.15
 PULSE_PERIOD = 2.0
 
 
-def profile(p, kind: str, moment: float, t: float = 0.0) -> np.ndarray:
-    """The extra joint moment in uN*mm: where it is applied, and when.
+def profile(p, kind: str, moment: float, t: float = 0.0,
+            kappa: np.ndarray | None = None) -> np.ndarray:
+    """The extra joint moment in uN*mm: where it is applied, when, and against what.
 
-    Three static shapes and one travelling one. The travelling pulse is the important
-    case -- a real omega is not a constant bend held everywhere at once, it is a deep bend
-    that starts at the head and runs down the body, and a ceiling measured only on static
-    profiles would not have tested that.
+    Three static shapes, one travelling, one closed-loop. The travelling pulse tests the
+    real omega's kinematics -- a deep bend that starts at the head and runs down the body,
+    not a constant bend held everywhere at once.
+
+    The last is the one that answers the open-loop objection. All the others are added
+    without regard to where the body already is, so a moment can arrive at a segment that
+    is bending the wrong way and simply fight it; a ceiling measured that way could be a
+    statement about the fight rather than about the body. This one reads the animal's own
+    curvature and pushes only where it is already bending dorsally, saturating at the
+    gait's own amplitude. That deepens one side of the wave and leaves the other alone,
+    which is both the thing that cannot fight the gait and, not coincidentally, what a
+    ventrally-biased omega does.
     """
     n = p.n_links - 1
     s = (np.arange(n) + 0.5) / n
@@ -100,6 +114,10 @@ def profile(p, kind: str, moment: float, t: float = 0.0) -> np.ndarray:
     elif kind == "travelling":
         centre = (t % PULSE_PERIOD) / PULSE_PERIOD
         m[:] = moment * np.exp(-0.5 * ((s - centre) / PULSE_WIDTH) ** 2)
+    elif kind == "phase-locked":
+        if kappa is None:
+            return m
+        m[:] = moment * np.clip(kappa / KAPPA_REF, 0.0, 1.0)
     else:
         raise ValueError(kind)
     return m
@@ -129,7 +147,8 @@ def _job(job):
     # simulation reads joint_moment() once per step and gets the sum. Evaluated per step
     # rather than once, so a travelling profile can move.
     base_fn = sim.muscles.joint_moment
-    sim.muscles.joint_moment = lambda: base_fn() + profile(p.body, kind, moment, sim.t)
+    sim.muscles.joint_moment = lambda: base_fn() + profile(
+        p.body, kind, moment, sim.t, sim.body.curvature())
 
     dt = sim.dt
     every = max(1, int(round(0.02 / dt)))
@@ -265,6 +284,20 @@ def main() -> int:
               % (kind, rate, sd, m, spd, kmax))
         print("  %-11s then falls away: path speed %.3f -> %.3f mm/s by %.1f uN mm."
               % ("", base_spd, top_spd, max(MOMENTS)))
+
+        # Say out loud when a guard set aside a row that would otherwise have been the
+        # headline. A cap that hides its best excluded cell reads as "nothing better was
+        # found", which is a different claim from "something better was found and rejected
+        # for this reason" -- and the reader has to be able to disagree with the reason.
+        held = [v for v in vals if v not in live(vals) and v[0] > rate]
+        if held:
+            hr, hs, hm, hk, hsd = max(held)
+            why = ("path %.3f is under half the free-running %.3f" % (hs, base_spd)
+                   if hs < 0.5 * base_spd
+                   else "its spread is %.0f%% of its mean" % (100 * hsd / max(hr, 1e-9)))
+            print("  %-11s set aside a higher row: %.1f +- %.1f deg/s at %.2f uN mm, because"
+                  % ("", hr, hsd, hm))
+            print("  %-11s %s." % ("", why))
 
     print()
     print("  Turn rate is path speed times path curvature. Curvature is cheap -- the")
