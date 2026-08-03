@@ -152,7 +152,10 @@ class Simulation:
         self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
         self.muscles.step(self.nervous.s)
 
-        self._contact = self.world.contact_force(nodes)
+        # The dish pushes back, and so does the body's own far side. Both are node forces
+        # in the same units and at the same stiffness, so they simply add.
+        self._contact = (self.world.contact_force(nodes)
+                         + self.body.self_contact_force(nodes))
         # The mechanics may be substepped: the body is far stiffer than the nervous
         # system and its fast bending modes are what make the gait depend on dt. The
         # muscle moment and the contact forces are held constant across the substeps,

@@ -46,6 +46,12 @@ import numpy as np
 from .params import BodyParams, MediumParams
 
 
+# How much further apart along the body than their own combined width two nodes must be
+# before they are allowed to register self-contact. See Body.__init__ -- at 1x, pairs that
+# clear the rule by a rounding error fire during ordinary undulation.
+SELF_CONTACT_MARGIN = 2.0
+
+
 def radius_profile(s: np.ndarray, r_max: float) -> np.ndarray:
     """Body radius as a function of normalised arclength.
 
@@ -102,6 +108,32 @@ class Body:
         # pretending the thin tail feels the same drag as the midbody.
         self.rho = 0.55 + 0.45 * (r_seg / r_seg.max())
 
+        # Self-contact geometry, precomputed because it is fixed by the radius profile.
+        #
+        # `node_radius` is the body's half-width at each node, so two nodes are touching
+        # when their centres are closer than the sum of theirs. `_self_pairs` is which
+        # pairs are allowed to say so, and the margin in it is load-bearing.
+        #
+        # Nodes a few segments apart sit inside each other's contact distance on a
+        # perfectly straight worm -- that is the body being a continuous tube, not a
+        # collision -- so a pair clearly has to be further apart along the body than it is
+        # wide. But *just* further apart is not enough, and that was a real bug: nodes 31
+        # and 34 are 0.0625 mm apart along the body against a contact distance of 0.06224,
+        # a margin of three ten-thousandths of a millimetre, and ordinary undulation closed
+        # it. The force fired on a normally-crawling animal and moved it 3 mm off its own
+        # trajectory.
+        #
+        # So a pair must be at least SELF_CONTACT_MARGIN times its own width apart. At 2x,
+        # a purely local kink has to reach about 27 /mm of curvature before it can register
+        # -- roughly twice what the gait ever produces -- while any genuine fold, where two
+        # distant stretches of body come alongside each other, is unaffected because those
+        # pairs are far past the cut. Upper triangle only, so each pair resolves once.
+        self.node_radius = radius_profile(np.arange(n + 1) / n, p.radius_max)
+        contact = self.node_radius[:, None] + self.node_radius[None, :]
+        along = np.abs(np.arange(n + 1)[:, None] - np.arange(n + 1)[None, :]) * self.l
+        self._self_contact_dist = contact
+        self._self_pairs = np.triu(along > SELF_CONTACT_MARGIN * contact, k=1)
+
         # Bending stiffness along the body. A solid rod would scale as r^4, but the worm is
         # a thin-walled cylinder held out by internal hydrostatic pressure, for which the
         # second moment goes as r^3 t -- and the pressure term does not taper at all. An
@@ -138,6 +170,39 @@ class Body:
 
     def centroid(self) -> np.ndarray:
         return self.nodes().mean(axis=0)
+
+    def self_contact_force(self, nodes: np.ndarray,
+                           stiffness: float = 40.0) -> np.ndarray:
+        """Repulsion between parts of the body that are not neighbours, per node.
+
+        The same linear penalty the dish wall and obstacles use, at the same stiffness, so
+        there is one contact convention in the model rather than two. Returned in the shape
+        `Body.step` takes as `node_forces`.
+
+        This is inert on the animal as it stands, and verifiably so: a 60 s run is
+        bit-identical with this term live and with it stubbed to zeros. It is installed
+        *because* it is inert -- that is the only moment a constraint like this can be
+        added and shown to change nothing. It stops being inert as soon as morphology is
+        heritable, because a lineage scored on food alone would otherwise be free to evolve
+        a body that folds through itself and be rewarded for it.
+
+        The nose and tail have zero radius in `radius_profile`, so the outermost node of
+        each cannot register contact at all. Its neighbours can, and they are 0.021 mm
+        away, so nothing passes through the body -- but the very tip is not a collider.
+        """
+        f = np.zeros_like(nodes)
+        d = nodes[:, None, :] - nodes[None, :, :]
+        dist = np.sqrt((d * d).sum(axis=2))
+        pen = self._self_contact_dist - dist
+        hit = self._self_pairs & (pen > 0.0)
+        if not hit.any():
+            return f
+        ii, jj = np.nonzero(hit)
+        direction = d[ii, jj] / np.maximum(dist[ii, jj, None], 1e-9)
+        push = stiffness * pen[ii, jj, None] * direction
+        np.add.at(f, ii, push)
+        np.add.at(f, jj, -push)
+        return f
 
     def curvature(self) -> np.ndarray:
         """(n-1,) signed curvature at each joint, in 1/mm.
