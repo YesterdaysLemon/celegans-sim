@@ -1923,6 +1923,44 @@ project inside another current increase: `omega_current` is already in its satur
 regime, RIV gain failed, reflex suppression failed, and wave suppression now failed in the
 opposite direction.
 
+### Self-contact is not the constraint, and the steric half of the argument does not hold
+
+The body has no self-avoidance — `World.contact_force` handles the dish wall and obstacles
+and nothing compares the body against itself — so before starting a three-dimensional
+project on the grounds that a deep omega leaves the plane, it is worth knowing whether the
+plane was ever the obstacle. `tools/self_contact.py` measures it. It is not.
+
+Bending the body's own radius profile into a uniform arc, self-contact first occurs at a
+turn radius of **0.158 mm**, which is nothing more than the body closed into a circle
+(L/2π = 0.159). The omega wants 0.22 mm and clears that by 1.4×, with 0.132 mm of daylight.
+A two-dimensional worm can make the turn this roadmap asks for without touching itself, and
+this one could pass through itself even if it could not.
+
+Measured on the animal rather than on paper — five seeds, 60 s, both food conditions,
+sampled every 50 ms — there is **no overlap at any scale, 0.00%**. The tightest approach
+anywhere is 0.0254 mm, about 0.4 body diameters, between midbody and tail tip. One caveat
+is worth carrying: on food the margin is thinner and much more seed-dependent than off
+food, 0.1605 ± 0.1006 mm at the half-body cut against 0.2311 ± 0.0155 off it. A standard
+deviation two thirds of the mean says at least one seed came considerably closer, in the
+condition with more turning.
+
+So **self-avoidance is latent, not live**, and closing it will not deepen a single turn.
+What it will do is keep the turn project honest: a reorientation earned by folding the head
+through the body would read as a clean turn in `tools/compare.py ethogram`, and no assay
+here could say otherwise. It is inert *now*, which is the only moment it can be installed
+and shown to change nothing — added afterwards, a regression could never be separated into
+"the turn was passing through the body" and "the contact model is too stiff." Tracked in
+issue #86.
+
+None of this retires the dimensional ceiling; it retires one of its two arguments. The
+steric case — that a deep omega must leave the plane because the animal cannot pass through
+itself — is measurably not this model's problem. The case that survives is the one
+`params.py` already makes under *what actually limits the turn*: a sustained bend and a
+travelling wave are competing for the dynamic range of the same motor neurons, and a second
+bending axis would give them somewhere to go. That is a better reason to build it, and a
+different one, and it predicts something the steric argument does not — that the turn
+should deepen when the two stop sharing a channel, whether or not anything leaves the plane.
+
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
 `tools/scorecard.py` on 2026-07-30 measured five seeds from the same configuration:
