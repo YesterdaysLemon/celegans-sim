@@ -811,6 +811,41 @@ web/local.js            the WebAssembly engine: model loading, stepping budget, 
 wasm/assembly/index.ts  the runtime — the same model, in the browser
 ```
 
+## Evolved animals are not C. elegans
+
+`wasm/evolve.mjs` runs populations under selection, and everything that comes out of it
+sits on the other side of a line from everything else in this document.
+
+The rest of the project is a reconstruction. The wiring is anatomy — 7,000 synapses traced
+out of electron micrographs — and the constants that have been measured are treated as
+facts: membrane capacitance, reversal potentials, bending modulus, drag. `tools/optimise.py`
+opens by saying that fitting the connectome would throw away the entire point of building
+the model on it, and that is the project's founding constraint rather than a preference.
+
+Selection does not respect that constraint. It optimises the model, and the model includes
+its own defects — a unit conversion in front of the fitness measure was worth nine times the
+score at an unchanged trajectory (#37), and an animal with a legal-but-tiny bending stiffness
+folds itself past what the discretisation can represent. So an evolved lineage is a statement
+about *this simulator*, and about what its scoring function rewards. It is not evidence about
+the animal, and it cannot become evidence about the animal by being interesting.
+
+Three things follow, and they are the whole convention:
+
+1. **Results from an evolved population never feed a claim about *C. elegans*.** Not in
+   `README.md`, not in `NEXT.md`'s measurements, not in an issue. If a number is quoted
+   about the worm, it came from the unevolved baseline.
+2. **Conformance and the assay suite guard that baseline, and nothing guards an evolved
+   one.** `tools/conform.py` checks the port reproduces the Python; the assays check the
+   Python reproduces measurements on live animals. Neither has any purchase on a genome
+   that has been selected away from the reconstruction.
+3. **The label travels with the numbers, not with the document.** `evolve.mjs` prints it
+   above its own results, because results get pasted and documents do not.
+
+None of this is an argument against doing it. A population that finds an exploit has found
+a real defect, and that is worth knowing — `EVO_FITNESS=eaten` is kept for exactly that,
+as an adversarial probe rather than a default. It is an argument for keeping the two kinds
+of claim in separate boxes, which is cheap now and impossible to do retroactively.
+
 ## Running the checks yourself
 
 **CI is manual-only.** Both workflows still exist and still work, but their `push` and

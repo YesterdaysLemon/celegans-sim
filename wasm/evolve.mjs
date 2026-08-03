@@ -618,7 +618,15 @@ function main() {
   console.log(`EVOLUTION -- ${POP} animals, ${GENERATIONS} generations, ${SECONDS} s each, `
             + `sigma ${SIGMA}`);
   console.log(`  ${GENES.length} genes, ${describe}, each animal on its own lawn`);
-  console.log(`  seeds ${SEEDS.join(', ')}${CONTROL ? ', with a selection-off control arm' : ''}\n`);
+  console.log(`  seeds ${SEEDS.join(', ')}${CONTROL ? ', with a selection-off control arm' : ''}`);
+  // Printed with the results rather than kept in a document, because it is the results
+  // that travel. A number pasted out of this run into a notebook, an issue or a paper
+  // should carry the sentence that says what it is not. See "Evolved animals are not
+  // C. elegans" in the README.
+  console.log('\n  Numbers below describe *evolved* animals, which are not C. elegans and');
+  console.log('  are not evidence about it. Selection optimises the model, including any');
+  console.log('  part of it that is wrong. Claims about the animal come from the unevolved');
+  console.log('  baseline, which conformance and the assay suite guard; nothing here does.\n');
 
   const t0 = Date.now();
   const runs = [];
