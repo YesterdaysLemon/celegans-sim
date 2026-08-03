@@ -2084,9 +2084,16 @@ those two components:
 | EI 0.19 | 0.768 — too wide | 0.128 — slow | 9.6 |
 | EI 0.38 | 1.613 — too wide | 0.049 — slow | 1.7 |
 
-**The geometry is not what is missing.** In buffer the animal drives a 0.069 mm circle,
-*three times tighter* than an omega needs — it just does it at 0.027 mm/s, and a tight circle
-driven that slowly is not a turn. On agar it has the speed and cannot make the radius.
+In buffer the animal drives a 0.069 mm arc, *three times tighter* than an omega needs — at
+0.027 mm/s. On agar it has the speed and cannot make the radius.
+
+**Do not over-read the buffer number.** Radius is v/ω, so an animal that barely translates
+has a small radius almost by construction, and this one covers 0.27 mm in ten seconds while
+turning 221°. That is consistent with a genuine 0.069 mm arc rather than an artifact — the
+arithmetic closes — but it is much nearer pivoting on the spot than to what an omega does,
+which is carrying the body through the turn. The honest statement is that tight *curvature of
+the path* is available and tight curvature *at speed* is not; it is not established that the
+first would survive being asked to do the second.
 
 So the medium and the stiffness do not move radius and speed independently; they slide the
 animal along a frontier. Nothing tested has both ends of it at once, and **that trade is the
@@ -2102,10 +2109,24 @@ value is not accidentally the problem. It is not.
 
 **Which makes gait modulation the next thing, not a bending axis.** It was already on this
 roadmap as a second-tier quantitative gap. It is now on the critical path: the frontier says
-turn depth needs speed *and* tightness together, buffer shows the body can be tight, and the
-reason it is slow there is the same broken medium response that makes the animal fail to swim.
-Fix what the medium does to the gait and the frontier moves as a whole — which is the only
-thing that has been shown to move it.
+turn depth needs speed *and* tightness together, and the reason the tight end is slow is the
+same too-weak medium response that makes this animal fail to swim.
+
+And that work already has a diagnosis waiting for it, written down under
+`SensoryParams.head_delay`. The 0.28 s delay is the largest fitted number in the model and
+is openly recorded as unearned — mechanotransduction takes milliseconds, and what the number
+really states is the size of the phase the model is missing. The candidate for what it stands
+in for is named there too: RMD, SMD and SMB are lumped into one reflex with one gain and one
+filter, where the real thing is several cell classes with their own dynamics and an RMD that
+is frankly bistable (Mellem et al. 2008). A distributed multi-stage circuit accumulates phase
+a single first-order lag cannot — and, unlike a fitted constant, its phase can follow the
+mechanical load, which is exactly what gait modulation is.
+
+That note also records, correctly, that the *old* argument for why a fixed delay must kill
+modulation was withdrawn once the reflex was distributed and the direction came out right.
+None of what is above reinstates it. The claim here is only that the magnitude is still four
+times short, and that the frontier now makes that shortfall load-bearing for the turn rather
+than a separate quantitative gap to get to later.
 
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
