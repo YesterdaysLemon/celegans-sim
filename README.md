@@ -848,15 +848,26 @@ of claim in separate boxes, which is cheap now and impossible to do retroactivel
 
 ## Running the checks yourself
 
-**CI is manual-only.** Both workflows still exist and still work, but their `push` and
-`pull_request` triggers are commented out in `.github/workflows/`, leaving
-`workflow_dispatch`. This account's Actions minutes are exhausted, so every push was
-starting a run that died in a couple of seconds having executed no steps at all — the API
-reports `steps: []` with no failed step, because the job never got a runner. A permanent
-red cross that says nothing about the code is worse than no signal: a check that always
-fails is exactly as uninformative as one that always passes, and it teaches you to ignore
-the one time it means something. Turning them back on is deleting the `#` from the block
-at the top of each file; nothing in the jobs was weakened to make anything pass.
+**CI is paused, at the jobs rather than at the triggers.** This account's Actions minutes
+are exhausted, so every push was starting a run that died in seconds having executed no
+steps at all — the API reports `steps: []` with no failed step, because the job never got
+a runner. A permanent red cross that says nothing about the code is worse than no signal:
+a check that always fails is exactly as uninformative as one that always passes, and it
+teaches you to ignore the one time it means something.
+
+So every job in both workflows is gated on the repository variable `CI_ENABLED`. A job
+whose `if` is false is skipped by the Actions service before a runner is allocated, so it
+burns no minutes and reports `skipped` instead of failing. Re-enable everything by setting
+`CI_ENABLED` to `true` under Settings → Secrets and variables → Actions → Variables.
+Nothing else needs editing, and nothing in the jobs was weakened to make anything pass.
+
+The triggers themselves stay live, and that is deliberate. The first version of this
+change commented out `push` and `pull_request` and left only `workflow_dispatch`, which
+`tests/test_ci_policy.py` rejects — a workflow that does not trigger produces no status at
+all, which reads on a pull request as "nothing to report", and #44 was filed because a PR
+merged with exactly that empty rollup. Removing the triggers is the defect that test exists
+to detect, so it is not available as a way to stop the runs. Leaving `paths:` in place keeps
+the filters declared and keeps that test able to pin them.
 
 Until then the gates are local. The browser and runtime side, which is fast:
 
