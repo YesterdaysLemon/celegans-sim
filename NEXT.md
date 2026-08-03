@@ -1961,6 +1961,152 @@ bending axis would give them somewhere to go. That is a better reason to build i
 different one, and it predicts something the steric argument does not — that the turn
 should deepen when the two stop sharing a channel, whether or not anything leaves the plane.
 
+### And then the surviving argument failed too: the ceiling is mechanical
+
+**Retracting the paragraph above.** It was written before anyone asked the prior question,
+and the prior question settles it the other way. Every experiment on this turn — the current
+sweep, RIV gain, reflex suppression, wave suppression, and the dynamic-range reading that
+survived them — drove the body *through the nervous system*. None asked whether the body can
+make the turn at all.
+
+`tools/moment_ceiling.py` bypasses the nervous system and drives the joints directly.
+`Body.step` takes the bending moment as an array and `Simulation` reads it from one call to
+`Muscles.joint_moment`, so an extra moment can be added there without touching any model
+code. Curvature turns out not to be the scarce thing at all — the statics agree with the
+elastica they are meant to be, and holding the 4.5 /mm an omega needs costs 0.43 µN·mm
+against a `peak_moment` of 2.6, about six times over.
+
+But with the gait running and a moment added on top, over five seeds:
+
+| moment µN·mm | turn deg/s | path mm/s | TWI | κ max |
+|---:|---:|---:|---:|---:|
+| 0.00 | 4.8 ± 3.8 | 0.367 | +0.87 | 12.5 |
+| 0.10 | 38.3 ± 6.7 | 0.331 | +0.89 | 13.2 |
+| **0.15** | **47.5 ± 5.7** | 0.281 | +0.88 | 14.8 |
+| 0.20 | 42.2 ± 10.2 | 0.215 | +0.86 | 19.2 |
+| 0.43 | 18.7 ± 1.3 | 0.050 | +0.63 | 30.1 |
+| 2.60 | 1.6 ± 1.1 | 0.006 | 0.00 | 119.4 |
+
+**It peaks at 47.5 deg/s and comes back down.** A real omega needs about 90. Five profiles
+were tried, and where the moment goes matters more than how much of it there is:
+
+| profile | peak deg/s | at µN·mm | best row set aside, and why |
+|---|---:|---:|---|
+| whole body | **47.5 ± 5.7** | 0.15 | — |
+| phase-locked | 22.8 ± 6.5 | 0.43 | **48.6 ± 3.0** at 0.80, path 0.148 under half free-running |
+| travelling pulse | 25.5 ± 5.1 | 0.30 | 49.5 ± 32.0 at 2.60, spread 65% of mean |
+| anterior third | 21.8 ± 4.5 | 0.15 | — |
+| posterior third | 7.7 ± 0.7 | 0.43 | — |
+
+**The two numbers that matter are 47.5 and 48.6, and they come from opposite strategies.**
+The whole-body profile is the crudest thing available — a constant moment on every joint,
+blind to what the body is doing. The phase-locked one is the opposite: it reads the animal's
+own curvature every step and adds moment only where the body is already bending dorsally,
+saturating at the gait's own amplitude, so it deepens one side of the wave and never fights
+the other. They agree to within their error bars, and the phase-locked figure has the
+tightest spread in the whole sweep at ±3.0, six percent of its mean.
+
+Two unrelated routes arriving at the same wall is much better evidence than one route hitting
+it. That is the result: **about 48 deg/s, a little over half what the animal does, and it does
+not care how the moment is delivered.**
+
+The 48.6 is reported as set aside rather than as the headline because path speed had fallen
+to 40% of free-running, under the 50% floor. That floor is a judgement and a reader may
+reasonably disagree with it — the gait was still alive there, TWI +0.83, and the animal was
+still moving. The tool prints the row and the reason precisely so the judgement is arguable
+instead of invisible; a cap that hides its best excluded cell reads as *nothing better was
+found*, which is a different claim from *something better was found and rejected for this
+reason*.
+
+The posterior third is the control and behaves like one: a moment back there does almost
+nothing, so this is not a measurement that would report a turn from any push at all. The
+anterior third — which is where the omega drive *actually* lands, on RIV, SMD and RMD —
+manages less than half the whole-body figure, which is its own small finding about where the
+circuit is pushing.
+
+The travelling pulse is the one that mattered, because it was the recorded caveat: a real
+omega is not a constant bend held everywhere at once but a deep bend that starts at the head
+and runs down the body, and a ceiling measured only on static profiles would not have tested
+it. It was tested. **It does worse, not better** — 25.5 against 47.5. The kinematically
+realistic profile buys about half of what the crude one does, so the ceiling is not an
+artifact of holding the moment still.
+
+Worth recording how close that came to reading the other way. Before the estimator was fixed,
+turn rate was the difference of the heading trace's two endpoints, which is fine for a steady
+turn and badly wrong for an oscillating one — and a travelling moment swings the heading back
+and forth about its trend. It reported the travelling profile at 49.5 deg/s at full moment,
+beating every static profile and overturning the whole result. The spread was ±32.0 across
+five seeds, on a residual wobble of 79 degrees about its own trend. Two guards now stand
+between that cell and the headline: a row must still be moving at half the free-running path
+speed, and its across-seed spread must be under 40% of its mean. Both are in the tool.
+
+The mechanism is in the definition. Turn rate is path speed times path curvature, and every
+increment of curvature costs speed: by 2.6 µN·mm the animal is bent to κ = 120 and travelling
+0.006 mm/s. The product therefore has a maximum, and that maximum — not any neural quantity —
+is the ceiling. The rows past the peak are excluded from the headline by the tool itself,
+because a turn rate read off a stationary animal is ill-conditioned and its error bars say so.
+
+So the dynamic-range diagnosis is wrong, or at least it is not what binds. **No
+redistribution of drive across motor neurons can buy a turn the body cannot make, and a
+second bending axis is somewhere to put drive that was never the scarce resource.** That is
+now four closed routes plus two closed arguments, and the honest position is that the
+three-dimensional body project has lost both of its stated justifications and should not be
+started on either of them.
+
+What is left to explain is why v·κ peaks where it does. That is a statement about drag
+anisotropy — `K = C_N/C_T` is 40 on agar — and about what a travelling wave does to a body
+that is already bent. The next measurement is the peak's dependence on `K` and on `EI`,
+because if the ceiling moves with the medium then it is hydrodynamic and the model's agar is
+what is capping the turn; if it does not, it is the body's own elasticity. Neither answer is
+a bending axis.
+
+Both recorded caveats are now closed. The travelling profile tested whether the ceiling was
+an artifact of holding the moment still: it is not. The phase-locked profile tested whether
+it was an artifact of driving open-loop, a moment arriving at segments already bending the
+wrong way and fighting them: it is not that either, and closing the loop bought about a
+degree per second over the crudest possible alternative.
+
+### And the ceiling is not a wall, it is a trade
+
+`tools/turn_scaling.py` asked what sets the ~48 deg/s — the medium or the body — by sweeping
+drag anisotropy across the three media and `EI` across a factor of eight. The answer is
+neither, and the reason is more useful than either would have been.
+
+A real omega is 90 deg/s at a 0.22 mm radius, which is the animal travelling **0.35 mm/s
+while turning that tightly**. Both at once is the target. Splitting the measurement into
+those two components:
+
+| arm | radius mm | path mm/s | deg/s |
+|---|---:|---:|---:|
+| agar (K=40) | 0.363 — too wide | 0.278 — **ok** | 43.9 |
+| viscous (K=9) | 0.366 — too wide | 0.204 — slow | 31.9 |
+| buffer (K=1.6) | **0.069 — ok** | 0.027 — slow | 22.1 |
+| EI 0.19 | 0.768 — too wide | 0.128 — slow | 9.6 |
+| EI 0.38 | 1.613 — too wide | 0.049 — slow | 1.7 |
+
+**The geometry is not what is missing.** In buffer the animal drives a 0.069 mm circle,
+*three times tighter* than an omega needs — it just does it at 0.027 mm/s, and a tight circle
+driven that slowly is not a turn. On agar it has the speed and cannot make the radius.
+
+So the medium and the stiffness do not move radius and speed independently; they slide the
+animal along a frontier. Nothing tested has both ends of it at once, and **that trade is the
+ceiling** — not any single parameter, which is why four sweeps through the nervous system and
+two through the mechanics all landed in the same place.
+
+Two cautions attached to it. The buffer end is confounded by a defect this project already
+knows about: gait modulation is far too weak, 0.66 → 0.85 Hz where the animal goes 0.30 →
+1.76, so a buffer animal here is not swimming the way a real one does and its path speed is
+as much symptom as measurement. And `EI` is measured rather than fitted — Fang-Yen et al. put
+it at 9.5e-2 µN·mm² — so that arm was never a knob to turn, only a check that the measured
+value is not accidentally the problem. It is not.
+
+**Which makes gait modulation the next thing, not a bending axis.** It was already on this
+roadmap as a second-tier quantitative gap. It is now on the critical path: the frontier says
+turn depth needs speed *and* tightness together, buffer shows the body can be tight, and the
+reason it is slow there is the same broken medium response that makes the animal fail to swim.
+Fix what the medium does to the gait and the frontier moves as a whole — which is the only
+thing that has been shown to move it.
+
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
 `tools/scorecard.py` on 2026-07-30 measured five seeds from the same configuration:

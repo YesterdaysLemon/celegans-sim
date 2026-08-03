@@ -799,6 +799,8 @@ tools/smoke_server.mjs  the ?server transport, against a live Python model
 tools/check_cache_headers.mjs  every served asset has a deliberate cache policy
 tools/audit.py          break each check on purpose and see which one notices
 tools/self_contact.py   does the body pass through itself, and when would it start
+tools/moment_ceiling.py can the mechanics make the turn the circuit cannot? (no)
+tools/turn_scaling.py   what sets that ceiling: the medium, or the body? (neither)
 worm/egglaying.py       vulval muscle, the uterus, and the resource that clusters it
 tools/egglaying.py      rate, retention, the HSN and serotonin phenotypes
 wasm/egglaying.mjs      the hour-long clustering runs, on the runtime
