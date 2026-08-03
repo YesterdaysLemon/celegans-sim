@@ -357,6 +357,20 @@ export function assay(E, ids, steps, opts = {}) {
   const px = x0.slice(), py = y0.slice();
   const drag = ids.map(() => 0.0);
   const path = ids.map(() => 0.0);
+  // First invariant an animal broke, 0 for those that never did. Sampled per chunk rather
+  // than per step: the check is a few hundred operations against a chunk that is hundreds
+  // of steps, and an animal that has stopped doing physics does not recover.
+  //
+  // A real engine that cannot check invariants is an error, not a reason to skip them
+  // quietly -- a guard that disables itself when it goes missing is worse than no guard,
+  // because the run still looks guarded. The scripted stand-in in energy-fitness.test.mjs
+  // is the legitimate exception and passes `invariants: false` to say so.
+  const guard = opts.invariants ?? true;
+  if (guard && typeof E.checkInvariants !== 'function') {
+    throw new Error('this engine cannot checkInvariants; rebuild the runtime, or pass ' +
+                    'invariants: false if it is deliberately a stand-in');
+  }
+  const diverged = ids.map(() => 0);
   for (let done = 0; done < steps; done += chunk) {
     const n = Math.min(chunk, steps - done);
     E.stepAll(n);
@@ -369,6 +383,7 @@ export function assay(E, ids, steps, opts = {}) {
       drag[i] += (d / h) ** 2 * h;
       path[i] += d;
       px[i] = x; py[i] = y;
+      if (guard && diverged[i] === 0) diverged[i] = E.checkInvariants(ids[i]);
     }
   }
   return ids.map((id, i) => ({
@@ -378,6 +393,7 @@ export function assay(E, ids, steps, opts = {}) {
     drag: drag[i],
     path: path[i],
     moved: Math.hypot(E.getX(id) - x0[i], E.getY(id) - y0[i]),
+    diverged: diverged[i],
   }));
 }
 
@@ -396,6 +412,13 @@ export function assay(E, ids, steps, opts = {}) {
  * wrong normaliser, 9x -- so "the division is load-bearing" is checked rather than claimed.
  */
 export function fitness(rec, opts = {}) {
+  // An animal that stopped doing physics scores nothing, whatever it accumulated on the
+  // way out. This is checked before the mode, because it is not a statement about which
+  // measure is in use -- a diverged animal's `ingested` and `drag` are both meaningless,
+  // and #38's mutant reported 10^20 mm of displacement without raising anything at all.
+  // `diverged` is absent on records built before this existed, which read as 0 and score
+  // normally; that is deliberate, so an old record is not silently reclassified as lethal.
+  if (rec.diverged) return 0;
   const mode = opts.mode ?? FITNESS;
   if (mode === 'eaten') return rec.eaten;
   if (mode !== 'energy') {

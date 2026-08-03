@@ -162,6 +162,42 @@ declare namespace __AdaptedExports {
    * @param steps `i32`
    */
   export function stepBodyOnly(w: number, dt: number, steps: number): void;
+  /** assembly/index/INVARIANT_OK */
+  export const INVARIANT_OK: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/INVARIANT_ANGLES_NOT_FINITE */
+  export const INVARIANT_ANGLES_NOT_FINITE: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/INVARIANT_POTENTIALS_NOT_FINITE */
+  export const INVARIANT_POTENTIALS_NOT_FINITE: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/INVARIANT_CURVATURE_OVER_LIMIT */
+  export const INVARIANT_CURVATURE_OVER_LIMIT: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/INVARIANT_NODES_NOT_FINITE */
+  export const INVARIANT_NODES_NOT_FINITE: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/INVARIANT_LEFT_THE_DISH */
+  export const INVARIANT_LEFT_THE_DISH: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /**
+   * assembly/index/checkInvariants
+   * @param w `i32`
+   * @returns `i32`
+   */
+  export function checkInvariants(w: number): number;
   /**
    * assembly/index/setNoise
    * @param on `i32`

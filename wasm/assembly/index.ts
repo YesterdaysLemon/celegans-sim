@@ -1919,6 +1919,67 @@ export function stepBodyOnly(w: i32, dt: f64, steps: i32): void {
   for (let i = 0; i < steps; i++) { wm.contact(); wm.stepBody(dt); wm.t += dt; }
 }
 
+/* Is this animal still doing physics?
+ *
+ * Mirrors Simulation.check_invariants. Returns 0 when the animal is fine and a code
+ * naming the first failed check otherwise, rather than trapping: an evolutionary
+ * evaluator wants to score a diverged candidate as zero and carry on, not lose its
+ * worker. The codes are stable and are what INVARIANT_* below name.
+ *
+ * WHY THIS EXISTS HERE. Python has two guards and the runtime had neither. `Params.
+ * validate` rejects a nonphysical parameter set at construction -- body.EI <= 0 is an
+ * InvalidGenome, which is what closed #38 -- and `check_invariants` catches an animal that
+ * was legal on paper and stopped being physical while running. Only the first is a
+ * statement about parameters, and only the second can catch what actually happens: EI =
+ * 0.0005 is a perfectly valid positive stiffness, and it folds the body to 274 /mm against
+ * a 150.8 /mm link limit within a second. Evolution runs here, on the runtime, so the
+ * detector has to be here too.
+ *
+ * WHAT IS NOT PORTED, AND WHY. Python also checks that its smoothed path speed and its
+ * windowed net speed are finite and that path speed stays under a ceiling. Both are
+ * harness bookkeeping -- an exponential average and a centroid history deque -- that the
+ * runtime does not keep, and inventing them here would be inventing state the model does
+ * not have. It also checks `body.qdot`, which the runtime solves and applies inline rather
+ * than storing. The escape those speed checks were guarding against is caught directly by
+ * the dish test below: an animal reporting 10^20 mm of displacement is a long way outside a
+ * 45 mm plate. The difference is that it is caught by where the animal is rather than by
+ * how fast it got there, so it can be one check later. Anything relying on the two guards
+ * agreeing exactly should compare only the codes both sides can produce.
+ */
+export const INVARIANT_OK: i32 = 0;
+export const INVARIANT_ANGLES_NOT_FINITE: i32 = 1;
+export const INVARIANT_POTENTIALS_NOT_FINITE: i32 = 2;
+export const INVARIANT_CURVATURE_OVER_LIMIT: i32 = 3;
+export const INVARIANT_NODES_NOT_FINITE: i32 = 4;
+export const INVARIANT_LEFT_THE_DISH: i32 = 5;
+
+export function checkInvariants(w: i32): i32 {
+  const wm = byId(w);
+  const n = G.N_LINKS, l = G.BODY_L;
+
+  for (let i = 0; i < n; i++) {
+    if (!isFinite(unchecked(wm.theta[i]))) return INVARIANT_ANGLES_NOT_FINITE;
+  }
+  for (let i = 0; i < G.N_NEURONS; i++) {
+    if (!isFinite(unchecked(wm.V[i]))) return INVARIANT_POTENTIALS_NOT_FINITE;
+  }
+
+  // Computed from theta rather than read out of `kappa`, which is only as fresh as the
+  // last thing that refreshed it. A guard reading a stale cache is not a guard.
+  const limit = Math.PI / l;
+  for (let j = 0; j < n - 1; j++) {
+    const k = (unchecked(wm.theta[j + 1]) - unchecked(wm.theta[j])) / l;
+    if (!isFinite(k) || Math.abs(k) >= limit) return INVARIANT_CURVATURE_OVER_LIMIT;
+  }
+
+  for (let i = 0; i <= n; i++) {
+    const x = unchecked(wm.nodesX[i]), y = unchecked(wm.nodesY[i]);
+    if (!isFinite(x) || !isFinite(y)) return INVARIANT_NODES_NOT_FINITE;
+    if (Math.sqrt(x * x + y * y) > world.extent) return INVARIANT_LEFT_THE_DISH;
+  }
+  return INVARIANT_OK;
+}
+
 export function setNoise(on: i32): void { noiseOn = on != 0; }
 // One animal, and the plate goes with it -- this is the conformance path, where there is
 // only ever one worm and it has to match a Python Simulation exactly. Do not use it to
