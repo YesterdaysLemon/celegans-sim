@@ -55,6 +55,11 @@ class Runner:
 
     def __init__(self, params: Params | None = None, seed: int = 0):
         self.params = params or Params()
+        # The medium the dish is filled with, which outlives any one Simulation. `params`
+        # already carries a medium -- whatever `run.py --medium` chose -- so read it back
+        # rather than assuming agar, or the first reset would discard the command line.
+        self.medium = next((n for n, m in MEDIA.items()
+                            if m is self.params.medium), "agar")
         self.seed = seed
         self.sim = Simulation(self.params, seed=seed)
         self.lock = threading.Lock()
@@ -119,6 +124,14 @@ class Runner:
             elif kind == "medium":
                 name = str(msg.get("value", "agar"))
                 if name in MEDIA:
+                    # Recorded on the session, not only on the simulation it happens to be
+                    # holding. `reset` below builds a new Simulation, and it used to build
+                    # it from `self.params`, which this branch never touched -- so a reset
+                    # silently put the animal back on agar while the medium control still
+                    # read "buffer". A dish whose physics disagrees with its own label is
+                    # worse than one that is simply wrong, because nothing on screen says
+                    # so. See #47.
+                    self.medium = name
                     self.sim.body.medium = MEDIA[name]
                     self.sim.p = self.sim.p.with_medium(name)
             elif kind == "poke":
@@ -126,7 +139,9 @@ class Runner:
                               float(msg.get("strength", 1.0)))
             elif kind == "reset":
                 self.seed = int(msg.get("seed", self.seed + 1))
-                self.sim = Simulation(self.params, seed=self.seed)
+                # Carries the medium across. A reset re-seeds the animal and re-lays the
+                # plate; it is not a statement about what the dish is full of.
+                self.sim = Simulation(self.params.with_medium(self.medium), seed=self.seed)
                 self.ablated.clear()
             elif kind == "drop_food":
                 self.sim.world.add_food_patch(
