@@ -2066,13 +2066,46 @@ it was an artifact of driving open-loop, a moment arriving at segments already b
 wrong way and fighting them: it is not that either, and closing the loop bought about a
 degree per second over the crudest possible alternative.
 
-What is genuinely left is the question the number itself poses. Turn rate is v·κ, curvature
-is cheap, and speed is what gets spent — so the ceiling is a statement about how much forward
-progress this body loses per unit of bend. That is drag anisotropy, `K = c_normal /
-c_tangential`, which is 40 on agar and 1.58 in buffer. **The measurement is to sweep the
-medium and watch where the peak goes.** If the ceiling rises in buffer, it is hydrodynamic
-and the model's agar is what caps the turn; if it does not move, it is the body's own
-elasticity and `EI` is the parameter. Either answer is cheap, and neither is a bending axis.
+### And the ceiling is not a wall, it is a trade
+
+`tools/turn_scaling.py` asked what sets the ~48 deg/s — the medium or the body — by sweeping
+drag anisotropy across the three media and `EI` across a factor of eight. The answer is
+neither, and the reason is more useful than either would have been.
+
+A real omega is 90 deg/s at a 0.22 mm radius, which is the animal travelling **0.35 mm/s
+while turning that tightly**. Both at once is the target. Splitting the measurement into
+those two components:
+
+| arm | radius mm | path mm/s | deg/s |
+|---|---:|---:|---:|
+| agar (K=40) | 0.363 — too wide | 0.278 — **ok** | 43.9 |
+| viscous (K=9) | 0.366 — too wide | 0.204 — slow | 31.9 |
+| buffer (K=1.6) | **0.069 — ok** | 0.027 — slow | 22.1 |
+| EI 0.19 | 0.768 — too wide | 0.128 — slow | 9.6 |
+| EI 0.38 | 1.613 — too wide | 0.049 — slow | 1.7 |
+
+**The geometry is not what is missing.** In buffer the animal drives a 0.069 mm circle,
+*three times tighter* than an omega needs — it just does it at 0.027 mm/s, and a tight circle
+driven that slowly is not a turn. On agar it has the speed and cannot make the radius.
+
+So the medium and the stiffness do not move radius and speed independently; they slide the
+animal along a frontier. Nothing tested has both ends of it at once, and **that trade is the
+ceiling** — not any single parameter, which is why four sweeps through the nervous system and
+two through the mechanics all landed in the same place.
+
+Two cautions attached to it. The buffer end is confounded by a defect this project already
+knows about: gait modulation is far too weak, 0.66 → 0.85 Hz where the animal goes 0.30 →
+1.76, so a buffer animal here is not swimming the way a real one does and its path speed is
+as much symptom as measurement. And `EI` is measured rather than fitted — Fang-Yen et al. put
+it at 9.5e-2 µN·mm² — so that arm was never a knob to turn, only a check that the measured
+value is not accidentally the problem. It is not.
+
+**Which makes gait modulation the next thing, not a bending axis.** It was already on this
+roadmap as a second-tier quantitative gap. It is now on the critical path: the frontier says
+turn depth needs speed *and* tightness together, buffer shows the body can be tight, and the
+reason it is slow there is the same broken medium response that makes the animal fail to swim.
+Fix what the medium does to the gait and the frontier moves as a whole — which is the only
+thing that has been shown to move it.
 
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
