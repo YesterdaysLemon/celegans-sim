@@ -1976,20 +1976,48 @@ code. Curvature turns out not to be the scarce thing at all — the statics agre
 elastica they are meant to be, and holding the 4.5 /mm an omega needs costs 0.43 µN·mm
 against a `peak_moment` of 2.6, about six times over.
 
-But with the gait running and a constant moment added on top, across three seeds:
+But with the gait running and a moment added on top, over five seeds:
 
 | moment µN·mm | turn deg/s | path mm/s | TWI | κ max |
 |---:|---:|---:|---:|---:|
-| 0.00 | 5.4 ± 4.0 | 0.348 | +0.85 | 12.6 |
-| 0.10 | 39.0 ± 5.3 | 0.327 | +0.89 | 13.0 |
-| **0.15** | **49.8 ± 2.1** | 0.278 | +0.88 | 14.7 |
-| 0.20 | 42.3 ± 6.5 | 0.208 | +0.85 | 19.7 |
-| 0.43 | 22.6 ± 2.3 | 0.050 | +0.63 | 30.2 |
-| 2.60 | — | 0.006 | +0.10 | 119.9 |
+| 0.00 | 4.8 ± 3.8 | 0.367 | +0.87 | 12.5 |
+| 0.10 | 38.3 ± 6.7 | 0.331 | +0.89 | 13.2 |
+| **0.15** | **47.5 ± 5.7** | 0.281 | +0.88 | 14.8 |
+| 0.20 | 42.2 ± 10.2 | 0.215 | +0.86 | 19.2 |
+| 0.43 | 18.7 ± 1.3 | 0.050 | +0.63 | 30.1 |
+| 2.60 | 1.6 ± 1.1 | 0.006 | 0.00 | 119.4 |
 
-**It peaks at 49.8 deg/s and comes back down.** Applying the moment over the anterior third
-instead — where the omega drive actually lands, on RIV, SMD and RMD — peaks at 23.6 deg/s,
-less than half. A real omega needs about 90.
+**It peaks at 47.5 deg/s and comes back down.** A real omega needs about 90. Four profiles
+were tried, and where the moment goes matters more than how much of it there is:
+
+| profile | peak deg/s | at µN·mm |
+|---|---:|---:|
+| whole body | **47.5 ± 5.7** | 0.15 |
+| travelling pulse | 25.5 ± 5.1 | 0.30 |
+| anterior third | 21.8 ± 4.5 | 0.15 |
+| posterior third | 7.7 ± 0.7 | 0.43 |
+
+The posterior third is the control and behaves like one: a moment back there does almost
+nothing, so this is not a measurement that would report a turn from any push at all. The
+anterior third — which is where the omega drive *actually* lands, on RIV, SMD and RMD —
+manages less than half the whole-body figure, which is its own small finding about where the
+circuit is pushing.
+
+The travelling pulse is the one that mattered, because it was the recorded caveat: a real
+omega is not a constant bend held everywhere at once but a deep bend that starts at the head
+and runs down the body, and a ceiling measured only on static profiles would not have tested
+it. It was tested. **It does worse, not better** — 25.5 against 47.5. The kinematically
+realistic profile buys about half of what the crude one does, so the ceiling is not an
+artifact of holding the moment still.
+
+Worth recording how close that came to reading the other way. Before the estimator was fixed,
+turn rate was the difference of the heading trace's two endpoints, which is fine for a steady
+turn and badly wrong for an oscillating one — and a travelling moment swings the heading back
+and forth about its trend. It reported the travelling profile at 49.5 deg/s at full moment,
+beating every static profile and overturning the whole result. The spread was ±32.0 across
+five seeds, on a residual wobble of 79 degrees about its own trend. Two guards now stand
+between that cell and the headline: a row must still be moving at half the free-running path
+speed, and its across-seed spread must be under 40% of its mean. Both are in the tool.
 
 The mechanism is in the definition. Turn rate is path speed times path curvature, and every
 increment of curvature costs speed: by 2.6 µN·mm the animal is bent to κ = 120 and travelling
@@ -2011,11 +2039,12 @@ because if the ceiling moves with the medium then it is hydrodynamic and the mod
 what is capping the turn; if it does not, it is the body's own elasticity. Neither answer is
 a bending axis.
 
-One caveat, recorded because it is the way this could still be wrong: the profiles tested are
-constant in time, uniform or anterior-third. A real omega is neither, and a moment that
-*travels* — or one shaped to bend the body where the wave is not — has not been ruled out.
-That is a much cheaper thing to test than a three-dimensional body, and it should be tested
-first.
+The caveat that remains, now that the travelling one is closed: all four profiles are
+*open-loop*. They are added to the muscles' own moment without regard to where the body
+already is, so a pulse can arrive at a segment that is bending the wrong way and fight it. A
+profile phase-locked to the animal's own wave — pushing where the wave is already going —
+has not been tried, and it is the last cheap thing that could raise the ceiling. It is still
+far cheaper than a three-dimensional body, and it should come first.
 
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 

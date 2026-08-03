@@ -32,9 +32,14 @@ known failure mode is not a shallow turn but a *frozen* one -- driving the head 
 120 pA gives 1.8 deg/s at 0.060 mm/s, an animal bent double and going nowhere. A moment
 that buys turn rate by stopping the worm has bought nothing.
 
-Two profiles, because where the moment is applied is a real question and not a detail. The
-whole body is the coil `params.py` describes; the anterior third is where the omega drive
-actually lands, on RIV, SMD and RMD.
+Four profiles, because where and *when* the moment is applied is a real question and not a
+detail. The whole body is the coil `params.py` describes; the anterior third is where the
+omega drive actually lands, on RIV, SMD and RMD; the posterior third is the control that
+says whether position matters at all. The fourth is the one that can overturn the other
+three -- a real omega is not a constant bend held everywhere at once but a deep bend that
+starts at the head and runs down the body, so a pulse travelling head to tail in the two
+seconds a turn takes is the closest thing here to the real kinematics. A ceiling measured
+only on static profiles would not have tested it.
 
 Run:  PYTHONPATH=. .venv/bin/python tools/moment_ceiling.py
 """
@@ -53,7 +58,7 @@ from worm.params import Params
 
 WARMUP = 6.0
 HOLD = 10.0
-SEEDS = (0, 1, 3)
+SEEDS = (0, 1, 3, 5, 7)
 
 # uN*mm. 0.43 is the analytic cost of holding 4.5 /mm at midbody against the body's own
 # elasticity; 2.6 is peak_moment, the most one side of the body can exert at full
@@ -66,13 +71,35 @@ TARGET_RATE = 90.0
 TARGET_KAPPA = 4.5
 
 
-def profile(p, kind: str, moment: float) -> np.ndarray:
-    """The extra joint moment, in uN*mm, as a function of where it is applied."""
-    m = np.zeros(p.n_links - 1)
+KINDS = ("whole body", "anterior", "posterior", "travelling")
+
+# Width of the travelling pulse, as a fraction of body length, and how long it takes to run
+# head to tail. Two seconds is the duration of a real omega, so the pulse crosses the animal
+# exactly once per turn.
+PULSE_WIDTH = 0.15
+PULSE_PERIOD = 2.0
+
+
+def profile(p, kind: str, moment: float, t: float = 0.0) -> np.ndarray:
+    """The extra joint moment in uN*mm: where it is applied, and when.
+
+    Three static shapes and one travelling one. The travelling pulse is the important
+    case -- a real omega is not a constant bend held everywhere at once, it is a deep bend
+    that starts at the head and runs down the body, and a ceiling measured only on static
+    profiles would not have tested that.
+    """
+    n = p.n_links - 1
+    s = (np.arange(n) + 0.5) / n
+    m = np.zeros(n)
     if kind == "whole body":
         m[:] = moment
     elif kind == "anterior":
-        m[: (p.n_links - 1) // 3] = moment
+        m[: n // 3] = moment
+    elif kind == "posterior":
+        m[-(n // 3):] = moment
+    elif kind == "travelling":
+        centre = (t % PULSE_PERIOD) / PULSE_PERIOD
+        m[:] = moment * np.exp(-0.5 * ((s - centre) / PULSE_WIDTH) ** 2)
     else:
         raise ValueError(kind)
     return m
@@ -99,10 +126,10 @@ def _job(job):
     sim.run(WARMUP)
 
     # Add the moment where the muscles hand theirs over. Nothing in worm/ is modified; the
-    # simulation reads joint_moment() once per step and gets the sum.
-    extra = profile(p.body, kind, moment)
+    # simulation reads joint_moment() once per step and gets the sum. Evaluated per step
+    # rather than once, so a travelling profile can move.
     base_fn = sim.muscles.joint_moment
-    sim.muscles.joint_moment = lambda: base_fn() + extra
+    sim.muscles.joint_moment = lambda: base_fn() + profile(p.body, kind, moment, sim.t)
 
     dt = sim.dt
     every = max(1, int(round(0.02 / dt)))
@@ -127,8 +154,20 @@ def _job(job):
     net = float(np.linalg.norm(sim.body.centroid() - start))
     k = np.abs(kappa)
 
+    # Turn rate as the slope of a least-squares line through the heading trace, not the
+    # difference of its two endpoints. Endpoint differencing is fine for a steady turn and
+    # badly wrong for an oscillating one: a travelling moment swings the heading back and
+    # forth about its trend, so the two endpoints land wherever the last swing left them.
+    # That showed up as a +-20 deg/s error bar on a 43 deg/s "peak" -- noise wearing the
+    # shape of a result. The slope uses every sample and is unbiased by where the trace
+    # happens to stop.
+    ts = np.arange(h.size) * (every * dt)
+    slope = float(np.polyfit(ts, h, 1)[0]) if h.size > 2 else 0.0
+    resid = float(np.std(h - np.polyval(np.polyfit(ts, h, 1), ts))) if h.size > 2 else 0.0
+
     return dict(kind=kind, moment=moment, seed=seed,
-                turn_rate=float(np.degrees(h[-1] - h[0]) / HOLD),
+                turn_rate=float(np.degrees(slope)),
+                wobble=float(np.degrees(resid)),
                 path_speed=path / HOLD,
                 net_path=net / max(path, 1e-9),
                 twi=float(travelling_index(kappa)),
@@ -167,8 +206,7 @@ def main() -> int:
     print("  muscle has about %.0fx that in hand. Curvature is not the scarce thing."
           % (p.muscle.peak_moment / need))
 
-    jobs = [(k, m, s) for k in ("whole body", "anterior")
-            for m in MOMENTS for s in args.seeds]
+    jobs = [(k, m, s) for k in KINDS for m in MOMENTS for s in args.seeds]
     print()
     print("  IN THE LOOP -- the real gait, plus a constant moment held for %.0f s" % HOLD)
     rows = pooled(_job, jobs, procs=args.procs)
@@ -177,43 +215,54 @@ def main() -> int:
         return 1
 
     best = {}
-    for kind in ("whole body", "anterior"):
+    for kind in KINDS:
         print()
         print("  %s" % kind)
-        print("  %-10s %14s %13s %10s %10s %10s"
-              % ("moment", "turn deg/s", "path mm/s", "net/path", "TWI", "kappa max"))
+        print("  %-10s %14s %13s %9s %8s %8s %9s"
+              % ("moment", "turn deg/s", "path mm/s", "wobble", "net/path", "TWI", "kappa max"))
         for m in MOMENTS:
             g = [r for r in rows if r["kind"] == kind and r["moment"] == m]
             if not g:
                 continue
             rate = np.array([abs(r["turn_rate"]) for r in g])
             spd = np.array([r["path_speed"] for r in g])
-            print("  %-10.2f %7.1f +- %-5.1f %6.3f +- %.3f %10.3f %10.2f %10.2f"
+            print("  %-10.2f %7.1f +- %-5.1f %6.3f +- %.3f %9.1f %8.3f %8.2f %9.2f"
                   % (m, rate.mean(), rate.std(), spd.mean(), spd.std(),
+                     np.mean([r["wobble"] for r in g]),
                      np.mean([r["net_path"] for r in g]),
                      np.mean([r["twi"] for r in g]),
                      np.mean([r["k_max"] for r in g])))
             best.setdefault(kind, []).append(
-                (rate.mean(), spd.mean(), m, np.mean([r["k_max"] for r in g])))
+                (rate.mean(), spd.mean(), m, np.mean([r["k_max"] for r in g]), rate.std()))
 
     print()
     print("  WHAT THIS DECIDES")
 
+    # Two guards on what may be called the peak, both earned rather than chosen.
+    #
     # A turn rate read off a stationary animal is not a turn rate: body_direction is
-    # ill-conditioned once the worm is bent double and travelling 0.006 mm/s, and those
-    # rows carry error bars to match. Only rows still moving at half the free-running path
-    # speed are eligible to be the peak, so the headline cannot come from that noise.
+    # ill-conditioned once the worm is bent double and travelling 0.006 mm/s. So a row must
+    # still be moving at half the free-running path speed.
+    #
+    # And a peak that does not reproduce across seeds is not a ceiling. The travelling
+    # profile at full moment reported 49.5 deg/s with a standard deviation of 32.0 and a
+    # residual wobble of 79 degrees about its own trend -- a number that would have been
+    # quoted as beating every static profile, from five runs that disagreed with each other
+    # by more than the effect. So a row must also have a spread under 40% of its mean.
+    # Without this the tool's headline came from its noisiest cell.
     def live(vals):
         base = [v[1] for v in vals if v[2] == 0.0][0]
-        return [v for v in vals if v[1] >= 0.5 * base] or list(vals)
+        ok = [v for v in vals
+              if v[1] >= 0.5 * base and v[4] <= 0.4 * max(v[0], 1e-9)]
+        return ok or list(vals)
 
     peak = max(max(live(v)) for v in best.values())
     for kind, vals in best.items():
-        rate, spd, m, kmax = max(live(vals))
+        rate, spd, m, kmax, sd = max(live(vals))
         base_spd = [v[1] for v in vals if v[2] == 0.0][0]
         top_spd = [v[1] for v in vals if v[2] == max(MOMENTS)][0]
-        print("  %-11s peaks at %5.1f deg/s with %.2f uN mm (path %.3f mm/s, kappa %.0f),"
-              % (kind, rate, m, spd, kmax))
+        print("  %-11s peaks at %5.1f +- %.1f deg/s with %.2f uN mm (path %.3f, kappa %.0f),"
+              % (kind, rate, sd, m, spd, kmax))
         print("  %-11s then falls away: path speed %.3f -> %.3f mm/s by %.1f uN mm."
               % ("", base_spd, top_spd, max(MOMENTS)))
 
