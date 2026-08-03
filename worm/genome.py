@@ -39,7 +39,9 @@ class Bound(NamedTuple):
 # ranges; the remaining gains are bounded around the shipped operating point. Crucially,
 # this is an allow-list. Measured constants (C_m, reversal potentials, drag, length, EI),
 # structural/discrete fields, and known dead parameters such as world.ingestion_rate,
-# world.food_diffusion_scale, world.diffusion_oxygen, and body.dt are absent.
+# world.food_diffusion_scale, and body.dt are absent. (world.diffusion_oxygen was on that
+# list; #48 deleted the parameter rather than leaving a dead one to name -- see the static
+# oxygen note in WorldParams.)
 BOUNDS: Mapping[str, Bound] = MappingProxyType({
     # Locomotion: how hard the reflexes drive the body.
     "sensory.proprio_gain": Bound(8.0, 80.0, 5.0),

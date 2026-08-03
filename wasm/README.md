@@ -286,7 +286,17 @@ Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19
 shared between animals, and so is the runtime's per-step scratch, so a second worm
 duplicates only state. State is not small: 210,936 of those bytes are `headHist`, the
 560-sample delay line behind `head_delay = 0.28 s`, and the other 28 kB is everything else
-the animal remembers. A population of 100 is 22.8 MB, on top of a ~2.6 MB shared `World`.
+the animal remembers. A population of 100 is 22.8 MB, on top of a shared `World` whose six
+256² f64 grids — food, attractant, repellent, oxygen, the diffusion scratch, and the
+attractant source added by #48 — come to 3,145,728 bytes, plus 606,208 for the egg record.
+
+**A bacterial lawn is 1,048,576 bytes**, which since #48 is not a rounding either. A patch
+caches the attractant and oxygen shapes it sources, so that eating it can scale them
+instead of recomputing 65,536 `Math.exp` calls per patch fifty times a second — see
+`addPatch`. A lawn is therefore four animals. The plate is capped at
+`MAX_FOOD_PATCHES = 16`; `addFood` refuses past that and counts the refusal, which
+`foodPatchCount()` and `foodPatchesRefused()` report so the viewer does not paint a marker
+for a lawn the plate declined.
 
 That figure is measured rather than estimated. `node wasm/memory.mjs` reads it off the
 allocator's own per-worm stride through `ptrV`, cross-checks it against the summed array

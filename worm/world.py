@@ -12,7 +12,51 @@ hours to establish over centimetres. Rather than pretend otherwise, the fields a
 initialised to the steady-state profile of the diffusion-decay equation -- what the plate
 looks like some hours after it was poured -- and then evolved forward with the true, slow
 transport coefficients.
-"""
+
+WHAT THE STANDING BACTERIA SOURCE, AND WHY IT SHRINKS AS THEY ARE EATEN
+----------------------------------------------------------------------
+
+`add_food_patch` writes the attractant as the steady state of ``D grad^2 c = lambda c``
+away from a finite source, and the oxygen depression as the same solution with oxygen's own
+length scale. **That equation is linear in the source strength.** A lawn with half its
+bacteria left is half the source, so it establishes half the attractant and half the oxygen
+depression with an unchanged spatial shape. That is not a new model bolted on; it is the
+linearity of the solution these two fields already are.
+
+So each patch keeps its fixed spatial *shape* -- the same ``exp(-max(d-r,0)/ls)`` skirt for
+the attractant and ``o2_depth * density * exp(-max(d-r,0)/o2_length_scale)`` for oxygen
+that used to be written straight into the fields and then never touched again -- and that
+shape is scaled by ``f_p``, the fraction of patch p's own bacteria still on the plate.
+
+Oxygen is not transported at all here (see `oxygen`), so it is simply rebuilt as
+``sum_p f_p * shape_p`` whenever some ``f_p`` moves. The attractant diffuses and decays, so
+it is *relaxed* towards the currently sourced profile rather than overwritten::
+
+    c += field_dt * (D * lap(c) + decay * (sum_p f_p * shape_p - c))
+
+which is the old ``c += field_dt * (D * lap(c) - decay * c)`` with a source term that puts
+back exactly what the standing bacteria emit. Two properties follow, and they are the
+reason for relaxing rather than overwriting:
+
+  * with an intact lawn (every ``f_p == 1``) the source equals the field, the bracket's two
+    decay terms cancel to a *bitwise* zero, and the step reduces to precisely the diffusion
+    term that was there before any of this existed. Measured in
+    ``tests/test_world_depletion.py``: residual 0.0e+00 over all 65,536 cells, so an
+    uneaten plate behaves as it always did to the last bit.
+  * on a plate with no food there are no patches, the source is all zeros, and
+    ``decay * (0 - c)`` is bit-identical to ``-decay * c`` in IEEE arithmetic, so an empty
+    dish steps to the same bits it did before. That is what leaves the mechanics
+    conformance case and every bare-agar result untouched.
+
+The arithmetic is written as ``decay * (source - c)`` rather than the algebraically equal
+``- decay * c + decay * source``. The latter evaluates left to right as
+``(D*lap - decay*c) + decay*source``, which subtracts a quantity comparable to ``D*lap``
+(measured: max ``|D*lap|`` 2.281e-03 against max ``|decay*c|`` 1.280e-03 on the
+conformance plate) and then adds it back. On this plate the two forms happen to agree to
+0.0 -- the operands are close enough that the subtraction is exact -- but that is a
+property of these numbers and not of the expression, and it stops being true as soon as a
+lawn is authored with a length scale that makes the skirt flat. Factoring the two decay
+terms together makes the cancellation exact by construction rather than by luck."""
 
 from __future__ import annotations
 
@@ -22,6 +66,12 @@ import numpy as np
 
 from .errors import DivergentSimulation
 from .params import WorldParams
+
+# How many bacterial lawns one plate may hold. Kept in step with MAX_FOOD_PATCHES in
+# wasm/assembly/index.ts, where the argument for having a ceiling at all is written out: a
+# patch caches two 65,536-cell field shapes, 1,048,576 bytes, and the viewer's drop-food
+# button is a caller that can be pressed arbitrarily often.
+MAX_FOOD_PATCHES = 16
 
 
 class World:
@@ -42,10 +92,30 @@ class World:
         self.attractant = np.zeros((g, g))
         self.repellent = np.zeros((g, g))
         self.food = np.zeros((g, g))
-        # How far the local oxygen is drawn below ambient by respiring bacteria. Held as
-        # its own field rather than derived from the food, for the reason in `oxygen`.
+        # How far the local oxygen is drawn below ambient by respiring bacteria. Rebuilt
+        # from the standing bacterial mass every time that mass changes -- see the module
+        # docstring and `_refresh_sources` -- rather than derived pointwise from the food
+        # density, for the reason in `oxygen`.
         self.o2_deficit = np.zeros((g, g))
         self.food_initial_total = 0.0
+
+        # What the standing bacteria are emitting right now: sum_p f_p * shape_p. Zero
+        # until a lawn is added, which is what makes an empty dish step to the same bits it
+        # did before this field existed.
+        self._att_source = np.zeros((g, g))
+        # Per patch, in the order the patches were added. See `add_food_patch` for what
+        # each of these is and `_refresh_sources` for the update.
+        self._patch_att = []     # (g, g) attractant shape, dish-masked, cached once
+        self._patch_o2 = []      # (g, g) oxygen-deficit shape, dish-masked, cached once
+        self._patch_box = []     # (i0, i1, j0, j1) index box bounding this patch's lawn
+        self._patch_weight = []  # this patch's own deposited density over that box
+        self._patch_food0 = []   # weighted food in the box when the plate was built
+        self._patch_frac = []    # f_p as of the last source rebuild
+        # Lawns the plate turned away, because it is already carrying MAX_FOOD_PATCHES.
+        # Counted rather than assumed to be zero, on the same argument as `eggs_dropped` in
+        # the runtime: the number that matters is whether any were refused, not how likely
+        # it was that one would be.
+        self.food_patches_refused = 0
 
         self.patches = []        # bookkeeping for the viewer
         self.obstacles = []      # (x, y, radius)
@@ -63,6 +133,14 @@ class World:
                        density: float = 1.0, attractant: float = 1.0,
                        length_scale: float = 9.0) -> None:
         """A bacterial lawn, with the chemical gradient it has had time to establish."""
+        # The same ceiling the runtime enforces, for the same reason and by the same rule:
+        # a patch now carries two cached field shapes, so lawns are not free and the plate
+        # refuses rather than growing without bound. Refusing here as well is what keeps the
+        # two implementations describing the same dish; a reference model that quietly
+        # accepted a seventeenth lawn would diverge from the runtime and blame the runtime.
+        if len(self._patch_att) >= MAX_FOOD_PATCHES:
+            self.food_patches_refused += 1
+            return
         d = np.hypot(self.gx - x, self.gy - y)
         # Full density out to three quarters of the nominal radius, then a smooth edge.
         # The arguments to _smoothstep were transposed here, which inverted every lawn in
@@ -72,11 +150,24 @@ class World:
         # depression was inverted too, and the aerotaxis assay was scoring an animal
         # against a gradient that pointed the wrong way.
         lawn = density * _smoothstep(radius * 0.75, radius, d)
+        # What every existing patch's weighted footprint holds *before* this lawn lands, so
+        # that the new bacteria can be added to their denominators rather than silently
+        # re-blessing a half-eaten plate as full. See the note on rebasing below.
+        before = [self._patch_food(k) for k in range(len(self._patch_att))]
         self.food += lawn
+        self.patches.append({"x": x, "y": y, "r": radius, "kind": "food"})
+        self.food *= self.inside
         # Steady state of D grad^2 c = lambda c away from a finite source, which decays
         # exponentially with a length sqrt(D/lambda). Written directly rather than relaxed
         # numerically, because relaxing it would take hours of simulated time.
-        self.attractant += attractant * np.exp(-np.maximum(d - radius, 0.0) / length_scale)
+        #
+        # Cached, not recomputed. The shape is fixed for the life of the patch and only its
+        # scalar amplitude moves, so 65,536 `exp` calls per patch per field step -- 50 field
+        # steps a second, for the life of the run -- would buy nothing. Two grids of 65,536
+        # f64 is 1,048,576 bytes a patch, which is the price of this design and is stated
+        # again at MAX_FOOD_PATCHES in the runtime.
+        att_shape = (attractant
+                     * np.exp(-np.maximum(d - radius, 0.0) / length_scale)) * self.inside
         # Oxygen gets the same treatment, and for the same reason. Bacteria consume it and
         # it diffuses back in from the air, so a lawn sits at the centre of an oxygen
         # depression with a skirt, exactly as it sits at the centre of a chemical gradient.
@@ -85,13 +176,127 @@ class World:
         # gradient anywhere for an animal to follow. Measured, that left aerotaxis with
         # nothing to work on: the oxygen circuit biases turning correctly, 3.67 reversals a
         # minute at ambient against 2.67 in a lawn, and never got the chance to.
-        self.o2_deficit += (self.p.o2_depth * density
-                            * np.exp(-np.maximum(d - radius, 0.0) / self.p.o2_length_scale))
-        self.o2_deficit *= self.inside
-        self.patches.append({"x": x, "y": y, "r": radius, "kind": "food"})
-        self.food *= self.inside
+        o2_shape = (self.p.o2_depth * density
+                    * np.exp(-np.maximum(d - radius, 0.0)
+                             / self.p.o2_length_scale)) * self.inside
+        self.attractant += att_shape
         self.attractant *= self.inside
+
+        # ---- the patch's own footprint, and what "its own food" means where lawns overlap
+        #
+        # f_p is a weighted average of how much of this patch's footprint is left, with each
+        # cell weighted by the density THIS patch deposited there:
+        #
+        #     f_p = sum_c lawn_p(c) * food(c) / sum_c lawn_p(c) * food_0(c)
+        #
+        # Two decisions are buried in that, and both matter.
+        #
+        # OVERLAP. `food` is one number per cell and the plate has no way to say which
+        # lawn a gram of it came from, so where two patches overlap they share credit for
+        # what is there: eating in the overlap lowers both patches' f_p, in proportion to
+        # what each of them put in the cell. Attributing the cell to one patch would need a
+        # third cached grid per patch and would still be a guess, because `eat` withdraws
+        # from a cell proportionally and cannot distinguish them either. Sharing is also the
+        # conservative direction for the bug this fixes -- a stripped cell dims every lawn
+        # that claims it, so nothing keeps smelling of food that is not there.
+        #
+        # WEIGHTED, NOT A HARD DISC. The obvious footprint is "cells with d < radius", but
+        # that is a boolean, and the Python and the runtime compute d as `np.hypot` and
+        # `Math.sqrt(dx*dx+dy*dy)` respectively. Those can differ in the last bit, and a
+        # boolean straddling the edge would then flip a whole cell in or out of one side's
+        # denominator -- a 1e-3 divergence out of a 1e-16 difference. Weighting by the lawn
+        # profile makes the same last-bit difference worth about 1e-32, because the profile
+        # is already ~0 at the rim it would disagree about.
+        box = _bounds_of(lawn > 0.0)
+        self._patch_att.append(att_shape)
+        self._patch_o2.append(o2_shape)
+        self._patch_box.append(box)
+        self._patch_weight.append(lawn[box[0]:box[1], box[2]:box[3]].copy())
+        self._patch_food0.append(0.0)
+        self._patch_frac.append(1.0)
+
+        # Rebasing. Every earlier patch's denominator grows by exactly what this lawn added
+        # to its weighted footprint -- measured as the difference of two identical sums, so
+        # that on a plate where nothing has been eaten yet the numerator and denominator end
+        # up bit-identical and f_p is exactly 1.0. (Setting the denominators to the current
+        # weighted food instead is one line shorter and wrong: dropping a fresh lawn from
+        # the viewer would reset every other patch to "full" and un-eat the plate.)
+        for k, was in enumerate(before):
+            self._patch_food0[k] += self._patch_food(k) - was
+        self._patch_food0[-1] = self._patch_food(len(self._patch_att) - 1)
+
+        for k in range(len(self._patch_att)):
+            self._patch_frac[k] = self._patch_fraction(k)
+        self._rebuild_sources()
         self.food_initial_total = float(self.food.sum())
+
+    # ------------------------------------------------------- standing bacterial mass
+    def _patch_food(self, k: int) -> float:
+        """Food in patch k's footprint, weighted by what patch k deposited in each cell."""
+        i0, i1, j0, j1 = self._patch_box[k]
+        return float((self.food[i0:i1, j0:j1] * self._patch_weight[k]).sum())
+
+    def _patch_fraction(self, k: int) -> float:
+        """f_p: how much of patch k's own bacteria is left, clamped to [0, 1].
+
+        Neither bound is reachable through `add_food_patch` and `eat` alone -- authoring a
+        lawn grows numerator and denominator by the same amount, and eating only ever lowers
+        the numerator. They are here for a caller that writes to `world.food` directly,
+        which every assay in tools/ and half of tests/ is entitled to do: a lawn must not
+        source twice what it was authored with because somebody doubled the food field, and
+        a source term that went negative would pump the attractant down through zero rather
+        than fail. ``tests/test_world_depletion.py`` drives the upper bound deliberately,
+        because a clamp only tested where it cannot bite is not tested at all.
+        """
+        denominator = self._patch_food0[k]
+        if denominator <= 0.0:
+            # A patch whose footprint never held any food -- authored entirely outside the
+            # dish, or at zero density. It sources nothing, which is what it is.
+            return 0.0
+        fraction = self._patch_food(k) / denominator
+        return 0.0 if fraction < 0.0 else (1.0 if fraction > 1.0 else fraction)
+
+    def _rebuild_sources(self) -> None:
+        """Rebuild sum_p f_p * shape_p for the attractant source and the oxygen deficit.
+
+        Accumulated in patch order, one array operation per patch, because the runtime
+        accumulates the same two sums cell by cell in the same order and the two have to
+        agree bit for bit.
+        """
+        source = np.zeros((self.g, self.g))
+        deficit = np.zeros((self.g, self.g))
+        for fraction, att, o2 in zip(self._patch_frac, self._patch_att, self._patch_o2):
+            source += fraction * att
+            deficit += fraction * o2
+        self._att_source = source
+        self.o2_deficit = deficit
+
+    def _refresh_sources(self) -> None:
+        """Recompute every f_p, and rebuild the sourced fields only if one moved.
+
+        The rebuild is two multiply-accumulates over 65,536 cells per patch and the f_p
+        themselves are a weighted sum over the patch's bounding box, which for the 5 mm lawn
+        in the conformance plate is 812 cells against the grid's 65,536. Recomputing f_p
+        every field step is therefore cheap and, more to the point, is a pure function of
+        the food field: no dirty flag to keep in step between the two implementations, and
+        no way for one of them to notice a withdrawal the other missed. The expensive half
+        is skipped when nothing was eaten, which is most field steps -- an animal pumping at
+        4 Hz eats on 4 of the 50 field steps in a second. Measured in the runtime, where the
+        cost actually matters: 0.24 ms a lawn per rebuild against 5.43 ms a lawn to
+        recompute the shapes with `exp`, and sixteen lawns cost what none do once the guard
+        is in. The figures and the method are in `refreshSources` in
+        wasm/assembly/index.ts.
+        """
+        if not self._patch_att:
+            return
+        changed = False
+        for k in range(len(self._patch_att)):
+            fraction = self._patch_fraction(k)
+            if fraction != self._patch_frac[k]:
+                self._patch_frac[k] = fraction
+                changed = True
+        if changed:
+            self._rebuild_sources()
 
     def add_repellent_source(self, x: float, y: float, strength: float = 1.0,
                              length_scale: float = 6.0) -> None:
@@ -326,8 +531,13 @@ class World:
         while self._acc >= self.p.field_dt:
             self._acc -= self.p.field_dt
             fdt = self.p.field_dt
-            self.attractant = self._diffuse(
-                self.attractant, self.p.diffusion_attractant, self.p.decay_attractant, fdt)
+            # What the standing bacteria are emitting *this* step, before anything reads
+            # it. Rebuilding after the relaxation instead would leave the attractant one
+            # field step behind the oxygen, for no reason anyone could defend.
+            self._refresh_sources()
+            self.attractant = self._relax(
+                self.attractant, self.p.diffusion_attractant, self.p.decay_attractant, fdt,
+                self._att_source)
             self.repellent = self._diffuse(
                 self.repellent, self.p.diffusion_repellent, self.p.decay_attractant, fdt)
 
@@ -337,6 +547,27 @@ class World:
         lap = (np.roll(c, 1, 0) + np.roll(c, -1, 0)
                + np.roll(c, 1, 1) + np.roll(c, -1, 1) - 4.0 * c) / (self.h * self.h)
         out = c + dt * (D * lap - decay * c)
+        np.clip(out, 0.0, None, out=out)
+        out *= self.inside
+        return out
+
+    def _relax(self, c: np.ndarray, D: float, decay: float, dt: float,
+               source: np.ndarray) -> np.ndarray:
+        """`_diffuse` with a standing source: relax c towards `source` as well as spread it.
+
+        Deliberately without `_diffuse`'s `D <= 0` shortcut. That branch skips the clip and
+        the dish mask as well as the Laplacian, which is defensible for a field with no
+        source and not for one being driven towards a profile that is masked; and the
+        runtime's diffusion coefficient is a compile-time constant that is not zero, so
+        taking the branch here would be a divergence with nothing on the other side of it.
+        At D == 0 this still does the right thing, one wasted Laplacian later.
+        """
+        lap = (np.roll(c, 1, 0) + np.roll(c, -1, 0)
+               + np.roll(c, 1, 1) + np.roll(c, -1, 1) - 4.0 * c) / (self.h * self.h)
+        # `decay * (source - c)`, not `- decay * c + decay * source`: see the module
+        # docstring. With an intact lawn source is c, the term is a bitwise zero, and this
+        # reduces to `c + dt * D * lap` -- the old expression's diffusion, unrounded.
+        out = c + dt * (D * lap + decay * (source - c))
         np.clip(out, 0.0, None, out=out)
         out *= self.inside
         return out
@@ -483,6 +714,20 @@ def _settle_by_claim(reachable, demands, capacities, passes: int = 8):
             break
 
     return received, left
+
+
+def _bounds_of(mask: np.ndarray) -> tuple:
+    """Tightest (i0, i1, j0, j1) half-open index box containing every True cell.
+
+    Empty in, empty out: a patch authored entirely outside the dish gets a zero-area box,
+    a zero-length weight array, a denominator of 0 and therefore f_p = 0. It sources
+    nothing, which is right, and it does it without a special case anywhere else.
+    """
+    rows = np.flatnonzero(mask.any(axis=1))
+    cols = np.flatnonzero(mask.any(axis=0))
+    if rows.size == 0 or cols.size == 0:
+        return (0, 0, 0, 0)
+    return (int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1)
 
 
 def _smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
