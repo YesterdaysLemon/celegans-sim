@@ -1961,6 +1961,62 @@ bending axis would give them somewhere to go. That is a better reason to build i
 different one, and it predicts something the steric argument does not — that the turn
 should deepen when the two stop sharing a channel, whether or not anything leaves the plane.
 
+### And then the surviving argument failed too: the ceiling is mechanical
+
+**Retracting the paragraph above.** It was written before anyone asked the prior question,
+and the prior question settles it the other way. Every experiment on this turn — the current
+sweep, RIV gain, reflex suppression, wave suppression, and the dynamic-range reading that
+survived them — drove the body *through the nervous system*. None asked whether the body can
+make the turn at all.
+
+`tools/moment_ceiling.py` bypasses the nervous system and drives the joints directly.
+`Body.step` takes the bending moment as an array and `Simulation` reads it from one call to
+`Muscles.joint_moment`, so an extra moment can be added there without touching any model
+code. Curvature turns out not to be the scarce thing at all — the statics agree with the
+elastica they are meant to be, and holding the 4.5 /mm an omega needs costs 0.43 µN·mm
+against a `peak_moment` of 2.6, about six times over.
+
+But with the gait running and a constant moment added on top, across three seeds:
+
+| moment µN·mm | turn deg/s | path mm/s | TWI | κ max |
+|---:|---:|---:|---:|---:|
+| 0.00 | 5.4 ± 4.0 | 0.348 | +0.85 | 12.6 |
+| 0.10 | 39.0 ± 5.3 | 0.327 | +0.89 | 13.0 |
+| **0.15** | **49.8 ± 2.1** | 0.278 | +0.88 | 14.7 |
+| 0.20 | 42.3 ± 6.5 | 0.208 | +0.85 | 19.7 |
+| 0.43 | 22.6 ± 2.3 | 0.050 | +0.63 | 30.2 |
+| 2.60 | — | 0.006 | +0.10 | 119.9 |
+
+**It peaks at 49.8 deg/s and comes back down.** Applying the moment over the anterior third
+instead — where the omega drive actually lands, on RIV, SMD and RMD — peaks at 23.6 deg/s,
+less than half. A real omega needs about 90.
+
+The mechanism is in the definition. Turn rate is path speed times path curvature, and every
+increment of curvature costs speed: by 2.6 µN·mm the animal is bent to κ = 120 and travelling
+0.006 mm/s. The product therefore has a maximum, and that maximum — not any neural quantity —
+is the ceiling. The rows past the peak are excluded from the headline by the tool itself,
+because a turn rate read off a stationary animal is ill-conditioned and its error bars say so.
+
+So the dynamic-range diagnosis is wrong, or at least it is not what binds. **No
+redistribution of drive across motor neurons can buy a turn the body cannot make, and a
+second bending axis is somewhere to put drive that was never the scarce resource.** That is
+now four closed routes plus two closed arguments, and the honest position is that the
+three-dimensional body project has lost both of its stated justifications and should not be
+started on either of them.
+
+What is left to explain is why v·κ peaks where it does. That is a statement about drag
+anisotropy — `K = C_N/C_T` is 40 on agar — and about what a travelling wave does to a body
+that is already bent. The next measurement is the peak's dependence on `K` and on `EI`,
+because if the ceiling moves with the medium then it is hydrodynamic and the model's agar is
+what is capping the turn; if it does not, it is the body's own elasticity. Neither answer is
+a bending axis.
+
+One caveat, recorded because it is the way this could still be wrong: the profiles tested are
+constant in time, uniform or anterior-third. A real omega is neither, and a moment that
+*travels* — or one shaped to bend the body where the wave is not — has not been ruled out.
+That is a much cheaper thing to test than a three-dimensional body, and it should be tested
+first.
+
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
 `tools/scorecard.py` on 2026-07-30 measured five seeds from the same configuration:
