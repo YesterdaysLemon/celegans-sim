@@ -808,6 +808,47 @@ web/local.js            the WebAssembly engine: model loading, stepping budget, 
 wasm/assembly/index.ts  the runtime — the same model, in the browser
 ```
 
+## Running the checks yourself
+
+**CI is manual-only.** Both workflows still exist and still work, but their `push` and
+`pull_request` triggers are commented out in `.github/workflows/`, leaving
+`workflow_dispatch`. This account's Actions minutes are exhausted, so every push was
+starting a run that died in a couple of seconds having executed no steps at all — the API
+reports `steps: []` with no failed step, because the job never got a runner. A permanent
+red cross that says nothing about the code is worse than no signal: a check that always
+fails is exactly as uninformative as one that always passes, and it teaches you to ignore
+the one time it means something. Turning them back on is deleting the `#` from the block
+at the top of each file; nothing in the jobs was weakened to make anything pass.
+
+Until then the gates are local. The browser and runtime side, which is fast:
+
+```bash
+npm ci
+node tools/check_cache_headers.mjs        # every served asset has a deliberate cache policy
+node tools/check_web.mjs                  # module graph: cycles, unresolved imports, leftovers
+node --test tools/sim_rate.test.mjs       # the rate readouts measure what their labels claim
+node --test wasm/conform-inputs.test.mjs  # the conformance inputs are present and not stale
+node tools/smoke_web.mjs                  # the viewer in a real browser, desktop and mobile
+node tools/smoke_server.mjs               # the ?server transport, against a live Python model
+```
+
+The Python model suite, which is not fast — it is about 37 minutes of simulation, which is
+why it never ran in CI even when CI ran:
+
+```bash
+.venv/bin/python -m pip install -e '.[test]'
+PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
+```
+
+And the pinned-anatomy gate, which checks that the committed dataset is what the pinned
+inputs actually rebuild to:
+
+```bash
+.venv/bin/python tools/fetch_raw.py
+.venv/bin/python tools/build_dataset.py
+git diff --exit-code -- data/celegans.json
+```
+
 ## Data and licensing
 
 The code is MIT (see `LICENSE`). The anatomical data is not mine and is not redistributed
