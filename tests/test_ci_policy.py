@@ -208,6 +208,7 @@ REPRESENTATIVE = [
     # absent from `GENES` and from the payload alike.
     ("wasm/evolve.mjs", [VIEWER_WF]),
     ("wasm/energy-fitness.test.mjs", [VIEWER_WF]),
+    ("wasm/medium.test.mjs", [VIEWER_WF]),
     ("wasm/memory.mjs", [VIEWER_WF]),
     # The viewer, its server, and the checks that run against them.
     ("web/local.js", [VIEWER_WF]),

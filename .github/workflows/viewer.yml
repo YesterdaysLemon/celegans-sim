@@ -136,6 +136,11 @@ jobs:
       - name: a bigger pharynx buys no fitness
         run: node --test wasm/energy-fitness.test.mjs
 
+      # Also here rather than in the viewer job, and for the same reason: it compares
+      # trajectories, so it needs a .model and a .wasm that agree with each other.
+      - name: the dish remembers what it is filled with
+        run: node --test wasm/medium.test.mjs
+
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
       # port gets measured against a model that no longer exists.

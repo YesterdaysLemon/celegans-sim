@@ -139,6 +139,16 @@ declare namespace __AdaptedExports {
    */
   export function setMedium(ct: number, cn: number): void;
   /**
+   * assembly/index/getMediumCT
+   * @returns `f64`
+   */
+  export function getMediumCT(): number;
+  /**
+   * assembly/index/getMediumCN
+   * @returns `f64`
+   */
+  export function getMediumCN(): number;
+  /**
    * assembly/index/setMoment
    * @param w `i32`
    * @param j `i32`

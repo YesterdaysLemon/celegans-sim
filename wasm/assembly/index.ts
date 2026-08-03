@@ -813,7 +813,13 @@ class Worm {
   sensedFood: f64 = 0.0; sensedAtt: f64 = 0.0; sensedRep: f64 = 0.0;
   sensedO2: f64 = 0.0; sensedT: f64 = 0.0;
 
-  cT: f64 = G.MED_AGAR_CT; cN: f64 = G.MED_AGAR_CN;
+  /* Seeded from the dish's medium, not from agar. The medium is a property of what the
+   * animal is swimming in, so it belongs to the world and an animal born into that world
+   * inherits it. These were `G.MED_AGAR_CT/CN` outright, which meant `setMedium` moved
+   * every animal that existed at the time and every animal created afterwards arrived on
+   * agar regardless -- a dish running two different drag physics at once, with the control
+   * still reading "buffer". See `worldCT` and #47. */
+  cT: f64 = worldCT; cN: f64 = worldCN;
   t: f64 = 0.0;
 
   /* The genome: the handful of scalars this animal may differ from its parents in.
@@ -1835,9 +1841,26 @@ export function setAblated(w: i32, ptr: usize, count: i32): void {
   }
 }
 export function isAlive(w: i32, i: i32): i32 { return byId(w).alive[i]; }
+/* The medium the dish is filled with. Module level rather than per-animal, because it is
+ * a property of the dish: agar, a viscous buffer, water. Every `Worm` seeds its own drag
+ * coefficients from these at construction.
+ *
+ * `resetWorld` deliberately leaves them alone. A reset re-lays the plate and the
+ * population; it is not a statement about what the dish is full of, and silently returning
+ * to agar while the medium control still reads "buffer" is precisely the defect in #47. */
+let worldCT: f64 = G.MED_AGAR_CT;
+let worldCN: f64 = G.MED_AGAR_CN;
+
 export function setMedium(ct: f64, cn: f64): void {
+  // Both halves. The existing animals, so a change takes effect on what is on screen now;
+  // and the dish, so anything created afterwards is in the same fluid as its neighbours.
+  worldCT = ct; worldCN = cn;
   for (let i = 0; i < worms.length; i++) { worms[i].cT = ct; worms[i].cN = cn; }
 }
+// What the dish is currently filled with, so a caller can read back what it set rather
+// than keeping its own shadow copy and hoping the two agree.
+export function getMediumCT(): f64 { return worldCT; }
+export function getMediumCN(): f64 { return worldCN; }
 
 // Drive the body directly, which is what the conformance test for the mechanics needs:
 // a prescribed moment, no biology, the same numbers on both sides.
