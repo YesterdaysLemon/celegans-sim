@@ -1,5 +1,58 @@
 # Where this is, and what to do next
 
+## Decided: the shape of the evolution project
+
+Settled 2026-08-03, and written here because until now it lived only in a conversation.
+The section below it predates all of this and is stale in one important way: it describes
+evolution as not started, when tier one has been running in `wasm/evolve.mjs` for some time.
+Read this first and that as history.
+
+**Fitness is `energy`, and `eaten` is an adversarial probe rather than a default.** #37
+measured `food_eaten` as exploitable — `volume_per_pump` ×10 buys 9.3× the score at a
+trajectory unchanged to five figures — and `evolve.mjs` already implements the replacement.
+`EVO_FITNESS=eaten` is kept, and running it deliberately to see what the model will let a
+population get away with is a *use*, not a fallback: it is `tools/audit.py`'s move, aimed at
+the model instead of at the checks. Results from it are defect reports.
+
+**All four tiers are wanted heritable: parameters, synaptic weights, topology, morphology.**
+Tier one (the 15 bounded scalars in `worm/genome.py`) exists. The rest do not.
+
+**Weights and topology land together.** Topology forces the exporter to carry the graph
+rather than its precomputed products — `_balance` and `_resting_potentials` both depend on
+it — and once that rework is done, weights ride along for free. Doing weights first would
+mean doing the same rework twice.
+
+**Reproduction goes generational first, then continuous.** Fitness reads egg output, which
+requires eating, pharyngeal transport and the HSN/VC circuit all working, inside the
+existing generational loop and its harness. The standing in-dish population, where animals
+lay eggs that hatch into animals and selection becomes implicit, comes after that behaves.
+
+**Evolution runs on the runtime, not in Python**, and evolved animals are fenced off from
+every claim about the animal — see "Evolved animals are not C. elegans" in the README.
+
+Two prerequisites are already done. `Body.self_contact_force` and its runtime twin close
+#86, so a lineage cannot evolve a body that folds through itself and be scored for it; and
+`checkInvariants` now exists on the runtime, where evolution actually runs, so an animal
+that stops doing physics scores zero instead of scoring well.
+
+### The one thing the exporter rework needed to know, measured
+
+`_resting_potentials` solves a 302×302 dense system, and the runtime would have to redo it
+whenever weights or topology mutate. Porting a dense solve and still conforming to 1e-13 is
+the kind of thing that eats a fortnight and then does not work, so it was measured before it
+was built:
+
+* the matrix is well conditioned, **cond(A) = 94** — consistent with the docstring's claim
+  that it is a strictly diagonally dominant M-matrix;
+* a plain LU with partial pivoting, written the way an AssemblyScript port would be, matches
+  numpy's LAPACK solve to **3.6e-14 mV, 5.7e-16 relative**;
+* and that difference **does not amplify**. Applied to every threshold and run 4000 steps it
+  moves nodes by 5.3e-15 mm and potentials by 1.2e-12 mV, against conformance tolerances of
+  1e-9 and ~5e-11. Four orders of margin.
+
+So the port is viable and the rework can proceed. `_balance` is the easy half: a 70-iteration
+bisection over 95 cells, no linear algebra at all.
+
 ## A direction worth thinking about: reproduction and evolution
 
 Not started, and deliberately not started yet — but the WebAssembly port changed what is
