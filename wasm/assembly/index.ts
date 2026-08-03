@@ -154,6 +154,20 @@ class Rng {
 // ------------------------------------------------------------------------------ world --
 // Shared by every animal in the dish: they eat the same lawn and feel the same walls.
 
+/* How many bacterial lawns one plate may hold.
+ *
+ * A cap exists because a lawn is no longer free: since depleting one has to dim the fields
+ * it sources, each patch caches its two field shapes and costs 1,048,576 bytes, plus up to
+ * 524,288 more for the lawn density over its own bounding box. See the note above
+ * `patchAtt`. The viewer's drop-food button is the one caller that can be pressed
+ * arbitrarily often, and 16 lawns is 16 MB -- about the same as 70 animals -- which is a
+ * ceiling a tab can survive rather than a leak.
+ *
+ * 16 and not 8: wasm/population.mjs authors five, and a cap that a check in this repository
+ * already sits three under is a cap that will be hit by accident. Nothing here allocates
+ * for patches that do not exist, so the only cost of the headroom is the ceiling itself. */
+const MAX_FOOD_PATCHES: i32 = 16;
+
 class World {
   g: i32 = G.WORLD_GRID;
   extent: f64 = G.WORLD_EXTENT;
@@ -177,6 +191,37 @@ class World {
   eggsDropped: i32 = 0;
   scratch: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
   facc: f64 = 0.0;
+
+  /* What the standing bacteria emit, and the per-patch caches that produce it.
+   *
+   * The model is worm/world.py's, stated once there: the attractant and the oxygen
+   * depression are both the steady state of `D grad^2 c = lambda c` away from a finite
+   * source, that equation is linear in the source strength, so a lawn with fraction f of
+   * its bacteria left sources f times the field with an unchanged spatial shape. Oxygen is
+   * rebuilt outright; the attractant is relaxed towards `attSource` by `relax` below.
+   *
+   * WHY THE SHAPES ARE CACHED. The shape is fixed for the life of a patch and only its
+   * scalar amplitude moves. Recomputing it would be 65,536 `Math.exp` calls per patch per
+   * field step, 50 field steps a second, forever -- which is not a cost this runtime can
+   * pay at 2 kHz inside a browser tab. Cached, a field step costs two multiply-accumulates
+   * a cell a patch, and even those are skipped on the steps where nothing was eaten.
+   *
+   * WHAT IT COSTS. Two f64 grids a patch, 2 * 65,536 * 8 = 1,048,576 bytes, plus the
+   * patch's own lawn density over its bounding box -- 6,496 bytes for the 5 mm lawn in the
+   * conformance plate, at most 524,288 for one that covers the dish. So 1.0 MB a patch in
+   * the ordinary case and 1.5 MB in the worst, against 239,360 bytes for a whole animal:
+   * a lawn is four worms. MAX_FOOD_PATCHES is what stops the viewer's drop-food button
+   * from turning that into an unbounded leak; past it, `addPatch` refuses and counts the
+   * refusal, the same way a full plate refuses an egg. */
+  patchAtt: Array<StaticArray<f64>> = [];
+  patchO2: Array<StaticArray<f64>> = [];
+  patchW: Array<StaticArray<f64>> = [];     // this patch's own lawn density over its box
+  patchI0: Array<i32> = []; patchI1: Array<i32> = [];
+  patchJ0: Array<i32> = []; patchJ1: Array<i32> = [];
+  patchFood0: Array<f64> = [];              // weighted food in the box when it was built
+  patchFrac: Array<f64> = [];               // f_p as of the last source rebuild
+  patchesRefused: i32 = 0;
+  attSource: StaticArray<f64> = new StaticArray<f64>(G.WORLD_GRID * G.WORLD_GRID);
 
   /* The chemical fields diffuse and decay. This was missing entirely -- the browser's
    * plate was frozen -- and it is the kind of omission a conformance test on an empty
@@ -241,10 +286,148 @@ class World {
     this.facc += dt;
     while (this.facc >= G.WORLD_FIELD_DT) {
       this.facc -= G.WORLD_FIELD_DT;
-      this.diffuse(this.attractant, G.WORLD_DIFFUSION_ATTRACTANT,
-                   G.WORLD_DECAY_ATTRACTANT, G.WORLD_FIELD_DT);
+      // What the standing bacteria emit *this* step, before anything reads it. Matches
+      // World.step's ordering; rebuilding afterwards would leave the attractant one field
+      // step behind the oxygen for no defensible reason.
+      this.refreshSources();
+      this.relax(this.attractant, G.WORLD_DIFFUSION_ATTRACTANT,
+                 G.WORLD_DECAY_ATTRACTANT, G.WORLD_FIELD_DT, this.attSource);
       this.diffuse(this.repellent, G.WORLD_DIFFUSION_REPELLENT,
                    G.WORLD_DECAY_ATTRACTANT, G.WORLD_FIELD_DT);
+    }
+  }
+
+  /* Food left in patch k's footprint, weighted by the density patch k put in each cell.
+   *
+   * Weighted rather than a hard `d < radius` disc, and that is not a stylistic choice.
+   * Python computes the distance with `np.hypot` and this file with
+   * `Math.sqrt(dx*dx+dy*dy)`; those can differ in the last bit, and a boolean footprint
+   * straddling the lawn edge would then put a whole cell in one side's denominator and not
+   * the other's -- a 1e-3 divergence grown out of a 1e-16 difference. Weighting by the lawn
+   * profile makes the same last-bit disagreement worth about 1e-32, because the profile is
+   * already ~0 at the rim it would disagree about. */
+  patchFood(k: i32): f64 {
+    const g = this.g;
+    const i0 = this.patchI0[k], i1 = this.patchI1[k];
+    const j0 = this.patchJ0[k], j1 = this.patchJ1[k];
+    const w = this.patchW[k];
+    let total = 0.0;
+    let at = 0;
+    for (let i = i0; i < i1; i++) {
+      const row = i * g;
+      for (let j = j0; j < j1; j++) {
+        total += unchecked(this.food[row + j]) * unchecked(w[at]);
+        at++;
+      }
+    }
+    return total;
+  }
+
+  /* f_p: how much of patch k's own bacteria is left, clamped to [0, 1].
+   *
+   * Neither bound is reachable through `addPatch` and `eat` alone -- authoring a lawn grows
+   * numerator and denominator by the same amount, and eating only ever lowers the
+   * numerator. They are here for a caller that writes to `food` directly, which every assay
+   * in tools/ is entitled to do: a lawn must not source twice what it was authored with
+   * because somebody doubled the food field, and a negative source would pump the
+   * attractant down through zero rather than fail. tests/test_world_depletion.py drives the
+   * upper bound deliberately, because a clamp only tested where it cannot bite is not
+   * tested at all. */
+  patchFraction(k: i32): f64 {
+    const denominator = this.patchFood0[k];
+    if (denominator <= 0.0) return 0.0;      // authored outside the dish, or at zero density
+    const fraction = this.patchFood(k) / denominator;
+    return fraction < 0.0 ? 0.0 : (fraction > 1.0 ? 1.0 : fraction);
+  }
+
+  /* Rebuild sum_p f_p * shape_p for the attractant source and the oxygen deficit.
+   * Accumulated in patch order, cell by cell, because World._rebuild_sources accumulates
+   * the same two sums patch by patch in the same order and the two have to agree bit for
+   * bit. */
+  rebuildSources(): void {
+    const n = this.patchAtt.length;
+    const cells = this.g * this.g;
+    for (let c = 0; c < cells; c++) {
+      unchecked(this.attSource[c] = 0.0);
+      unchecked(this.o2[c] = 0.0);
+    }
+    for (let k = 0; k < n; k++) {
+      const f = this.patchFrac[k];
+      const att = this.patchAtt[k], o2s = this.patchO2[k];
+      for (let c = 0; c < cells; c++) {
+        unchecked(this.attSource[c] += f * unchecked(att[c]));
+        unchecked(this.o2[c] += f * unchecked(o2s[c]));
+      }
+    }
+  }
+
+  /* Recompute every f_p and rebuild the sourced fields only if one moved.
+   *
+   * f_p is a pure function of the food field, recomputed every field step over the patch's
+   * bounding box -- 812 cells for the conformance plate's 5 mm lawn, against the grid's
+   * 65,536. Deliberately not a dirty flag set by the feeding code: a flag is a second piece
+   * of state the two implementations have to agree about, and a runtime that missed a
+   * withdrawal the reference caught would diverge silently. Reading the field cannot.
+   *
+   * The `changed` guard is what makes this affordable, and the numbers are measured, on
+   * 5,000 field steps of an empty plate (`stepAll` with no worms, so nothing but this code
+   * runs):
+   *
+   *   16 lawns, guard in   8.24 s      16 lawns, rebuilding every step   27.62 s
+   *    2 lawns, guard in   8.33 s       2 lawns, rebuilding every step   11.26 s
+   *    0 lawns             8.23 s      -- the two 256^2 diffusion sweeps alone
+   *
+   * So a rebuild is 0.24 ms a lawn and the guard removes it from the ~96% of field steps on
+   * which nothing was eaten; with it, sixteen lawns cost what none do. Recomputing the
+   * shapes with `Math.exp` instead of caching them is 5.43 ms a lawn -- 23x the scaled
+   * rebuild, and 271 ms per simulated second for a single lawn, which is where the caching
+   * argument above stops being an opinion. End to end, one animal on the conformance plate
+   * runs at 2739-2957 steps/s against 2703-2991 before this change: inside the noise. */
+  refreshSources(): void {
+    const n = this.patchAtt.length;
+    if (n == 0) return;
+    let changed = false;
+    for (let k = 0; k < n; k++) {
+      const fraction = this.patchFraction(k);
+      if (fraction != this.patchFrac[k]) { this.patchFrac[k] = fraction; changed = true; }
+    }
+    if (changed) this.rebuildSources();
+  }
+
+  /* `diffuse` with a standing source: relax c towards `src` as well as spreading it.
+   *
+   * Deliberately without `diffuse`'s D <= 0 shortcut, which skips the clip and the dish
+   * mask as well as the Laplacian -- defensible for a field with no source, not for one
+   * being driven towards a masked profile. World._relax carries the same note.
+   *
+   * `decay * (src - c)` and not `- decay*c + decay*src`: with an intact lawn src IS c, so
+   * the term is a bitwise zero and the step reduces to exactly the diffusion that was here
+   * before any of this existed. The left-to-right form subtracts a quantity comparable to
+   * `D*lap` and adds it straight back; on the conformance plate it happens to agree to 0.0
+   * as well, but by luck of the operand magnitudes rather than by construction. The full
+   * argument is in worm/world.py's module docstring. */
+  relax(c: StaticArray<f64>, D: f64, decay: f64, dt: f64, src: StaticArray<f64>): void {
+    const g = this.g;
+    const inv = 1.0 / (this.h * this.h);
+    for (let i = 0; i < g; i++) {
+      const up = ((i - 1 + g) % g) * g, dn = ((i + 1) % g) * g, row = i * g;
+      for (let j = 0; j < g; j++) {
+        const lf = (j - 1 + g) % g, rt = (j + 1) % g;
+        const v = unchecked(c[row + j]);
+        const lap = (unchecked(c[up + j]) + unchecked(c[dn + j])
+                   + unchecked(c[row + lf]) + unchecked(c[row + rt]) - 4.0 * v) * inv;
+        let out = v + dt * (D * lap + decay * (unchecked(src[row + j]) - v));
+        if (out < 0.0) out = 0.0;
+        unchecked(this.scratch[row + j] = out);
+      }
+    }
+    for (let i = 0; i < g; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = 0; j < g; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        const k = i * g + j;
+        unchecked(c[k] = Math.sqrt(x * x + y * y) <= this.extent ? unchecked(this.scratch[k]) : 0.0);
+      }
     }
   }
 
@@ -331,21 +514,79 @@ class World {
    * a lawn almost everywhere in the dish, ate, pumped, and stayed. The conformance test
    * could not see it, because it ran on an empty plate where every field is zero. */
   addPatch(cx: f64, cy: f64, r: f64, density: f64, att: f64, ls: f64): void {
-    for (let i = 0; i < this.g; i++) {
+    // A refusal, not a silent forget: see MAX_FOOD_PATCHES and `foodPatchesRefused`.
+    if (this.patchAtt.length >= MAX_FOOD_PATCHES) { this.patchesRefused++; return; }
+    const g = this.g;
+    const existing = this.patchAtt.length;
+    // What every existing patch's weighted footprint holds *before* this lawn lands. Their
+    // denominators grow by exactly what it adds, so that on a plate where nothing has been
+    // eaten yet numerator and denominator stay bit-identical and f_p is exactly 1.0 -- and
+    // so that dropping a lawn from the viewer cannot re-bless a half-eaten plate as full.
+    const before = new StaticArray<f64>(existing > 0 ? existing : 1);
+    for (let k = 0; k < existing; k++) unchecked(before[k] = this.patchFood(k));
+
+    const attShape = new StaticArray<f64>(g * g);
+    const o2Shape = new StaticArray<f64>(g * g);
+    let i0 = g, i1 = 0, j0 = g, j1 = 0;
+    for (let i = 0; i < g; i++) {
       const y = -this.extent + (<f64>i + 0.5) * this.h;
-      for (let j = 0; j < this.g; j++) {
+      for (let j = 0; j < g; j++) {
         const x = -this.extent + (<f64>j + 0.5) * this.h;
         const dx = x - cx, dy = y - cy;
         const d = Math.sqrt(dx * dx + dy * dy);
-        const k = i * this.g + j;
+        const k = i * g + j;
         const skirt = Math.exp(-(d > r ? d - r : 0.0) / ls);
-        unchecked(this.food[k] += density * smoothstep(r * 0.75, r, d));
-        unchecked(this.attractant[k] += att * skirt);
-        unchecked(this.o2[k] += G.WORLD_O2_DEPTH * density
-                  * Math.exp(-(d > r ? d - r : 0.0) / G.WORLD_O2_LENGTH_SCALE));
+        const lawn = density * smoothstep(r * 0.75, r, d);
+        // Masked here rather than by maskDish, because these are cached and maskDish only
+        // ever sees the live fields. Python masks each shape the same way and for the same
+        // reason; masking a sum and summing masked terms agree exactly, since the mask is
+        // only ever an exact 1 or an exact 0.
+        const keep = Math.sqrt(x * x + y * y) <= this.extent;
+        unchecked(this.food[k] += lawn);
+        unchecked(attShape[k] = keep ? att * skirt : 0.0);
+        unchecked(o2Shape[k] = keep ? G.WORLD_O2_DEPTH * density
+                  * Math.exp(-(d > r ? d - r : 0.0) / G.WORLD_O2_LENGTH_SCALE) : 0.0);
+        unchecked(this.attractant[k] += unchecked(attShape[k]));
+        // The bounding box of this patch's own lawn, taken from the UNMASKED profile so it
+        // matches Python's `lawn > 0.0`. Cells outside the dish carry zero food and so
+        // contribute nothing to the weighted sum anyway.
+        if (lawn > 0.0) {
+          if (i < i0) i0 = i;
+          if (i + 1 > i1) i1 = i + 1;
+          if (j < j0) j0 = j;
+          if (j + 1 > j1) j1 = j + 1;
+        }
       }
     }
+    if (i1 <= i0 || j1 <= j0) { i0 = 0; i1 = 0; j0 = 0; j1 = 0; }
     this.maskDish();
+
+    const weights = new StaticArray<f64>((i1 - i0) * (j1 - j0));
+    let at = 0;
+    for (let i = i0; i < i1; i++) {
+      const y = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = j0; j < j1; j++) {
+        const x = -this.extent + (<f64>j + 0.5) * this.h;
+        const dx = x - cx, dy = y - cy;
+        unchecked(weights[at] = density * smoothstep(r * 0.75, r, Math.sqrt(dx * dx + dy * dy)));
+        at++;
+      }
+    }
+
+    this.patchAtt.push(attShape);
+    this.patchO2.push(o2Shape);
+    this.patchW.push(weights);
+    this.patchI0.push(i0); this.patchI1.push(i1);
+    this.patchJ0.push(j0); this.patchJ1.push(j1);
+    this.patchFood0.push(0.0);
+    this.patchFrac.push(1.0);
+
+    for (let k = 0; k < existing; k++) {
+      this.patchFood0[k] += this.patchFood(k) - unchecked(before[k]);
+    }
+    this.patchFood0[existing] = this.patchFood(existing);
+    for (let k = 0; k <= existing; k++) this.patchFrac[k] = this.patchFraction(k);
+    this.rebuildSources();
   }
 
   /* Nothing exists outside the plate. Python applies this after every source. */
@@ -1503,6 +1744,12 @@ export function initWorld(): void { world = new World(); }
 export function addFood(x: f64, y: f64, r: f64, d: f64, att: f64, ls: f64): void {
   world.addPatch(x, y, r, d, att, ls);
 }
+/* How many lawns the plate is carrying, and how many it turned away. A patch is a megabyte
+ * of cached field shape now, so `addFood` can refuse (see MAX_FOOD_PATCHES); a caller that
+ * draws a marker for every lawn it asked for -- the viewer does -- has to be able to find
+ * out whether the plate actually took it, rather than painting food that is not there. */
+export function foodPatchCount(): i32 { return world.patchAtt.length; }
+export function foodPatchesRefused(): i32 { return world.patchesRefused; }
 export function addRepellent(x: f64, y: f64, s: f64, ls: f64): void {
   world.addRepellent(x, y, s, ls);
 }

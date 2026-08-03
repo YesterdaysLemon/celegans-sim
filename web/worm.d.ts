@@ -33,6 +33,16 @@ declare namespace __AdaptedExports {
    */
   export function addFood(x: number, y: number, r: number, d: number, att: number, ls: number): void;
   /**
+   * assembly/index/foodPatchCount
+   * @returns `i32`
+   */
+  export function foodPatchCount(): number;
+  /**
+   * assembly/index/foodPatchesRefused
+   * @returns `i32`
+   */
+  export function foodPatchesRefused(): number;
+  /**
    * assembly/index/addRepellent
    * @param x `f64`
    * @param y `f64`

@@ -251,9 +251,20 @@ export class LocalEngine {
     this.E.setAblated(this.worms[wormIndex], this._ablPtr, n);
   }
 
+  /* Drop a lawn, and say whether the plate took it.
+   *
+   * A lawn is not free any more. Since #48 a patch caches the two field shapes it sources
+   * -- 1,048,576 bytes of them, four animals' worth -- so that eating it can dim the
+   * attractant and the oxygen depression without recomputing 65,536 exponentials fifty
+   * times a second. The runtime therefore caps the plate at 16 lawns and refuses past
+   * that, and a viewer that pushed a marker regardless would be painting food that is not
+   * on the plate. So the marker follows the runtime's own count, not the request. */
   dropFood(x, y, r = 2.5) {
+    const before = this.E.foodPatchCount();
     this.E.addFood(x, y, r, 1.0, 1.0, 6.0);
+    if (this.E.foodPatchCount() === before) return false;
     this.meta.world.patches.push({ x, y, r, kind: 'food' });
+    return true;
   }
   poke(where, strength) {
     for (const w of this.worms) this.E.pokeWorm(w, where === 'anterior' ? 1 : 0, strength);

@@ -751,12 +751,31 @@ class WorldParams:
     # skirt because oxygen diffuses back in -- the same reason the attractant has one.
     # 5 mm is the shorter of the two because oxygen is also resupplied from the air above
     # the agar, not only laterally.
+    #
+    # THE OXYGEN MODEL IS STATIC, AND THERE IS NO `diffusion_oxygen`. There used to be one,
+    # 0.02 mm^2/s, declared here and read by nothing, in either implementation. It is
+    # deleted rather than implemented, and the reason is that the transport it named is
+    # already in this file under another name: `o2_length_scale` IS the diffusion length.
+    # 5 mm is how far oxygen spreads in from the air and through the agar before respiration
+    # consumes it, which is sqrt(D/k) for the balance `D grad^2 c = k c` -- the same
+    # steady-state equation the attractant skirt is written from, with oxygen's own numbers.
+    # Declaring the coefficient as well is the same physics written twice with nothing to
+    # reconcile the two when they disagree, and they did disagree: taken literally,
+    # 0.02 mm^2/s over a 5 mm skirt is t ~ L^2/D = 1250 s, the same order as the tens of
+    # minutes a lawn takes to deplete, so it is not even the fast field a quasi-static
+    # approximation would want.
+    #
+    # What the model does instead is treat the depression as the equilibrium of the
+    # *current* bacterial mass: `World` rebuilds it as sum_p f_p * shape_p whenever some
+    # f_p moves, and never integrates it. See worm/world.py. Stepping it would need a
+    # consumption term, a boundary condition for the resupply through the agar surface, and
+    # a second stepped field in both implementations with its own conformance surface -- a
+    # different model, not a parameter that was waiting to be plugged in.
     o2_ambient: float = 0.21
     o2_depth: float = 0.15          # how far a full-density lawn draws it down
-    o2_length_scale: float = 5.0    # mm  skirt outside the lawn edge                 # cells across the dish for the chemical fields
+    o2_length_scale: float = 5.0    # mm  skirt outside the lawn edge
     diffusion_attractant: float = 0.004   # mm^2/s   small molecules through agar
     diffusion_repellent: float = 0.004
-    diffusion_oxygen: float = 0.02
     decay_attractant: float = 0.0008      # 1/s
     food_diffusion_scale: float = 1.0
     # Bacteria are eaten, and eating is what makes a food patch a gradient source that
@@ -1960,7 +1979,7 @@ class Params:
 
         for path in (
             "world.diffusion_attractant", "world.diffusion_repellent",
-            "world.diffusion_oxygen", "world.decay_attractant",
+            "world.decay_attractant",
             "world.food_diffusion_scale", "world.ingestion_rate",
         ):
             nonnegative(path)

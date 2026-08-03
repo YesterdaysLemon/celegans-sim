@@ -92,9 +92,14 @@ const SPREAD = [
   [0.0, 16.0, 4.4],
 ];
 /* A lawn under every animal. The plate is the only thing worms share, so a check that
- * wants to know whether they interact has to put them somewhere they are all actually
- * withdrawing from it -- three animals starving on bare agar would agree with themselves
- * perfectly and prove nothing about the coupling. */
+ * wants to know whether they interact has to put at least one of them somewhere it is
+ * actually withdrawing from it -- three animals starving on bare agar would agree with
+ * themselves perfectly and prove nothing about the coupling.
+ *
+ * "At least one", not "all", since #48: withdrawing anywhere now dims the fields
+ * everywhere, so one feeder is enough to make the coupling real and two abstainers are what
+ * let case 2 still assert an exact zero somewhere. It places its own animals for that
+ * reason and does not use SPREAD. */
 const plate = (E) => {
   for (const [x, y] of SPREAD) E.addFood(x, y, 4.0, 1.0, 1.0, 9.0);
   E.addRepellent(0.0, 8.0, 0.9, 5.0);
@@ -136,13 +141,37 @@ function attractantAfter(nWorms) {
 }
 
 /* ---------------------------------------------------------------------------------- 2 --
- * Animals are independent except through the plate.
+ * Animals are independent except through the plate -- and the plate is a real channel.
  *
- * Three worms far enough apart that no head ever enters another's eat-neighbourhood must
- * follow exactly the trajectory each follows alone. This is what makes a population a
- * population rather than a single coupled object, and it is the property a fitness
- * measure quietly assumes: if animals perturb one another through some path nobody
- * intended, `food_eaten` is scoring the neighbours as much as the animal.
+ * This check used to be "three worms far enough apart that no head ever enters another's
+ * eat-neighbourhood follow exactly the trajectory each follows alone", and it was exactly
+ * true while eating only moved `food`, which is local. It is not true any more, and the
+ * reason is #48: a lawn's bacteria are what source its attractant and its oxygen
+ * depression, so eating dims a gradient whose skirt reaches the whole dish. Three feeders
+ * on three lawns now perturb one another at 1.02e-03 mm -- through the plate, correctly,
+ * and there is no separation that makes it zero because the skirt is an exponential and
+ * never reaches zero.
+ *
+ * So the experiment is arranged to say both halves of the sentence at once, rather than
+ * being softened into a tolerance:
+ *
+ *   ONE FEEDER, TWO BYSTANDERS. The feeder sits on the middle lawn. The two bystanders sit
+ *   on bare agar 11.7 mm clear of every lawn -- close enough to smell all five, far enough
+ *   that `food` is exactly 0 under them and `eat` returns without touching a cell. That is
+ *   asserted, not assumed: a bystander that ate anything would make the first half of the
+ *   claim false, and the check would be measuring nothing.
+ *
+ *   THE FEEDER MUST BE UNMOVED by their presence -- exactly, to 0.000e+00. They step
+ *   through the same shared per-step scratch, the same worms array, the same settlement
+ *   pass; if any of that leaked, this is where it shows. That is what the old check was
+ *   protecting and it is protected undiminished.
+ *
+ *   THE BYSTANDERS MUST BE MOVED by the feeder's eating, and only by that, since they
+ *   share nothing else with it. Measured: 1.32e-03 mV on membrane potentials, from an
+ *   attractant 2.12e-08 lower and an oxygen deficit 1.09e-06 shallower at their own cell
+ *   after 4 s of one animal grazing a lawn 14 mm away. A runtime that went back to
+ *   freezing the fields at their initial profile would put this at exactly zero, which is
+ *   the defect #48 reported and the reason this half is asserted rather than described.
  */
 {
   const sample = (E, id) => ({
@@ -150,40 +179,81 @@ function attractantAfter(nWorms) {
     V: readArray(E, E.ptrV(id), 302),
     eaten: E.getEaten(id),
   });
+  const FEEDER = [0.0, 0.0, 1.1];                 // on the middle lawn of `plate`
+  const BYSTANDERS = [[-10.0, -10.0, 0.4], [10.0, -10.0, 2.6]];
+  const PLACES = [FEEDER, ...BYSTANDERS];
+  const SEEDS = [1000, 8717, 17434];
+  const h = 2 * head.scalars.world_extent / GRID;
+  const cellOf = (x, y) => {
+    const clamp = (v) => Math.min(GRID - 1, Math.max(0, Math.floor(v)));
+    return clamp((y + head.scalars.world_extent) / h) * GRID
+         + clamp((x + head.scalars.world_extent) / h);
+  };
+
   const start = [];
   const together = (() => {
     const E = engine();
     plate(E);
-    const ids = SPREAD.slice(0, 3).map((p, i) => E.createWorm(1000 + i * 7717, ...p));
+    const ids = PLACES.map((p, i) => E.createWorm(SEEDS[i], ...p));
     for (const id of ids) start.push(readArray(E, E.ptrNodesX(id), 49));
     E.stepAll(FEED_STEPS);
-    return ids.map((id) => sample(E, id));
+    return {
+      each: ids.map((id) => sample(E, id)),
+      att: readArray(E, E.ptrAttractant(), GRID * GRID),
+      o2: readArray(E, E.ptrO2(), GRID * GRID),
+    };
   })();
-  const alone = SPREAD.slice(0, 3).map((p, i) => {
+  const alone = PLACES.map((p, i) => {
     const E = engine();
     plate(E);
-    const id = E.createWorm(1000 + i * 7717, ...p);
+    const id = E.createWorm(SEEDS[i], ...p);
     E.stepAll(FEED_STEPS);
-    return sample(E, id);
+    return {
+      ...sample(E, id),
+      att: readArray(E, E.ptrAttractant(), GRID * GRID),
+      o2: readArray(E, E.ptrO2(), GRID * GRID),
+    };
   });
-  let d = 0;
-  for (let i = 0; i < 3; i++) {
-    d = Math.max(d, worst(together[i].nodes, alone[i].nodes));
-    d = Math.max(d, worst(together[i].V, alone[i].V));
-    d = Math.max(d, Math.abs(together[i].eaten - alone[i].eaten));
+
+  // The feeder, with and without company. Nothing but the plate connects them, and it did
+  // not touch the plate on their account, so this has to be exact.
+  const feederD = Math.max(
+    worst(together.each[0].nodes, alone[0].nodes),
+    worst(together.each[0].V, alone[0].V),
+    Math.abs(together.each[0].eaten - alone[0].eaten),
+  );
+  // The bystanders, with and without a neighbour grazing 14 mm away.
+  let bystanderV = 0;
+  let bystanderXY = 0;
+  for (let k = 1; k < 3; k++) {
+    bystanderV = Math.max(bystanderV, worst(together.each[k].V, alone[k].V));
+    bystanderXY = Math.max(bystanderXY, worst(together.each[k].nodes, alone[k].nodes));
   }
-  /* Guard against a vacuous pass. Two animals that never moved and never ate would agree
-   * with each other to every decimal place and demonstrate nothing, which is the exact
-   * shape of failure this file exists to stop repeating: the comparison has to be over
-   * something that was actually happening. */
-  const fed = together.every((w) => w.eaten > 0);
-  const moved = together.every((w, i) => worst(w.nodes, start[i]) > 0.05);
+  const cell = cellOf(BYSTANDERS[0][0], BYSTANDERS[0][1]);
+  const dAtt = alone[1].att[cell] - together.att[cell];
+  const dO2 = alone[1].o2[cell] - together.o2[cell];
+
+  /* Guards against a vacuous pass, and every one of them has a job. The feeder has to have
+   * actually eaten, or the plate never changed and both halves are trivial. The bystanders
+   * have to have eaten exactly nothing, or the first half is asserting something false. And
+   * everyone has to have moved, because two animals standing still agree with themselves
+   * to every decimal place and demonstrate nothing -- the shape of failure this file exists
+   * to stop repeating. */
+  const fed = together.each[0].eaten > 0 && alone[0].eaten > 0;
+  const abstained = [1, 2].every((k) => together.each[k].eaten === 0 && alone[k].eaten === 0);
+  const moved = together.each.every((w, i) => worst(w.nodes, start[i]) > 0.05);
   report(
-    'INDEPENDENCE -- 3 animals stepped together against each stepped alone',
-    d === 0 && fed && moved,
-    `  worst disagreement            ${d.toExponential(3)}   (nodes, V, food eaten)\n` +
-    `  every animal fed              ${fed}   [${together.map((w) => w.eaten.toFixed(5)).join(', ')}]\n` +
-    `  every animal moved            ${moved}   (worst node travel > 0.05 mm)`,
+    'INDEPENDENCE -- one feeder and two bystanders, together against each alone',
+    feederD === 0 && bystanderV > 1e-6 && dAtt > 0 && dO2 > 0 && fed && abstained && moved,
+    `  feeder, with company or not   ${feederD.toExponential(3)}   (nodes, V, food eaten; must be exactly 0)\n` +
+    `  bystanders, moved by the plate ${bystanderV.toExponential(3)} mV, ` +
+    `${bystanderXY.toExponential(3)} mm   (must be > 1e-6 mV)\n` +
+    `  what reached them             attractant ${dAtt.toExponential(3)} lower, ` +
+    `oxygen deficit ${dO2.toExponential(3)} shallower at their own cell\n` +
+    `  the feeder fed                ${fed}   [${together.each[0].eaten.toFixed(6)}]\n` +
+    `  the bystanders did not        ${abstained}   ` +
+    `[${[1, 2].map((k) => together.each[k].eaten).join(', ')}]\n` +
+    `  everyone moved                ${moved}   (worst node travel > 0.05 mm)`,
   );
 }
 

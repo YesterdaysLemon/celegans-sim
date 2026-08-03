@@ -349,6 +349,22 @@ MUTATIONS = [
               "    }",
          expect=["conform"]),
 
+    dict(name="wasm/frozen-sources", file="wasm/assembly/index.ts", rebuild="asc",
+         imitates="#48 put back: eating moves the food array and nothing else, so a lawn "
+                  "grazed to bare agar goes on smelling and respiring exactly like a full "
+                  "one. Measured, 8.359e-05 mm on node positions and 3.731e-01 mV on "
+                  "membrane potentials against tolerances of 1e-06 on both, first out of "
+                  "tolerance at step 3200 of the four-animal case.\n"
+                  "\n"
+                  "Only the four-animal case catches it, and that is the whole reason this "
+                  "entry is worth having: in the 2 s the single-animal cases run, one worm "
+                  "takes so little off the plate that every field stays inside tolerance. "
+                  "The defect that shipped for the life of this model is invisible to five "
+                  "of the six conformance cases.",
+         find="      this.refreshSources();\n",
+         repl="",
+         expect=["conform"]),
+
     dict(name="py/proprio-reach", file="worm/params.py", rebuild="full",
          imitates="a gait-critical model constant moved. The wave should not survive it.",
          # Was proprio_reach_food, which the audit showed nothing caught -- correctly, since

@@ -635,6 +635,20 @@ gradient and an oxygen depression, because bacteria respire. A linear thermal gr
 across it. There are obstacles, and a drop of something noxious. The worm eats what it
 walks over, which slowly erases the gradient that led it there.
 
+That last sentence was aspirational until #48. Eating moved the food array and nothing
+else, so a lawn grazed to bare agar went on smelling and respiring exactly like a full one
+— an animal could chemotax towards food that was not there, indefinitely. Both fields are
+the steady state of `D ∇²c = λc` away from a finite source, and that equation is *linear in
+the source strength*, so a lawn with fraction `f` of its bacteria left sources `f` of the
+field with an unchanged shape. Each patch now caches its shape and is scaled by `f`.
+Oxygen is not transported here: the depression is solved from the standing mass rather than
+stepped, because `o2_length_scale` already *is* oxygen's diffusion length — 5 mm is how far
+it spreads in before respiration consumes it. `WorldParams` has no `diffusion_oxygen` for
+that reason; it named the same physics twice and was read by nothing. The attractant does
+diffuse, so it is relaxed towards what the standing bacteria emit; an intact lawn sources
+exactly what decays and is left alone to the bit, which is what keeps every result measured
+on a full plate meaning what it did.
+
 Sensory transduction is routed to the neurons that actually carry it, and where the biology
 is asymmetric so is the model: ASEL and ASER are a matched ON/OFF pair (ASEL depolarises
 when attractant concentration rises, ASER when it falls); AWC is an OFF cell, silenced by

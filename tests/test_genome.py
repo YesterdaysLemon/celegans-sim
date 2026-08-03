@@ -101,4 +101,11 @@ def test_fixed_and_dead_constants_are_not_mutable_genes():
     assert "body.dt" not in BOUNDS
     assert "world.ingestion_rate" not in BOUNDS
     assert "world.food_diffusion_scale" not in BOUNDS
-    assert "world.diffusion_oxygen" not in BOUNDS
+    # world.diffusion_oxygen used to be asserted here as a dead parameter that must not be
+    # mutable. #48 deleted it instead: the oxygen field is solved from the standing
+    # bacterial mass, not integrated, so there is nothing for a transport coefficient to
+    # multiply. Asserting it is absent from BOUNDS would now pass for a name that does not
+    # exist -- a check covering less than its comment claims, which is this repository's
+    # most repeated bug. Assert the deletion itself instead.
+    assert "world.diffusion_oxygen" not in flatten(Params())
+    assert not hasattr(Params().world, "diffusion_oxygen")
