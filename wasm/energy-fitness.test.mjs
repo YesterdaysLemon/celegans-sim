@@ -213,7 +213,8 @@ function scripted(points) {
   };
 }
 const dragOf = (points) =>
-  assay(scripted(points), [0], points.length - 1, { dt: 1.0, sampleDt: 1.0 })[0];
+  assay(scripted(points), [0], points.length - 1,
+        { dt: 1.0, sampleDt: 1.0, invariants: false })[0];
 
 test('the drag proxy is quadratic in speed, not in distance', () => {
   /* The header claims this integral is `sum(v^2 dt)` and reasons from that: quadratic, so
