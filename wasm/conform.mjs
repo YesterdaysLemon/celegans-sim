@@ -111,6 +111,46 @@ console.log(`  worst curvature disagreement  ${worstK.toExponential(3)} /mm`);
 const mechOk = worstXY < 1e-9 && worstK < 1e-7;
 console.log(mechOk ? '  PASS' : '  FAIL');
 
+// --- the body against itself -------------------------------------------------------------
+// Nothing above reaches Worm.selfContact: the animal never touches itself, so every other
+// case could pass with that function arbitrarily wrong. This one coils the body until its
+// far side meets itself. `contact_steps` in the reference is the guard against this case
+// quietly going back to covering nothing -- see #26, where a conformance check compared
+// zero fields and printed a perfect score.
+const fd = ref.folded;
+const wf = E.createWorm(0, 0.0, 0.0, 0.0);
+fd.moment.forEach((v, j) => E.setMoment(wf, j, v));
+
+let foldXY = 0, foldK = 0, fprev = 0;
+for (const f of fd.frames) {
+  E.stepBodyOnly(wf, fd.dt, f.step - fprev);
+  fprev = f.step;
+  const nx = F64().subarray(E.ptrNodesX(wf) >> 3, (E.ptrNodesX(wf) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(wf) >> 3, (E.ptrNodesY(wf) >> 3) + f.y.length);
+  const kk = F64().subarray(E.ptrKappa(wf) >> 3, (E.ptrKappa(wf) >> 3) + f.kappa.length);
+  for (let i = 0; i < f.x.length; i++) {
+    foldXY = Math.max(foldXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  }
+  for (let i = 0; i < f.kappa.length; i++) {
+    foldK = Math.max(foldK, Math.abs(kk[i] - f.kappa[i]));
+  }
+}
+
+const flast = fd.frames[fd.frames.length - 1];
+const fspan = Math.hypot(flast.x[0] - flast.x[flast.x.length - 1],
+                         flast.y[0] - flast.y[flast.y.length - 1]);
+console.log(`\nSELF-CONTACT -- the body coiled into itself, ${fd.steps} steps, no biology`);
+console.log(`  reference had contact on      ${fd.contact_steps} of ${fd.steps} steps` +
+            `   (body spans ${fspan.toFixed(3)} mm)`);
+console.log(`  worst node disagreement       ${foldXY.toExponential(3)} mm`);
+console.log(`  worst curvature disagreement  ${foldK.toExponential(3)} /mm`);
+const covered = fd.contact_steps > 0;
+if (!covered) {
+  console.log('  the reference never made contact: this case is comparing nothing');
+}
+const foldOk = covered && foldXY < 1e-9 && foldK < 1e-7;
+console.log(foldOk ? '  PASS' : '  FAIL');
+
 // --- the whole loop --------------------------------------------------------------------
 // The same plate the Python built. This has to be kept in step with conform.py by hand,
 // and it is worth the nuisance: the first version of this test ran both sides on an empty
@@ -537,7 +577,7 @@ const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph
   && plateLost > 0 && relGap < 1e-9 && flat.length === 0;
 console.log(multiOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && fullOk && ablOk && mod1Ok && allOk && multiOk;
+const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && allOk && multiOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 // Only a completed numeric comparison may use the dedicated finding code. Missing or

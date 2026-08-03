@@ -347,6 +347,10 @@ def export(path=OUT, params=None):
     b.arr("body_mask_rho", body._mask_rho).arr("body_mask_sqrt", body._mask_sqrt)
     b.arr("body_rho_max_off", body._rho_max_off)
     b.arr("body_radius", body.radius).arr("body_joint_radius", body.joint_radius)
+    # Per-node half-width, for self-contact. Exported rather than recomputed in the
+    # runtime so the two sides cannot drift in the radius profile's exponent, and so it
+    # keeps following radius_max if morphology ever becomes heritable.
+    b.arr("body_node_radius", body.node_radius)
     b.f("body_l", body.l)
     b.i("body_substeps", p.body.substeps)
     b.f("body_length", p.body.length).f("body_radius_max", p.body.radius_max)

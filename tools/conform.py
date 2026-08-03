@@ -54,6 +54,50 @@ def body_case():
     return out
 
 
+def folded_case():
+    """The body driven into itself, because nothing else here reaches the self-contact force.
+
+    `body_case` and every other case run an animal that never touches itself -- measured,
+    in `tools/self_contact.py`: no overlap at any scale, across seeds and both food
+    conditions. So they exercise exactly zero lines of `Body.self_contact_force`, and a
+    port of it could be arbitrarily wrong while the whole suite stayed green. That is the
+    egg-laying conformance bug from #26 in a new place: a check that compares nothing and
+    reports a perfect score.
+
+    A uniform 1.0 uN mm coils the body until its far side meets itself -- contact fires on
+    1941 of 2000 steps and 36 node pairs are touching at the end -- which is a state the
+    animal never reaches on its own and the runtime must nonetheless reproduce. Below about
+    0.6 nothing touches at all and this case would silently go back to covering nothing, so
+    `contact_steps` is recorded and the comparison fails if it is zero.
+
+    Contact is computed from the current nodes and then handed to `step`, matching
+    `stepBodyOnly`'s `contact(); stepBody(dt)` ordering on the other side. The wall force
+    is identically zero here -- the animal is at the origin of a 45 mm dish -- so the two
+    sides are comparing self-contact alone.
+    """
+    p = Params()
+    body = Body(p.body, MEDIA["agar"], position=(0.0, 0.0), heading=0.0)
+    dt = p.neural.dt
+    moment = np.full(p.body.n_links - 1, 1.0)
+
+    out = {"dt": dt, "steps": STEPS, "sample": SAMPLE,
+           "moment": moment.tolist(), "frames": [], "contact_steps": 0}
+    for i in range(STEPS):
+        forces = body.self_contact_force(body.nodes())
+        if np.abs(forces).max() > 0.0:
+            out["contact_steps"] += 1
+        body.step(moment, dt=dt, node_forces=forces)
+        if (i + 1) % SAMPLE == 0:
+            nodes = body.nodes()
+            out["frames"].append({
+                "step": i + 1,
+                "x": [round(float(v), 12) for v in nodes[:, 0]],
+                "y": [round(float(v), 12) for v in nodes[:, 1]],
+                "kappa": [round(float(v), 12) for v in body.curvature()],
+            })
+    return out
+
+
 def full_case(serotonin_mod1=0.0):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
@@ -373,7 +417,8 @@ def multi_case():
 
 
 def main():
-    json.dump({"body": body_case(), "full": full_case(), "ablated": ablated_case(),
+    json.dump({"body": body_case(), "folded": folded_case(),
+               "full": full_case(), "ablated": ablated_case(),
                # 0.30 is the coefficient ModulatorParams.serotonin_mod1 documents as
                # adopted-then-shipped-at-zero. Running the reference there is the only way
                # this path gets compared at all.

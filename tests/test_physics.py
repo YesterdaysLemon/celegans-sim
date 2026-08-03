@@ -152,3 +152,64 @@ def test_radius_profile_shape():
     assert 0.35 < s[np.argmax(r)] < 0.65        # widest near the middle
     assert r[0] < 0.6 * r.max() and r[-1] < 0.6 * r.max()   # tapered at both ends
     assert r[-1] < r[0]                          # tail thinner than head
+
+
+def test_self_contact_is_inert_on_a_straight_body(params):
+    """A straight worm is a continuous tube, not a pile of collisions.
+
+    Adjacent nodes are 0.021 mm apart against a midbody contact distance near 0.07, so a
+    naive all-pairs check reports overlap everywhere along a perfectly straight animal.
+    The eligibility rule -- a pair counts only once its separation along the body exceeds
+    its own width -- is what makes the force mean anything, and this is that rule.
+    """
+    body = Body(params.body, params.medium)
+    f = body.self_contact_force(body.nodes())
+    assert np.abs(f).max() == 0.0
+
+
+def test_self_contact_pushes_a_folded_body_apart(params):
+    """The force has to fire when the body actually folds through itself.
+
+    Built by hand rather than by driving the model there, because the model does not go
+    there: tools/self_contact.py measures no overlap at any scale. A constraint that has
+    never been observed to act needs a test that makes it act, or it is only assumed to
+    work.
+    """
+    body = Body(params.body, params.medium)
+    n = body.n
+    # A hairpin: the front half doubles back over the rear half, one contact distance
+    # apart would be touching, so half of that is frank interpenetration.
+    body.theta = np.zeros(n)
+    body.theta[n // 2:] = np.pi
+    nodes = body.nodes()
+    nodes[n // 2 + 1:, 1] += 0.5 * (2 * params.body.radius_max)
+
+    f = body.self_contact_force(nodes)
+    assert np.abs(f).max() > 0.0, "a folded body must register self-contact"
+
+    # Equal and opposite: this is an internal force and must not accelerate the animal.
+    assert np.allclose(f.sum(axis=0), 0.0, atol=1e-9)
+
+    # And it must separate the two limbs rather than pull them together. The overlapping
+    # front half is displaced +y, so it must be pushed further +y.
+    front = f[n // 2 + 1:, 1].sum()
+    rear = f[: n // 2, 1].sum()
+    assert front > 0.0 and rear < 0.0
+
+
+def test_self_contact_ignores_pairs_that_only_just_qualify(params):
+    """The eligibility margin is the whole reason this force is safe to switch on.
+
+    Nodes 31 and 34 are 0.0625 mm apart along the body against a combined width of
+    0.06224 -- a margin of three ten-thousandths of a millimetre. Requiring only that
+    separation exceed width admits that pair, ordinary undulation closes it, and the force
+    fires on a normally-crawling animal. It moved one 3 mm off its own trajectory.
+    """
+    body = Body(params.body, params.medium)
+    along = np.abs(np.arange(body.n + 1)[:, None]
+                   - np.arange(body.n + 1)[None, :]) * body.l
+    naive = np.triu(along > body._self_contact_dist, k=1)
+    assert naive[31, 34], "the pair that caused the bug must qualify under the naive rule"
+    assert not body._self_pairs[31, 34], "and must not qualify under the real one"
+    # A genuine fold is far past the cut and must be unaffected by the margin.
+    assert body._self_pairs[5, body.n - 5]
