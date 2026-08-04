@@ -72,20 +72,48 @@ What that leaves is structural, and it means **no amount of tuning fixes this**:
 > fixed proprioceptive reach, has nothing to scale it either. **The animal saturates because
 > the model gave it exactly one way to feel the medium, and it runs out.**
 
-Reaching 5.87x therefore needs **a second load-dependent element**, not a bigger gain on an
-existing one. **Muscle force-velocity is the candidate and the next real project**: real muscle
-produces less force the faster it shortens, which in a light medium is exactly a load-dependent
-change in the muscle's contribution to the loop, and it is the standard biomechanical answer to
-why a swimmer and a crawler are the same animal. `MuscleParams` has no velocity term to widen,
-so this is a new term in `Muscles.step`, a conformance run, and a re-fit of the gait — its own
-change, not a rider on something else.
+> **Retracted the same day it was written, by `tools/lag_span.py`.** The diagnosis above
+> predicts that shrinking the fixed lag exposes the body's load-dependent contribution and
+> widens the span. Cutting the head budget fourfold, 0.500 s to 0.125 s:
+>
+> ```
+>   head lag   agar Hz   buffer Hz   span
+>   0.500       0.644      0.833     1.29x
+>   0.250       0.967      1.300     1.34x
+>   0.125       1.356      1.900     1.40x
+> ```
+>
+> Frequency really is set by total lag — a fourfold cut roughly doubles it in both media, so
+> that half stands. But the span barely moves, and it could not behave that way if the media
+> differed by an additive lag. Fitting the additive model to those points puts the buffer-end
+> body lag near 0.8 s, larger than the head reflex's whole budget, which a body with almost no
+> drag on it cannot be doing. **"The body's drag response is the one load-dependent term" was
+> the wrong reading of the saturation**, and what produces even the 1.3x that exists is not
+> identified. Two hypotheses eliminated, none confirmed.
 
-Two things to do before starting it, both cheap and both protecting the result. Freeze the
-baseline with `tools/scorecard.py` and `tools/ethogram.py`, because a force-velocity term
-changes the shared gait and can move every behavioural assay at once. And decide up front what
-would falsify it: if the span does not widen once the muscle can feel its own shortening rate,
-then the load-dependence has to come from proprioception instead, and that is a different
-change with a different failure mode.
+**What survives the retraction, and is worth more than it was:**
+
+- **Wavelength never modulates at all** — span 1.06x, 1.01x, 1.03x at the three lag budgets,
+  against the animal's **2.37x**. It is flat at every lag, in every medium, under every
+  configuration tried so far. The frequency story has moved twice; this one has not moved at
+  all, and nothing has yet been aimed at it. Wavelength is set by a fixed proprioceptive reach
+  with nothing scaling it, and that is now the cleanest unexplained thing in the model.
+- **The shipped lag budget is near-optimal for the wave.** Cutting it degrades everything
+  else — travelling index 0.880 → 0.753 on agar and 0.761 → 0.434 in buffer, buffer net speed
+  0.039 → 0.016 mm/s, wavelength collapsing 0.86 → 0.48 L. A shorter loop is a faster, worse
+  animal. The cascade should keep its 0.50 s.
+
+**Where to go next, in the order I would take them.** Muscle force-velocity is built and off
+by default (`MuscleParams.fv_vmax`), and `tools/force_velocity.py` sweeps it with its readings
+fixed in advance — it is a genuinely load-dependent element and worth the measurement, but it
+is now a candidate on its own merits rather than the conclusion of an argument, because the
+argument has been withdrawn. After that, **proprioception is the better-aimed target**, and
+the wavelength result is why: reach is fixed, wavelength is what reach sets, and wavelength is
+the quantity that has never responded to anything.
+
+Before adopting anything that touches the shared gait, freeze the baseline with
+`tools/scorecard.py` and `tools/ethogram.py` on identical seeds — it can move every
+behavioural assay at once.
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves

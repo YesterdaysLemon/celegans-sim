@@ -823,13 +823,42 @@ class MediumParams:
     fixed proprioceptive reach -- has nothing to scale it either. The animal saturates
     because the model gave it exactly one way to feel the medium and it runs out.
 
-    Reaching the animal's 5.87x therefore needs **a second load-dependent element**, not a
-    bigger gain on an existing one. Muscle force-velocity is the physiological candidate and
-    the obvious first thing to try: real muscle produces less force the faster it shortens,
-    which in a light medium is precisely a load-dependent change in the muscle's contribution
-    to the loop. It is also real work -- `MuscleParams` has no velocity term to widen -- so it
-    deserves its own change and its own conformance run rather than being folded into
-    something else.
+    RETRACTION. The paragraph above is half right and its conclusion does not follow, and
+    the refuting measurement is `tools/lag_span.py`. Cutting the head reflex's lag budget by
+    four -- 0.500 s to 0.125 s, four stages throughout, no transport delay -- gives:
+
+        head lag   agar Hz   buffer Hz   span
+        0.500       0.644      0.833     1.29x
+        0.250       0.967      1.300     1.34x
+        0.125       1.356      1.900     1.40x
+
+    The first claim survives: frequency really is set by the loop's total lag, and cutting it
+    fourfold roughly doubles the frequency in both media. **The second does not.** If the
+    media differed by an *additive* lag -- a large one on agar where the body resists, a
+    negligible one in buffer where it does not -- then shrinking the fixed part would expose
+    that difference and the span would open up sharply. It barely moves: 1.29x to 1.40x
+    across a fourfold cut. Fitting the additive model to those two points puts the buffer-end
+    body lag at about 0.8 s, larger than the head reflex's entire budget, which is not a
+    thing a body with almost no drag on it can be doing.
+
+    So the medium's 1.3x is **not** an additive lag difference, and "the body's drag response
+    is the one load-dependent term" was the wrong reading of the saturation. What produces the
+    1.3x that does exist is not identified, and neither is what would produce the animal's
+    5.87x; two hypotheses have been eliminated rather than one confirmed.
+
+    Two facts worth carrying forward from that sweep, both independent of the retraction:
+
+      * **wavelength never modulates at all.** Its span is 1.06x, 1.01x and 1.03x at the three
+        lag budgets, against the animal's 2.37x. Whatever is missing is missing at every lag,
+        and the wavelength is set by a fixed proprioceptive reach with nothing scaling it;
+      * **the shipped lag budget is near-optimal for the wave.** Cutting it degrades
+        everything else -- travelling index 0.880 to 0.753 on agar and 0.761 to 0.434 in
+        buffer, buffer net speed 0.039 to 0.016 mm/s, wavelength collapsing 0.86 to 0.48 L.
+        A shorter loop is a faster, worse animal, so the cascade should keep its 0.50 s.
+
+    Muscle force-velocity remains worth measuring -- it is a genuinely load-dependent element
+    and `MuscleParams` now has one, off by default -- but it is a candidate on its own merits
+    now rather than the conclusion of an argument, because the argument has been withdrawn.
     """
 
     name: str = "agar"
