@@ -2597,9 +2597,18 @@ PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no
 PYTHONPATH=. .venv/bin/python tools/head_mode.py            # which limit cycle, and why
 PYTHONPATH=. .venv/bin/python tools/habituation.py          # the only memory in the model
 PYTHONPATH=. .venv/bin/python tools/timestep_convergence.py # is the gait converged? (~4 min)
+PYTHONPATH=. .venv/bin/python tools/head_circuit.py         # lumped vs spatially distributed
+PYTHONPATH=. .venv/bin/python tools/head_cascade.py         # can stages in series pay for head_delay?
+PYTHONPATH=. .venv/bin/python tools/audit.py --only <name>  # watch a check fail, in seconds
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # full regression suite
 .venv/bin/python run.py --headless 60
+npm run check                                               # every gate CI would run, locally
+npm run check -- --rebuild                                  # ...including the artifact rebuilds
 ```
+
+`npm run check` is the one to reach for before pushing while CI is paused. It runs the gates
+in the workflows' own order and **reports what it skipped rather than counting a skip as a
+pass**; `--strict` turns any skip into a non-zero exit.
 
 Every tool takes `key=value` overrides for the parameters it cares about, e.g.
 `tools/kymo.py pg=180 moment=3.0 medium=buffer`.
