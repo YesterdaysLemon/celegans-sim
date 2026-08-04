@@ -209,7 +209,11 @@ function scripted(points) {
     getX: () => points[k][0],
     getY: () => points[k][1],
     stepAll: (n) => { k += n; },
-    getEaten: () => 0, getIngested: () => 0, getEggsLaid: () => 0,
+    // Every read `assay` makes has to be here, because a stand-in that is missing one does
+    // not degrade -- it throws, and the failure names this file rather than the addition
+    // that caused it. `getEggsHeld` arrived with the `eggs` measure (#98) and is the reason
+    // this comment exists: nothing else pins the stand-in's surface to the real engine's.
+    getEaten: () => 0, getIngested: () => 0, getEggsLaid: () => 0, getEggsHeld: () => 0,
   };
 }
 const dragOf = (points) =>
