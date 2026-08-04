@@ -103,13 +103,47 @@ What that leaves is structural, and it means **no amount of tuning fixes this**:
   0.039 → 0.016 mm/s, wavelength collapsing 0.86 → 0.48 L. A shorter loop is a faster, worse
   animal. The cascade should keep its 0.50 s.
 
-**Where to go next, in the order I would take them.** Muscle force-velocity is built and off
-by default (`MuscleParams.fv_vmax`), and `tools/force_velocity.py` sweeps it with its readings
-fixed in advance — it is a genuinely load-dependent element and worth the measurement, but it
-is now a candidate on its own merits rather than the conclusion of an argument, because the
-argument has been withdrawn. After that, **proprioception is the better-aimed target**, and
-the wavelength result is why: reach is fixed, wavelength is what reach sets, and wavelength is
-the quantity that has never responded to anything.
+**Force-velocity was measured too, and it is not the mechanism either.**
+`MuscleParams.fv_vmax` exists, off by default; `tools/force_velocity.py`, both media, three
+seeds, no failures:
+
+```
+  vmax   agar Hz   buffer Hz   span    wavelength span
+  off     0.656      0.833     1.27x       1.10x
+  1000    0.622      0.767     1.23x       1.10x
+  700     0.600      0.733     1.22x       1.16x
+  500     0.600      0.700     1.17x       1.17x
+```
+
+The span does not widen; it **narrows**, monotonically. That is the failure the sweep's own
+header predicted before the run: the derating acts on shortening rate, shortening rate is a
+property of the gait rather than of the medium, this gait is similar at both ends, so it
+applies about equally at both and cancels out of the ratio — while adding lag, which narrows
+it. Not adopted: it is more faithful muscle than none and it costs the crawl, which is where
+the model is calibrated.
+
+**Three mechanisms tested, three failures**, and it is worth having them in one place so
+nobody re-runs them:
+
+| tried | result | do not re-run as |
+|---|---|---|
+| cascade's frequency-dependent phase | 1.27x vs 1.29x | a stage count or a lag budget |
+| cutting the fixed lag 4x | 1.29x → 1.40x | a smaller head reflex |
+| muscle force-velocity | 1.27x → 1.17x | a stronger derating; it is also unstable there |
+
+**So proprioception is next, and the wavelength column is why.** Across every configuration
+above — three lag budgets, four force-velocity strengths, two head-reflex architectures, four
+internal-damping values — the wavelength span has been 1.01x to 1.17x against the animal's
+**2.37x**. Frequency has moved for all sorts of reasons today. Wavelength has essentially
+never moved, and **nothing has ever been aimed at it**. It is set by `proprio_reach`, a fixed
+fraction of the body, with nothing scaling it by load; the one arm that nudged it at all was
+force-velocity, which touches the muscle rather than the reach.
+
+That makes the next experiment cheap and well-posed before it is expensive: sweep
+`proprio_reach` across both media and see whether the wavelength *can* be moved at all, and
+whether moving it drags the frequency span with it. If reach turns out to set wavelength
+without touching the span, then frequency and wavelength are independent failures and need
+separate mechanisms — which would itself be worth knowing before anyone builds either.
 
 Before adopting anything that touches the shared gait, freeze the baseline with
 `tools/scorecard.py` and `tools/ethogram.py` on identical seeds — it can move every

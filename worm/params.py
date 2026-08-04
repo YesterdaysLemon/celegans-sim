@@ -609,9 +609,39 @@ class MuscleParams:
     #
     # `fv_vmax` is the characteristic shortening rate, in the units of d(kappa)/dt that the
     # joints actually see: 1/(mm*s). **Zero disables the whole term**, which is the shipped
-    # state and is bit-identical to having no force-velocity code at all. For scale, an
-    # animal at kappa_rms 4.4 /mm and 0.7 Hz sweeps d(kappa)/dt of roughly 19 /(mm*s), so
-    # values of order 10-100 span "dominant" to "barely there".
+    # state and is bit-identical to having no force-velocity code at all.
+    #
+    # For scale, and this is worth stating carefully because getting it wrong wasted a sweep:
+    # the concentric factor is (1 - x)/(1 + fv_curvature*x) with x = v/vmax, which at
+    # fv_curvature = 4 is 0.46 at x = 0.19 and 0.01 at x = 0.95. It bites near x ~ 0.05, not
+    # near x ~ 1. An animal at kappa_rms 4.4 and 0.7 Hz sweeps about 19 /(mm*s), so vmax of
+    # 1000 is a 9% derating, 500 is 17%, and anything at 100 or below is not a force-velocity
+    # curve, it is a switch.
+    #
+    # MEASURED, AND IT IS NOT THE GAIT-MODULATION MECHANISM. tools/force_velocity.py, both
+    # media, three seeds, no failures:
+    #
+    #   vmax   agar Hz   buffer Hz   span    wavelength span
+    #   off     0.656      0.833     1.27x       1.10x
+    #   1000    0.622      0.767     1.23x       1.10x
+    #   700     0.600      0.733     1.22x       1.16x
+    #   500     0.600      0.700     1.17x       1.17x
+    #
+    # The span does not widen; it narrows, monotonically, 1.27x to 1.17x. That is the failure
+    # the sweep's own header predicted: the derating acts on shortening rate, shortening rate
+    # is a property of the gait rather than of the medium, this model's gait is similar at
+    # both ends, so the derating applies about equally at both and cancels out of the ratio --
+    # while adding lag, which narrows it. The animal spans 5.87x.
+    #
+    # Two things in that table are worth keeping anyway. It makes the animal *better* in
+    # buffer -- travelling index +0.657 to +0.682, net speed 0.0380 to 0.0413 mm/s -- and
+    # worse on agar, +0.846 to +0.769 and 0.295 to 0.218 mm/s, with kappa_rms falling 4.45 to
+    # 2.75. And the **wavelength span moves for the first time**, 1.10x to 1.17x. Trivial
+    # against the animal's 2.37x, but nothing else tried has moved it at all.
+    #
+    # Not adopted. It is more faithful muscle than none and it costs the crawl, which is where
+    # this model is calibrated; adopting it would mean re-fitting the gait to buy a property
+    # that has just been measured not to arrive.
     fv_vmax: float = 0.0            # 1/(mm*s), 0 = off
 
     # Hill's curvature constant, the `a/F0` of the classic hyperbola. 4 is the usual value
