@@ -146,8 +146,8 @@ def test_the_parser_is_not_lying():
     These are transcribed from the workflow files by hand on purpose.
     """
     py = workflow_globs(PYTHON_WF)
-    assert py == ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
-                  'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+    assert py == ['worm/**', 'tests/**', 'tools/*.py', 'tools/check_all.mjs', 'data/**',
+                  'pyproject.toml', 'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
                   'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
                   '.github/workflows/python.yml'], py
 

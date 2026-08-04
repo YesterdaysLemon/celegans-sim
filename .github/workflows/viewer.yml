@@ -170,6 +170,15 @@ jobs:
       - name: the dish remembers what it is filled with
         run: node --test wasm/medium.test.mjs
 
+      # This existed and ran nowhere. The physics guard was ported to the runtime because
+      # evolution runs there, and its test -- the file whose own header says a guard that
+      # has never been observed to fire is not known to work -- was never added to a
+      # workflow or to the README's local list. tools/audit.py found it the way it finds
+      # everything: raising the curvature limit past anything the body can reach is caught
+      # by this file and by nothing else in the battery, conformance included.
+      - name: the physics guard still fires
+        run: node --test wasm/invariants.test.mjs
+
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
       # port gets measured against a model that no longer exists.

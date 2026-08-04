@@ -349,6 +349,14 @@ const N = 64;
  * reason nobody was tracking, and survived because the check next to it was looking at a
  * different number. Any percentage written within a couple of lines of `headHist` now has
  * to be the measured one.
+ *
+ * That rule is deliberately blunt, and the cost is worth stating because it caught the
+ * commit that introduced it: a document *recording* the correction -- "89%, not the 55% we
+ * used to say" -- reads to this check exactly like a document still claiming 55%, and
+ * fails. There is no way to tell those apart by looking at the digits, and the alternative
+ * is a check that can be talked out of firing by nearby prose, which is the weaker of the
+ * two mistakes. So the history goes in words and the measurement goes in digits: say what
+ * the animal used to cost, not what share it used to imply.
  */
 {
   const largest = [...wormArrays].sort((a, b) => b.bytes - a.bytes)[0];

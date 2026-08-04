@@ -240,6 +240,11 @@ const GATES = [
             { PYTHONPATH: '.', PY: PY || 'python3' }),
   },
   {
+    id: 'invariants', job: 'conformance', step: 'the physics guard still fires',
+    covers: ['the physics guard still fires'],
+    needs: ['model'], run: sh('node --test wasm/invariants.test.mjs'),
+  },
+  {
     id: 'population', job: 'conformance', step: 'the population behaves as a population',
     covers: ['the population behaves as a population'],
     needs: ['model'], run: sh('node wasm/population.mjs'),

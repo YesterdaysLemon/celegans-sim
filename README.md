@@ -904,6 +904,7 @@ node tools/check_cache_headers.mjs        # every served asset has a deliberate 
 node tools/check_web.mjs                  # module graph: cycles, unresolved imports, leftovers
 node --test tools/sim_rate.test.mjs       # the rate readouts measure what their labels claim
 node --test wasm/conform-inputs.test.mjs  # the conformance inputs are present and not stale
+node --test wasm/invariants.test.mjs      # the runtime's physics guard still fires
 node tools/smoke_web.mjs                  # the viewer in a real browser, desktop and mobile
 node tools/smoke_server.mjs               # the ?server transport, against a live Python model
 ```

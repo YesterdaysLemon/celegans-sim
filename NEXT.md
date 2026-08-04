@@ -144,6 +144,94 @@ up. That is not a reason to avoid it; it is a reason to keep `tools/conform.py` 
 assay suite pointed at whatever comes out. "It evolved a high fitness" and "it evolved a
 worm" are different claims, and only one of them is interesting.
 
+> ## Day twenty-two. The checks get somewhere to run, and two of them turn out never to have run at all.
+>
+> Nothing in the model moved today. Everything below is about whether the things that
+> watch it are real, which is the question this project keeps answering badly.
+>
+> **The gates got one command.** CI is paused at the jobs, so the gates live in two
+> workflow files and a README section, in an order that matters —
+> `every module parses` before the browser check, so a syntax error arrives as a syntax
+> error rather than as a blank rectangle. `tools/check_all.mjs` runs them in that order,
+> probes for Docker, Chrome and a Python with numpy, and **skips what it cannot honestly
+> do, loudly**. Skips are counted apart from passes and reprinted with the reason and the
+> fix; `--strict` makes any skip a non-zero exit. That is the whole design. A local runner
+> is what you consult to decide you are finished, so one that folded an unrunnable gate
+> into a green summary would be this project's most repeated bug installed in the worst
+> possible place. `tests/test_local_checks.py` pins the gate list against both workflows
+> in both directions, and its own parser initially matched only `- name:` and so silently
+> missed python.yml's discovery step — the file's subject matter caught in the file itself.
+>
+> **The `?server` viewer had not drawn an animal for some time.** `dish.js` paints bodies
+> out of `S.worms` and out of nothing else. `S.worms` arrived with the multi-animal port;
+> the socket path predates it, carries one worm, and was never moved onto it. Measured
+> before the fix: connected, 98 nodes, t advancing, `S.trail` 40 points long, and
+> `S.worms.length` **0**. The page drew a plate, three chemical fields, and a track
+> crawling around the dish with nothing at the end of it.
+>
+> `tools/smoke_server.mjs` is called *"the Python WebSocket reaches the viewer"* and it
+> passed the whole time, because the frames genuinely do reach it — node counts, neuron and
+> muscle counts, finiteness, the egg fields, no unparsed bytes at the tail, all true.
+> Whether the viewer then *drew* them was the one question it never asked, and its name
+> reads as though it had.
+>
+> **A scrubber, and what it cost to size it.** `viewer/history.js` is a ring of past frames
+> bounded in *bytes* rather than in frames, because a frame costs 3,376 B per animal —
+> measured — so a fixed frame count would quietly mean a 27 MB ring on a populated plate.
+> It copies on the way in: `LocalEngine.frame(i)` returns `act`, `V`, `tension` and `kappa`
+> as views into WASM linear memory, and `memory.grow` detaches them.
+>
+> The assertion written to catch exactly that was itself wrong first time. It compared node
+> coordinates — but `frame(i)` already allocates a fresh array for the centreline, so nodes
+> are copies whether or not the ring copies anything. Replacing the copy step with the
+> identity function left every assertion passing. It asserts on `V` now. **A check is not
+> real until you have watched it fail, including a check you wrote ten minutes ago for
+> precisely this failure mode.**
+>
+> ### The audit's second round, and the battery that could not ask the question
+>
+> `tools/audit.py` ran graph, viewer, conform and pytest. CI also runs
+> `invariants.test.mjs`, `population.mjs` and `memory.mjs`. `checkInvariants` is owned by
+> `invariants.test.mjs` — the file whose own header says a guard never observed to fire is
+> not known to work — so **there was no battery a mutation to that guard could be measured
+> against.** The audit would have reported "nothing caught it" and been describing itself.
+>
+> With a `runtime` entry added, two mutations, both imitating *a guard that is present,
+> runs, and can never fire*:
+>
+> | mutation | graph | viewer | runtime | conform |
+> |---|---|---|---|---|
+> | `wasm/self-contact-inert` | missed | missed | missed | **CAUGHT** (126 s) |
+> | `wasm/invariant-curvature-inert` | missed | missed | **CAUGHT** | — |
+>
+> So #86's self-avoidance is real rather than assumed. It was installed while inert on the
+> live animal precisely so it could be shown to change nothing at the one moment that was
+> possible, and that argument only held if something would notice it being switched off.
+> Something does.
+>
+> And the curvature guard is caught only by the entry that did not exist this morning.
+>
+> **`wasm/invariants.test.mjs` appears in no workflow and no README.** The physics guard
+> was ported to the runtime because evolution runs there; its test was written, works, and
+> has never run anywhere. Now wired into the conformance job and into `check_all.mjs`.
+>
+> ### And a number that was measured once and then quietly became wrong
+>
+> `headHist` is **89%** of an animal, 210,936 B. This file and `wasm/assembly/index.ts`
+> both carried a much smaller figure, and it was not invented — it was true back when a
+> worm cost 372 kB, before the per-step scratch was hoisted to module level. Hoisting
+> shrank the animal by a third, which *raised* every remaining array's share, and the two
+> sentences quoting that share were not among the things updated.
+>
+> It survived because `memory.mjs` checked that four documents quote the **total** and
+> nothing checked that they quote the **share**. It does now, watched to fail against the
+> stale figure. This is #33 in miniature: a measured number, a reason to go stale that
+> nobody was tracking, and a check next to it looking at a different number.
+>
+> It also makes `head_delay`'s case sharper than the roadmap put it. Nine tenths of a worm
+> is the delay line for the model's least-defended constant; every other per-worm array put
+> together is about 27 kB.
+>
 > ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
 >
 > **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
