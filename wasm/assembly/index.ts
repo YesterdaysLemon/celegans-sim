@@ -708,7 +708,7 @@ let sRowV: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
 
 // -- proprioception. sKn is the normalised curvature, recomputed from the per-worm `kappa`
 //    every call; sKh is read out of the per-worm `headHist` ring immediately after. The
-//    delay line is the state and stays per-worm -- it is also 55% of what a worm costs.
+//    delay line is the state and stays per-worm -- it is also 89% of what a worm costs.
 let sKn: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
 let sKh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
 

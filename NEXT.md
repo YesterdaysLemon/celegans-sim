@@ -27,6 +27,24 @@ requires eating, pharyngeal transport and the HSN/VC circuit all working, inside
 existing generational loop and its harness. The standing in-dish population, where animals
 lay eggs that hatch into animals and selection becomes implicit, comes after that behaves.
 
+> **But not eggs *laid*, and that is settled by arithmetic rather than by preference.** The
+> rate is 11.0 eggs/hour, so a 20 s assay produces 0.061 eggs and `evolve.mjs`'s 25 s
+> default produces 0.076. `eglLaid` is an integer count, so every animal in the population
+> lays zero, every individual scores identically, and truncation selection has nothing to
+> act on — the selected arm would match the selection-off control by construction and the
+> run would read as a null result rather than as a measure with no range. A countable number
+> needs about an hour per animal, which at ~1.5 animal-seconds per wall-second is 8 animals
+> × 8 generations ≈ **43 hours per seed per arm**. Two orders of magnitude, not a tuning
+> problem.
+>
+> Select on **eggs produced** instead: `eggsLaid * uterus_capacity + eggsHeld`. `getEggsHeld`
+> is already exported, the uterus fills from what the pharynx transported, and it moves on
+> the feeding timescale rather than the laying one — so it keeps the whole chain load-bearing
+> while having range at 20 s. It still needs normalising by `egl_eggs_per_food`, which is in
+> the header for exactly that and is `volume_per_pump`'s hole one layer along (#37). Sizing
+> measured under #98; the branch is deliberately not written until it has been run, because
+> a measure nobody has tested is what that file's own header warns against.
+
 **Evolution runs on the runtime, not in Python**, and evolved animals are fenced off from
 every claim about the animal — see "Evolved animals are not C. elegans" in the README.
 
@@ -78,7 +96,8 @@ no ceiling. The real table:
 on top of a ~2.6 MB shared `World` (5 × 256² f64 grids) and whatever the canvas holds. Two
 things follow. **`memory.grow` is one-way**, so a run that peaks at 500 animals keeps that
 high-water mark for the life of the tab -- size the population for the peak, not the mean.
-And **55% of an animal is `headHist`**, the 560-sample delay line for `head_delay = 0.28 s`,
+And **89% of an animal is `headHist`** -- 210,936 B, the 560-sample delay line for
+`head_delay = 0.28 s`,
 which `README.md` names as one of the two fitted parameters it is least happy about
 ("nothing that slow exists in a real stretch receptor"). The single largest cost of running
 a population is the model's least-defended constant; if that number ever comes down, the
