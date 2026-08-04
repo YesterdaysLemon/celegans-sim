@@ -34,9 +34,46 @@ WHAT EACH OUTCOME MEANS, fixed before the run.
     a clean confirmation of the diagnosis by a route nobody wanted.
 
 `fv_vmax = 0` is off and is bit-identical to the model without this code, verified on nodes,
-membrane potentials and muscle tension. The other values bracket the scale: an animal at
-kappa_rms 4.4 and 0.7 Hz sweeps roughly 19 /(mm*s), so 100 barely touches it, 20 is
-comparable, and 8 makes it dominant.
+membrane potentials and muscle tension.
+
+THE FIRST RUN OF THIS FILE ANSWERED NOTHING, AND THE REASON IS WORTH KEEPING.
+
+It swept vmax at 100, 20 and 8, on the reasoning that an animal at kappa_rms 4.4 and 0.7 Hz
+sweeps about 19 /(mm*s), so those would be "barely there, comparable, dominant". That
+arithmetic ignored Hill's curvature constant. The concentric factor is
+`(1 - x)/(1 + c*x)` with `c = 4`, which is **0.46 at x = 0.19** and **0.01 at x = 0.95** --
+it bites near x ~ 0.05, not near x ~ 1. So all three arms were crushing derating and none
+was the gentle case the sweep was supposed to contain.
+
+At that strength the term also stops being damping and becomes a bang-bang driver: the
+shortening side is derated to nothing while the lengthening side is boosted to 1.5, so the
+moment flips sign with the velocity rather than opposing it. Fed back explicitly -- the rate
+is last step's -- that oscillates at the step rate. **Buffer diverged at every value and
+every seed**, path speeds of 150 to 300 mm/s against a 5 mm/s guard, and agar came back with
+a 0.1 Hz animal at 5.5 body-length wavelength and net-to-path 0.07, which is a statically
+bent worm rather than a slow one.
+
+None of that is a result about force-velocity. It is a result about the sweep.
+
+AND THE STRENGTH WAS NOT THE ONLY PROBLEM, WHICH IS THE MORE USEFUL HALF.
+
+Re-run gently, the term still diverged: vmax = 1000, a 9% derating, blew up in buffer at
+176 mm/s. So the instability is not a matter of gain. The raw finite difference of joint
+curvature one step apart is not the gait's shortening velocity at all -- it is the body's
+fastest bending modes, which relax in about 6e-6 s in buffer against a 0.5 ms step, eighty
+times faster than the integrator resolves. Feeding *that* back explicitly is unstable at any
+strength.
+
+`MuscleParams.fv_tau` low-passes the rate at 20 ms before the Hill factor sees it, which is
+the statement that a muscle responds to how fast the animal is bending rather than to how
+fast the discretisation is ringing. With it, vmax = 1000 is stable in buffer -- and vmax = 150
+still is not, at 12.6 mm/s. The term remains explicit, so stronger derating remains less
+stable, and **the strong end of this parameter is not reachable with the present integrator.**
+The values swept below are therefore the range that can be measured honestly, not the range
+worth measuring, and that limitation is part of the result rather than a footnote to it.
+
+Worth recording separately: the divergence guard caught every one of these, loudly and by
+name. That is `worm.errors.DivergentSimulation` doing exactly the job #38 added it for.
 
 Nothing is adopted here and nothing is ported to the runtime.
 
@@ -57,8 +94,13 @@ from worm.params import Params
 MEASURE = 30.0
 SEEDS = (0, 3, 7)
 
-# 0 is off. The rest bracket the characteristic shortening rate the gait actually reaches.
-VMAXES = (0.0, 100.0, 20.0, 8.0)
+# 0 is off. The rest give concentric factors of about 0.91, 0.88 and 0.83 at the ~19 /(mm*s)
+# the gait sweeps. That is a narrow range, and the narrowness is forced rather than chosen:
+# with the rate low-passed at fv_tau, vmax = 1000 is stable in buffer and vmax = 150 still
+# diverges at 12.6 mm/s. The term is explicit, so stronger derating is less stable, and the
+# strong end of this parameter is simply not reachable with the present integrator. That is a
+# statement about the implementation and it belongs in the result.
+VMAXES = (0.0, 1000.0, 700.0, 500.0)
 MEDIA = ("agar", "buffer")
 ANIMAL = {"agar": (0.30, 0.65), "buffer": (1.76, 1.54)}
 

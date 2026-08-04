@@ -623,6 +623,22 @@ class MuscleParams:
     # Real muscle plateaus around 1.4-1.8 F0; 0.5 puts the plateau at 1.5. This limb matters
     # here because half of every undulation is a muscle being stretched by its antagonist.
     fv_eccentric: float = 0.5
+
+    # Time constant of the low-pass on the shortening rate, and it is required rather than
+    # decorative.
+    #
+    # The first implementation fed back the raw finite difference of joint curvature, one
+    # step apart. That quantity is not the gait's shortening velocity; it is dominated by the
+    # body's fastest bending modes, which relax in about 6e-6 s in buffer against a 0.5 ms
+    # step -- eighty times faster than the integrator resolves. Feeding it back explicitly
+    # diverged in buffer at *every* strength tried, including a 9% derating: path speeds of
+    # 150 to 300 mm/s against a 5 mm/s guard, at every seed.
+    #
+    # So this is not a fudge factor for a stability problem, it is the statement that a
+    # muscle responds to how fast the animal is bending and not to how fast the discretisation
+    # is ringing. 20 ms sits between `tau_tension` (35 ms) and the step, which is the band
+    # where a real shortening velocity lives.
+    fv_tau: float = 0.020           # s   low-pass on d(kappa)/dt before the Hill factor
     # Body-wall muscle has its own reversal potentials, and they are not the neuronal ones.
     # It rests at -25.0 +- 1.0 mV (Gao & Zhen 2011 PNAS), sits between E_ACh ~ +20 mV and
     # E_Cl ~ -30 mV, and its capacitance is an order of magnitude larger than a neuron's.

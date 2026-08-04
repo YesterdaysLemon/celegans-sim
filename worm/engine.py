@@ -94,6 +94,7 @@ class Simulation:
         # with no derating at all, which is right -- a muscle that has not moved yet has no
         # shortening velocity to be derated by.
         self._kappa_prev = None
+        self._kappa_rate = np.zeros(self.p.body.n_links - 1)
         self.ablated: list[str] = []
         self._nmj0 = None
 
@@ -174,7 +175,13 @@ class Simulation:
         kappa_rate = None
         if self.p.muscle.fv_vmax > 0.0:
             if self._kappa_prev is not None:
-                kappa_rate = (curvature - self._kappa_prev) / self.dt
+                raw = (curvature - self._kappa_prev) / self.dt
+                # Low-passed, and see MuscleParams.fv_tau for why that is required. The raw
+                # difference is the body's fastest bending modes, not the gait's shortening
+                # velocity, and feeding it back explicitly diverges in a light medium.
+                a = 1.0 - np.exp(-self.dt / self.p.muscle.fv_tau)
+                self._kappa_rate += (raw - self._kappa_rate) * a
+                kappa_rate = self._kappa_rate
             self._kappa_prev = curvature.copy()
         moment = self.muscles.joint_moment(kappa_rate)
         n_sub = self.p.body.substeps
