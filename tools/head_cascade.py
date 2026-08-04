@@ -66,12 +66,18 @@ from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
 
-MEASURE = 40.0
+# A trial costs about `6 + MEASURE` seconds of settling and displacement, and then
+# `analyse` runs its own 4 s warmup and another MEASURE on top -- so the real cost is a bit
+# over `2 * MEASURE`. The first version of this file budgeted for one MEASURE, asked for a
+# 4x4 grid, and `pooled` timed out with 36 of 48 trials unrun and every multi-stage row
+# empty: the whole hypothesis, unmeasured, under a table that looked populated.
+MEASURE = 30.0
 SEEDS = (0, 3, 7)
 
-# The shipped row is (1, 0.28). Everything else asks whether stages can pay for delay.
-STAGES = (1, 2, 3, 4)
-DELAYS = (0.00, 0.10, 0.20, 0.28)
+# The grid is deliberately narrow. The question is whether stages substitute for delay, so
+# the rows that answer it are the delay-free ones at several stage counts, plus the shipped
+# configuration to compare them against. A wider sweep is what did not finish.
+CONFIGS = [(1, 0.28)] + [(st, 0.00) for st in (1, 2, 3, 4, 6)]
 
 # What the animal does, for the columns that have a target at all.
 TARGET = dict(freq=(0.30, 0.50), wavelength=0.65, k_rms=4.3, speed=0.219)
@@ -105,8 +111,13 @@ def _job(job):
 
 
 def main():
-    jobs = [(st, d, s) for st in STAGES for d in DELAYS for s in SEEDS]
-    print("HEAD CASCADE -- %d trials x %.0f s, %d seeds" % (len(jobs), MEASURE, len(SEEDS)))
+    # Seed-major, so that a run cut short by the pool timeout still holds every
+    # configuration at fewer seeds rather than a few configurations at all of them. The
+    # first version ordered stage-major and timed out having measured only one stage count,
+    # which is the one arrangement that answers nothing: the column the hypothesis lives in
+    # was entirely empty under a table that otherwise looked populated.
+    jobs = [(st, d, s) for s in SEEDS for (st, d) in CONFIGS]
+    print("HEAD CASCADE -- %d trials, %.0f s each, %d seeds" % (len(jobs), MEASURE, len(SEEDS)))
     print("  does N first-order stages in series pay for the invented delay?\n")
     rows = pooled(_job, jobs, procs=8)
     if not rows:
@@ -119,41 +130,55 @@ def main():
     mean = lambda g, k: float(np.nanmean([x[k] for x in g]))       # noqa: E731
     sd = lambda g, k: float(np.nanstd([x[k] for x in g]))          # noqa: E731
 
-    print("  stages delay | freq Hz         wavelen  TWI     k_rms  net mm/s  n/p")
+    # `n` is a column, not a footnote. Trials diverge -- a bare world has a dish wall and a
+    # fast animal reaches it -- and the first run of this file averaged one surviving seed
+    # into a row printed `+-0.000` beside three-seed rows, which reads as the most precise
+    # row in the table rather than the least supported one.
+    print("  stages delay  n | freq Hz         wavelen  TWI     k_rms  net mm/s  n/p")
     for key in sorted(agg):
         g = agg[key]
         mark = "  <- shipped" if key == (1, 0.28) else ""
-        print("  %6d %5.2f | %6.3f +-%.3f  %6.2f  %+.3f  %5.2f  %.4f  %.2f%s"
-              % (key[0], key[1], mean(g, "freq"), sd(g, "freq"), mean(g, "wavelength"),
-                 mean(g, "twi"), mean(g, "k_rms"), mean(g, "speed"),
-                 mean(g, "net_path"), mark))
+        print("  %6d %5.2f %2d | %6.3f +-%.3f  %6.2f  %+.3f  %5.2f  %.4f  %.2f%s"
+              % (key[0], key[1], len(g), mean(g, "freq"), sd(g, "freq"),
+                 mean(g, "wavelength"), mean(g, "twi"), mean(g, "k_rms"),
+                 mean(g, "speed"), mean(g, "net_path"), mark))
 
-    # The hypothesis, read directly rather than left to the eye: at fixed delay, does
-    # adding stages lower the frequency? If this column is flat, the cascade is doing what
-    # the spatial spread did and the idea is dead.
-    print("\n  Frequency against stage count, at each delay. The hypothesis says these fall.")
-    print("  delay |" + "".join("  %d stages" % s for s in STAGES))
-    for d in DELAYS:
-        cells = []
-        for st in STAGES:
-            g = agg.get((st, d))
-            cells.append("   %6.3f" % mean(g, "freq") if g else "       --")
-        print("  %5.2f |%s" % (d, "".join(cells)))
+    missing = [c for c in CONFIGS if c not in agg]
+    short = [(k, len(g)) for k, g in sorted(agg.items()) if len(g) < len(SEEDS)]
+    if missing or short:
+        print("\n  NOT EVERY CONFIGURATION WAS MEASURED, so the table above is not the")
+        print("  comparison this file claims to make:")
+        for c in missing:
+            print("    %d stage(s), delay %.2f: no trial returned" % c)
+        for k, n in short:
+            print("    %d stage(s), delay %.2f: %d of %d seeds" % (k[0], k[1], n, len(SEEDS)))
 
+    # The hypothesis, read directly rather than left to the eye: with the delay removed,
+    # does adding stages lower the frequency? If this column is flat, the cascade is doing
+    # what the spatial spread did and the idea is dead.
     shipped = agg.get((1, 0.28))
+    print("\n  Frequency against stage count, with no delay at all.")
+    print("  The hypothesis says these fall towards the shipped row.")
+    for st, d in CONFIGS:
+        if d != 0.0:
+            continue
+        g = agg.get((st, d))
+        if not g:
+            print("    %d stage(s): not measured" % st)
+            continue
+        line = "    %d stage(s): %.3f Hz, TWI %+.3f, wavelen %.2f, n=%d" % (
+            st, mean(g, "freq"), mean(g, "twi"), mean(g, "wavelength"), len(g))
+        if shipped:
+            line += "   (shipped %+.3f Hz, TWI %+.3f)" % (
+                mean(g, "freq") - mean(shipped, "freq"),
+                mean(g, "twi") - mean(shipped, "twi"))
+        print(line)
     if shipped:
-        f_ship, twi_ship = mean(shipped, "freq"), mean(shipped, "twi")
-        print("\n  Shipped (1 stage, 0.28 s): %.3f Hz, TWI %+.3f." % (f_ship, twi_ship))
-        # A replacement has to land the frequency *and* keep the wave. Report both, and
-        # report the ones that fail the second test too -- a row that hits the frequency by
-        # destroying the travelling wave is how the delay got adopted in the first place.
-        best = [(k, agg[k]) for k in agg if k[1] == 0.0]
-        if best:
-            print("  With no delay at all:")
-            for k, g in sorted(best):
-                df, dt_ = mean(g, "freq") - f_ship, mean(g, "twi") - twi_ship
-                print("    %d stage(s): %.3f Hz (%+.3f), TWI %+.3f (%+.3f)"
-                      % (k[0], mean(g, "freq"), df, mean(g, "twi"), dt_))
+        print("\n  Shipped (1 stage, 0.28 s): %.3f Hz, TWI %+.3f, n=%d."
+              % (mean(shipped, "freq"), mean(shipped, "twi"), len(shipped)))
+        print("  A replacement has to land the frequency *and* keep the wave. Hitting the")
+        print("  frequency while giving away TWI is how the delay was adopted in the first")
+        print("  place, so a row that does that is not a win.")
     return 0
 
 
