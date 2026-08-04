@@ -1416,6 +1416,35 @@ class SensoryParams:
     # that is 0.125 s each. If it lands, `headHist` -- 210,936 B, 89% of an animal -- goes
     # away, and the phase becomes frequency-dependent through arctan rather than exactly
     # linear, which is the property gait modulation needs and a fixed delay cannot offer.
+    #
+    # IT LANDED. tools/head_cascade.py phase two, three seeds, 30 s:
+    #
+    #   stages delay stage_tau | freq Hz        wavelen   TWI    k_rms  net mm/s  n/p
+    #     1     0.28    --     | 0.656 +-0.031    0.83   +0.846   4.45   0.2949   0.80  <- shipped
+    #     4     0.00   0.1250  | 0.644 +-0.016    0.86   +0.880   4.58   0.3688   0.94
+    #     6     0.00   0.0833  | 0.611 +-0.016    0.84   +0.799   4.52   0.2718   0.75
+    #
+    # Four stages of 0.125 s, with **no transport delay at all**, match the shipped
+    # frequency to well inside the seed scatter and are better on everything else that was
+    # measured: travelling index +0.880 against +0.846, net speed 0.369 against 0.295, and
+    # net-to-path 0.94 against 0.80. The delay bought its frequency by giving away the wave;
+    # this does not.
+    #
+    # Six stages at the same total lag is *worse* -- 0.611 Hz, TWI +0.799 -- and that is the
+    # result worth thinking about rather than the headline. More stages is nearer a pure
+    # delay, and nearer a pure delay is nearer what the shipped model already had. The
+    # cascade is not better because it approximates the delay well; it is better because at
+    # four stages it approximates it *badly*, in the specific way that makes the loop's phase
+    # depend on frequency. That is the same property the note above wants for gait
+    # modulation, and it is now measured rather than argued.
+    #
+    # NOT ADOPTED, and the reasons are about coverage rather than doubt. This is a bare
+    # world, 30 s, three seeds, one assay. Before it can replace the delay it needs the
+    # standing comparison -- tools/scorecard.py and tools/ethogram.py against the frozen
+    # baseline, on identical seeds, with the trajectory guards reported -- and it needs the
+    # medium sweep, because gait modulation is the whole reason to want it and nothing here
+    # has measured it. It is also not ported to the runtime, so the browser and every
+    # conformance number still run the shipped loop.
     head_stage_tau: float = 0.0       # s   0 = head_tau / head_stages
 
     # A transport delay in the head reflex, and the reason it exists is numerical as much

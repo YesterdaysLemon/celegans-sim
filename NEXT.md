@@ -315,6 +315,52 @@ worm" are different claims, and only one of them is interesting.
 > depend on laying having made room for it.** A real uterus is not a bucket that fills
 > regardless, and that single change would make the chain load-bearing at any assay length.
 >
+> ### And the head cascade works, which retires the largest fitted number in the model
+>
+> `head_delay` has been the largest fitted number here for a long time, openly recorded as
+> unearned — "the size of what the model is missing, stated plainly". Its own note named the
+> replacement: a distributed multi-stage circuit accumulates phase a single first-order lag
+> cannot. That is now built, measured, and it works.
+>
+> The first attempt failed for a reason worth keeping. A cascade of N stages of
+> `head_tau / N` lowers the frequency — 1.300 Hz at one stage to 1.033 at four, the first
+> thing in this project to move it *without* the delay, and it improved the wave doing so —
+> but it plateaus far above the shipped 0.656 Hz. The ceiling is arithmetic: that
+> construction converges on a pure delay of `head_tau`, worth **51.96°** at 0.656 Hz against
+> the 42.20° of the single lag it replaces. Under ten degrees, at any stage count, while
+> `head_delay` supplies another 66.12°. It was subdividing the wrong budget.
+>
+> Given its own budget — `head_stage_tau`, four stages of 0.125 s, totalling the 0.50 s the
+> shipped loop actually carries — **with no transport delay at all**:
+>
+> ```
+>   stages delay stage_tau | freq Hz        wavelen   TWI    k_rms  net mm/s  n/p
+>     1     0.28    --     | 0.656 +-0.031    0.83   +0.846   4.45   0.2949   0.80  <- shipped
+>     4     0.00   0.1250  | 0.644 +-0.016    0.86   +0.880   4.58   0.3688   0.94
+>     6     0.00   0.0833  | 0.611 +-0.016    0.84   +0.799   4.52   0.2718   0.75
+> ```
+>
+> Same frequency to well inside the seed scatter, and better on everything else measured:
+> travelling index +0.880 against +0.846, net speed 0.369 against 0.295, net-to-path 0.94
+> against 0.80. **The delay bought its frequency by giving away the wave. This does not.**
+>
+> Six stages is *worse*, and that is the more interesting row. More stages is nearer a pure
+> delay, and nearer a pure delay is nearer what the model already had. The cascade wins at
+> four because it approximates a delay **badly**, in the particular way that makes the loop's
+> phase depend on frequency — which is exactly the property `head_delay`'s note says gait
+> modulation needs and a fixed delay cannot offer. Argued for a long time; measured now.
+>
+> **Not adopted, and the gap is coverage rather than doubt.** One assay, bare world, 30 s,
+> three seeds. Before it replaces anything it needs `tools/scorecard.py` and
+> `tools/ethogram.py` against the frozen baseline on identical seeds with the trajectory
+> guards reported, and it needs the medium sweep — gait modulation is the entire reason to
+> want this and nothing here has measured it. It is also not ported to the runtime.
+>
+> If it survives those, `headHist` goes: 210,936 B, **89% of an animal**, a 560-sample ring
+> per joint held only to look up one sample 0.28 s old. A cascade is four scalars per joint.
+> The population budget in this file — 22.8 MB for 100 animals — improves by close to an
+> order of magnitude, and `memory.grow` being one-way stops being the constraint it is.
+>
 > ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
 >
 > **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
