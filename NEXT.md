@@ -46,11 +46,46 @@ progress, so waveform is what is left to change, and this animal does not change
 in buffer is 0.038 mm/s against a real swim of roughly 0.4: it undulates at a plausible
 frequency and goes nowhere.
 
-Whatever is missing is therefore not in the head reflex's phase, and not anything that shows
-up between agar and viscous where the model already responds. It is whatever should keep the
-loop speeding up and lengthening its wave as K falls past 9. Start by asking what in the
-model is even *aware* of K below 9 -- proprioceptive load, muscle force-velocity, the body's
-own drag term -- rather than by sweeping the head loop again.
+**And that question now has an answer, so this is no longer a search.** The first suspect was
+the body's own internal damping: `internal_damping` is a constant while external drag falls
+four and a half orders of magnitude, and its docstring's "negligible against the external
+medium" is a claim made on agar. `tools/damping_sweep.py` tested it, four values down to
+**zero**, both media, three seeds — and it moves buffer by 1.04x and agar by 1.02x. Switching
+off mechanical dissipation in the body entirely buys 0.03 Hz. The documented claim survives in
+the regime it was never tested in, and the cheap suspect is eliminated.
+
+What that leaves is structural, and it means **no amount of tuning fixes this**:
+
+> The frequency is set by where the loop's total lag reaches half a period, and that total is
+> a sum of fixed constants plus **exactly one** term that depends on the medium — the body's
+> drag response. `head_tau` 0.22 s, `head_delay` 0.28 s, `tau_calcium` 0.060 s, `tau_tension`
+> 0.035 s, the synapses: all constants. The muscle is `calcium -> tension` through two
+> first-order lags with **no dependence on shortening velocity at all**.
+>
+> Measured on agar, frequency goes as roughly 1/lag — 0.22 s gives 1.300 Hz, 0.50 s gives
+> 0.65 — and **two structurally different implementations of the same 0.50 s land within
+> 0.012 Hz of each other.** The ceiling is set by the lag's magnitude, not its shape, which is
+> the cascade's failure reported from the other direction.
+>
+> So by K = 9 the body's contribution is already small against the fixed remainder, and below
+> that the frequency is pinned by constants the medium cannot reach. The wavelength, set by a
+> fixed proprioceptive reach, has nothing to scale it either. **The animal saturates because
+> the model gave it exactly one way to feel the medium, and it runs out.**
+
+Reaching 5.87x therefore needs **a second load-dependent element**, not a bigger gain on an
+existing one. **Muscle force-velocity is the candidate and the next real project**: real muscle
+produces less force the faster it shortens, which in a light medium is exactly a load-dependent
+change in the muscle's contribution to the loop, and it is the standard biomechanical answer to
+why a swimmer and a crawler are the same animal. `MuscleParams` has no velocity term to widen,
+so this is a new term in `Muscles.step`, a conformance run, and a re-fit of the gait — its own
+change, not a rider on something else.
+
+Two things to do before starting it, both cheap and both protecting the result. Freeze the
+baseline with `tools/scorecard.py` and `tools/ethogram.py`, because a force-velocity term
+changes the shared gait and can move every behavioural assay at once. And decide up front what
+would falsify it: if the span does not widen once the muscle can feel its own shortening rate,
+then the load-dependence has to come from proprioception instead, and that is a different
+change with a different failure mode.
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves
