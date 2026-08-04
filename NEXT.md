@@ -267,6 +267,54 @@ worm" are different claims, and only one of them is interesting.
 > space is large enough to hold surprises and the argument for why it cannot reach a
 > conversion factor has to be made again from scratch.
 >
+> ### The exporter rework is smaller than this file said, and half of it is done
+>
+> **The graph was already in the payload.** `tools/export_model.py` writes G_syn, GE_syn and
+> G_gap through `Blob.csr`, so *making weights heritable needs no payload format change at
+> all*. What is baked is not the graph but its **products** — `V_th`, `V_init`, and the
+> muscle balance. The job restates as "give the runtime the two solves", which is a much
+> better-bounded thing than "carry the graph rather than its precomputed products".
+>
+> `computeRestingPotentials` does the hard half. It assembles A and b from the CSR and runs
+> a plain LU with partial pivoting, and it lands where the measurement above predicted:
+> **6.395e-14 mV, 1.734e-15 relative** against the exporter's LAPACK solve, four orders
+> inside the conformance tolerance. Only two constants were missing and only one genuinely —
+> `s_half` was always derivable from `a_rise` and `a_decay`; `ca_offset` is now exported.
+>
+> Nothing calls it. The step still reads the exported `V_th`, so no trajectory moves. What
+> the runtime now has is *two sources of truth for the same 302 numbers*, which is this
+> project's favourite defect, so `wasm/solve.test.mjs` compares them — and asserts the
+> agreement is **approximate**, because an independent LU cannot reproduce LAPACK bit for
+> bit and an exact match across all 302 cells would be aliasing rather than a good solve.
+>
+> Writing that test is what caught the bug. **`g_leak` and `E_leak` are network-wide scalars,
+> shape [1]**, not per-neuron arrays. Indexing an 8-byte array by neuron runs off the end
+> into whichever array the exporter laid down next, and it is silent: every cell got a
+> plausible finite number, and the first sign of trouble was a zero pivot 300 columns later.
+>
+> `_balance` is the remaining half, and it needs one thing this did not: the exported muscle
+> G is *post*-balance, so the balance cannot be recomputed or checked from the payload as it
+> stands. The raw G has to go out alongside it — a payload addition, not a format change.
+>
+> ### And egg fitness turns out to be intake wearing a hat
+>
+> `EVO_FITNESS=eggs` exists now, and it does not measure what #98 wanted, for a structural
+> reason. **`laid + held` is conserved across a laying event** — laying decrements `eglEggs`
+> and increments `eglLaid` by the same egg — so eggs *produced* is blind to laying by
+> construction. The HSN/VC circuit, the whole reason the measure was wanted, cannot move it.
+>
+> Measured, three seeds at 20 s: score divided by intake is **5.000000e-3 in every case,
+> relative spread 4.195e-11**. It is `ingested`, exactly, in different units.
+>
+> The prediction that got there was wrong, and worth recording as such. This file argued the
+> problem was assay length — 0.061 eggs in 20 s, so everyone scores zero. In fact every
+> animal lays exactly one egg, because the uterus starts stocked at `eggs_initial` and the
+> first lay is not earned. It simply does not matter.
+>
+> The fix worth having is a model change rather than a fitness change: **make production
+> depend on laying having made room for it.** A real uterus is not a bucket that fills
+> regardless, and that single change would make the chain load-bearing at any assay length.
+>
 > ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
 >
 > **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
