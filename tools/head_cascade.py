@@ -74,20 +74,40 @@ from worm.params import Params
 MEASURE = 30.0
 SEEDS = (0, 3, 7)
 
-# The grid is deliberately narrow. The question is whether stages substitute for delay, so
-# the rows that answer it are the delay-free ones at several stage counts, plus the shipped
-# configuration to compare them against. A wider sweep is what did not finish.
-CONFIGS = [(1, 0.28)] + [(st, 0.00) for st in (1, 2, 3, 4, 6)]
+# PHASE ONE ran and is recorded next to SensoryParams.head_stages. Summary: stages in series
+# do lower the frequency where the spatial spread did not -- 1.300 Hz at one stage down to
+# 1.033 at four, improving TWI from +0.754 to +0.815 on the way, which is the opposite of the
+# trade the delay made -- but it plateaus far above the shipped 0.656 Hz.
+#
+# The ceiling was predictable and is arithmetic. N stages of `head_tau / N` converge on a
+# pure delay of `head_tau`, so the most phase they can ever supply is that of a 0.22 s delay:
+# 51.96 degrees at 0.656 Hz, against 42.20 for the single lag they replace. Not quite ten
+# degrees, for any stage count. The shipped loop carries `head_delay = 0.28 s` on *top* of
+# head_tau, which is another 66.12 degrees. The cascade was subdividing the wrong budget.
+#
+# PHASE TWO tests exactly that reading. `head_stage_tau` gives the cascade its own total lag
+# instead of subdividing head_tau, so N stages carry N * head_stage_tau. The shipped loop's
+# phase comes from 0.22 + 0.28 = 0.50 s, so a cascade carrying 0.50 s in total should reach
+# the shipped frequency with no delay and no ring buffer. Two stage counts at that budget,
+# because more stages is closer to a pure delay and the difference between them is the
+# prediction's own error bar.
+#
+# (stages, delay, stage_tau); stage_tau 0 means subdivide head_tau, i.e. phase one.
+CONFIGS = [
+    (1, 0.28, 0.0),        # shipped, for comparison
+    (4, 0.00, 0.125),      # 4 x 0.125 = 0.50 s of lag, no delay
+    (6, 0.00, 0.0833),     # 6 x 0.0833 = 0.50 s, nearer a pure delay
+]
 
 # What the animal does, for the columns that have a target at all.
 TARGET = dict(freq=(0.30, 0.50), wavelength=0.65, k_rms=4.3, speed=0.219)
 
 
 def _job(job):
-    stages, delay, seed = job
+    stages, delay, stage_tau, seed = job
     p = Params()
     p = dataclasses.replace(p, sensory=dataclasses.replace(
-        p.sensory, head_stages=stages, head_delay=delay))
+        p.sensory, head_stages=stages, head_delay=delay, head_stage_tau=stage_tau))
     sim = Simulation(p, seed=seed, world=bare_world(p))
     sim.run(6.0)                       # let the loop settle onto whichever cycle it picks
     start = sim.body.centroid().copy()
@@ -104,7 +124,7 @@ def _job(job):
     span = sim.t - t0
 
     r = analyse(sim, seconds=MEASURE)
-    return dict(stages=stages, delay=delay, seed=seed,
+    return dict(stages=stages, delay=delay, stage_tau=stage_tau, seed=seed,
                 freq=r["freq"], wavelength=r["wavelength"], twi=r["twi"],
                 k_rms=r["kappa_rms"], speed=net / span,
                 net_path=net / max(path, 1e-9))
@@ -116,7 +136,7 @@ def main():
     # first version ordered stage-major and timed out having measured only one stage count,
     # which is the one arrangement that answers nothing: the column the hypothesis lives in
     # was entirely empty under a table that otherwise looked populated.
-    jobs = [(st, d, s) for s in SEEDS for (st, d) in CONFIGS]
+    jobs = [(st, d, tau, s) for s in SEEDS for (st, d, tau) in CONFIGS]
     print("HEAD CASCADE -- %d trials, %.0f s each, %d seeds" % (len(jobs), MEASURE, len(SEEDS)))
     print("  does N first-order stages in series pay for the invented delay?\n")
     rows = pooled(_job, jobs, procs=8)
@@ -126,7 +146,7 @@ def main():
 
     agg = {}
     for r in rows:
-        agg.setdefault((r["stages"], r["delay"]), []).append(r)
+        agg.setdefault((r["stages"], r["delay"], r["stage_tau"]), []).append(r)
     mean = lambda g, k: float(np.nanmean([x[k] for x in g]))       # noqa: E731
     sd = lambda g, k: float(np.nanstd([x[k] for x in g]))          # noqa: E731
 
@@ -134,12 +154,12 @@ def main():
     # fast animal reaches it -- and the first run of this file averaged one surviving seed
     # into a row printed `+-0.000` beside three-seed rows, which reads as the most precise
     # row in the table rather than the least supported one.
-    print("  stages delay  n | freq Hz         wavelen  TWI     k_rms  net mm/s  n/p")
+    print("  stages delay stagetau  n | freq Hz         wavelen  TWI     k_rms  net mm/s  n/p")
     for key in sorted(agg):
         g = agg[key]
-        mark = "  <- shipped" if key == (1, 0.28) else ""
-        print("  %6d %5.2f %2d | %6.3f +-%.3f  %6.2f  %+.3f  %5.2f  %.4f  %.2f%s"
-              % (key[0], key[1], len(g), mean(g, "freq"), sd(g, "freq"),
+        mark = "  <- shipped" if key[0] == 1 and key[1] > 0 else ""
+        print("  %6d %5.2f %8.4f %2d | %6.3f +-%.3f  %6.2f  %+.3f  %5.2f  %.4f  %.2f%s"
+              % (key[0], key[1], key[2], len(g), mean(g, "freq"), sd(g, "freq"),
                  mean(g, "wavelength"), mean(g, "twi"), mean(g, "k_rms"),
                  mean(g, "speed"), mean(g, "net_path"), mark))
 
@@ -149,25 +169,27 @@ def main():
         print("\n  NOT EVERY CONFIGURATION WAS MEASURED, so the table above is not the")
         print("  comparison this file claims to make:")
         for c in missing:
-            print("    %d stage(s), delay %.2f: no trial returned" % c)
+            print("    %d stage(s), delay %.2f, stage_tau %.4f: no trial returned" % c)
         for k, n in short:
-            print("    %d stage(s), delay %.2f: %d of %d seeds" % (k[0], k[1], n, len(SEEDS)))
+            print("    %d stage(s), delay %.2f, stage_tau %.4f: %d of %d seeds"
+                  % (k[0], k[1], k[2], n, len(SEEDS)))
 
     # The hypothesis, read directly rather than left to the eye: with the delay removed,
     # does adding stages lower the frequency? If this column is flat, the cascade is doing
     # what the spatial spread did and the idea is dead.
-    shipped = agg.get((1, 0.28))
-    print("\n  Frequency against stage count, with no delay at all.")
-    print("  The hypothesis says these fall towards the shipped row.")
-    for st, d in CONFIGS:
+    shipped = next((agg[k] for k in agg if k[0] == 1 and k[1] > 0), None)
+    print("\n  Frequency with no delay at all, against the shipped row.")
+    print("  The prediction: a cascade carrying 0.50 s in total reaches 0.656 Hz.")
+    for st, d, tau in CONFIGS:
         if d != 0.0:
             continue
-        g = agg.get((st, d))
+        g = agg.get((st, d, tau))
         if not g:
             print("    %d stage(s): not measured" % st)
             continue
-        line = "    %d stage(s): %.3f Hz, TWI %+.3f, wavelen %.2f, n=%d" % (
-            st, mean(g, "freq"), mean(g, "twi"), mean(g, "wavelength"), len(g))
+        line = "    %d x %.4f s = %.3f s total: %.3f Hz, TWI %+.3f, wavelen %.2f, n=%d" % (
+            st, tau, st * tau, mean(g, "freq"), mean(g, "twi"),
+            mean(g, "wavelength"), len(g))
         if shipped:
             line += "   (shipped %+.3f Hz, TWI %+.3f)" % (
                 mean(g, "freq") - mean(shipped, "freq"),

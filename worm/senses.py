@@ -167,7 +167,10 @@ class Senses:
         # the arithmetic below reduces to the single line it replaces. See
         # SensoryParams.head_stages for why series and not parallel.
         self._head_stages = max(1, int(p.head_stages))
-        self._head_stage_decay = np.exp(-dt / (p.head_tau / self._head_stages))
+        # Zero means subdivide head_tau, whose ceiling is a pure delay of head_tau and is
+        # measured to be too small; a positive value gives the cascade its own lag budget.
+        stage_tau = p.head_stage_tau if p.head_stage_tau > 0.0 else p.head_tau / self._head_stages
+        self._head_stage_decay = np.exp(-dt / stage_tau)
         # One row per stage. Only allocated past the first when there is a cascade, so the
         # shipped configuration carries no extra state at all.
         self._head_chain = (

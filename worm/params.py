@@ -1363,7 +1363,60 @@ class SensoryParams:
     # Not adopted, and deliberately not ported to the runtime: at 1 this changes nothing,
     # which is the state a thing should be measured in before it is believed. Same order
     # self-avoidance was built in (#86).
+    #
+    # MEASURED, and the answer is half yes and decisively not enough. tools/head_cascade.py,
+    # three seeds, 30 s, no delay at all except in the shipped row:
+    #
+    #   stages delay | freq Hz  wavelen   TWI    k_rms  net mm/s
+    #     1    0.00  |  1.300    0.48   +0.754   2.22    0.190
+    #     2    0.00  |  1.100    0.53   +0.804   2.78    0.258
+    #     3    0.00  |  1.067    0.54   +0.811   2.95    0.278
+    #     4    0.00  |  1.033    0.55   +0.815   3.00    0.292
+    #     6    0.00  |  1.033    0.55   +0.820   3.05    0.291
+    #     1    0.28  |  0.656    0.83   +0.846   4.45    0.295   <- shipped
+    #
+    # The mechanism is real: unlike the spatial spread, which did nothing to the frequency
+    # at all, stages in series do lower it -- and they *improve* the wave while doing so,
+    # TWI +0.754 to +0.820 and net speed 0.190 to 0.291, which is the opposite of the trade
+    # the delay made. But it plateaus at 1.03 Hz and never approaches the shipped 0.656.
+    #
+    # One caveat on reading that plateau: a 30 s window gives 1/30 Hz of frequency
+    # resolution, and 1.033, 1.067 and 1.100 are 31, 32 and 33 bins. So 3, 4 and 6 stages
+    # differ by a single bin and are **not resolved** by this run. What is resolved is 1 to 2
+    # stages (6 bins) and the gap from the plateau to the shipped row (11 bins).
+    #
+    # The ceiling is arithmetic and was there to be predicted. N stages of `head_tau / N`
+    # converge on a pure delay of `head_tau` -- that is the whole point of the construction --
+    # so the most phase they can ever supply is the phase of a 0.22 s delay. At 0.656 Hz:
+    #
+    #   N = 1   42.20 deg      N = 4   51.09 deg
+    #   N = 2   48.78 deg      N = 6   51.56 deg
+    #   N -> inf   51.96 deg   (a pure delay of head_tau = 0.22 s)
+    #
+    # So the entire cascade is worth 9.8 degrees more than the single lag it replaces, while
+    # the shipped configuration carries `head_delay = 0.28 s` on *top* of head_tau, which is
+    # another 66.12 degrees. The cascade is short by that, permanently, at any stage count.
+    # It was never subdividing the right budget: it redistributes head_tau's existing lag
+    # into more phase, and cannot manufacture lag the model did not already have.
+    #
+    # Which makes the next experiment obvious and cheap: give the cascade its own total lag
+    # rather than subdividing head_tau. See `head_stage_tau`.
     head_stages: int = 1              #     first-order stages in series, 1 = shipped
+
+    # Per-stage time constant, when the cascade should not simply subdivide `head_tau`.
+    #
+    # Zero means `head_tau / head_stages`, which is the construction measured above and the
+    # one whose ceiling is a pure delay of head_tau. Any positive value is used directly, so
+    # N stages carry N * head_stage_tau of total lag and the cascade converges on a pure
+    # delay of *that* instead.
+    #
+    # The prediction this exists to test: the shipped loop's phase comes from head_tau plus
+    # head_delay, 0.22 + 0.28 = 0.50 s, so a cascade carrying 0.50 s in total should reach
+    # the shipped frequency with `head_delay = 0` and no ring buffer at all. At four stages
+    # that is 0.125 s each. If it lands, `headHist` -- 210,936 B, 89% of an animal -- goes
+    # away, and the phase becomes frequency-dependent through arctan rather than exactly
+    # linear, which is the property gait modulation needs and a fixed delay cannot offer.
+    head_stage_tau: float = 0.0       # s   0 = head_tau / head_stages
 
     # A transport delay in the head reflex, and the reason it exists is numerical as much
     # as biological.
@@ -2008,10 +2061,39 @@ class Params:
             positive(path)
 
         # Every first-order time constant appears in a denominator or exponential rate.
+        #
+        # `sensory.head_stage_tau` is the one exception and it is exempted here rather than
+        # renamed out of the pattern, because the pattern is worth more than the name. Zero
+        # is its "derive it" sentinel and never reaches a denominator: `worm/senses.py`
+        # substitutes `head_tau / head_stages`, which is positive because `head_tau` is and
+        # is checked by this same loop. The effective value is asserted below, so the
+        # guarantee the rule exists for still holds -- it is the sentinel that is exempt,
+        # not the quantity.
         for path in values:
             leaf = path.rsplit(".", 1)[-1]
+            if path == "sensory.head_stage_tau":
+                continue
             if leaf.startswith("tau_") or "_tau" in leaf:
                 positive(path)
+        nonnegative("sensory.head_stage_tau")
+
+        # The cascade must have at least one stage, and whichever lag each stage ends up
+        # carrying has to be a real positive time. This is the check the exemption above
+        # hands off to, written against the value senses.py will actually use.
+        stages = values["sensory.head_stages"]
+        if not isinstance(stages, Real) or isinstance(stages, bool) or stages < 1:
+            problems.append("sensory.head_stages must be >= 1 (got %r)" % (stages,))
+        else:
+            declared = values["sensory.head_stage_tau"]
+            head_tau = values["sensory.head_tau"]
+            if (isinstance(declared, Real) and isinstance(head_tau, Real)
+                    and math.isfinite(declared) and math.isfinite(head_tau)):
+                effective = declared if declared > 0.0 else head_tau / int(stages)
+                if effective <= 0.0:
+                    problems.append(
+                        "the head cascade's per-stage time constant works out at %r, which "
+                        "is a denominator; set sensory.head_stage_tau > 0 or give "
+                        "sensory.head_tau a positive value" % (effective,))
 
         nonnegative("body.internal_damping")
         if (isinstance(values["medium.c_normal"], Real)
