@@ -869,10 +869,37 @@ merged with exactly that empty rollup. Removing the triggers is the defect that 
 to detect, so it is not available as a way to stop the runs. Leaving `paths:` in place keeps
 the filters declared and keeps that test able to pin them.
 
-Until then the gates are local. The browser and runtime side, which is fast:
+Until then the gates are local, and there is one command for them:
 
 ```bash
-npm ci
+npm ci && (cd wasm && npm ci)
+npm run check                  # every gate that does not rewrite a tracked file
+npm run check -- --rebuild     # ...plus the ones that regenerate .model/.wasm/celegans.json
+npm run check -- --python      # ...plus the ~37 minute pytest suite
+npm run check -- --list        # what the gates are, and which CI step each stands in for
+```
+
+`tools/check_all.mjs` runs them in the workflows' own order, because the order inside a job
+is load-bearing: `every module parses` comes before the browser check so that a syntax error
+arrives as a syntax error rather than as a blank rectangle. It probes for what each gate
+needs — Docker for the nginx cache boundary, Chrome for the smoke tests, a Python with numpy
+— and where something is missing it **skips the gate and says so**, separately from the pass
+count and again at the bottom with the reason and the fix. That is the whole design. A local
+runner that folded an unrunnable gate into a green summary would be this project's most
+repeated bug — a check that passes while covering less than it claims — installed in the one
+place you consult to decide you are finished. `--strict` turns any skip into a non-zero exit.
+
+Gates that rewrite tracked files are held back behind `--rebuild`, because regenerating
+`web/worm.model` and `web/worm.wasm` underneath a viewer you have open, or an
+`evolve.mjs` run in another terminal, hands it a torn artifact set.
+
+`tests/test_local_checks.py` pins the runner against both workflows: a named CI step that no
+gate claims fails the suite, and so does a gate claiming a step name no workflow declares.
+The list is allowed to be smaller than CI only where someone wrote down why.
+
+The individual commands, if you want one of them on its own:
+
+```bash
 node tools/check_cache_headers.mjs        # every served asset has a deliberate cache policy
 node tools/check_web.mjs                  # module graph: cycles, unresolved imports, leftovers
 node --test tools/sim_rate.test.mjs       # the rate readouts measure what their labels claim
