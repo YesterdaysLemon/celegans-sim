@@ -245,6 +245,11 @@ const GATES = [
     needs: ['model'], run: sh('node --test wasm/invariants.test.mjs'),
   },
   {
+    id: 'solve', job: 'conformance', step: 'the runtime solves for its own resting potentials',
+    covers: ['the runtime solves for its own resting potentials'],
+    needs: ['model'], run: sh('node --test wasm/solve.test.mjs'),
+  },
+  {
     id: 'population', job: 'conformance', step: 'the population behaves as a population',
     covers: ['the population behaves as a population'],
     needs: ['model'], run: sh('node wasm/population.mjs'),

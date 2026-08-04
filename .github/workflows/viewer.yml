@@ -179,6 +179,14 @@ jobs:
       - name: the physics guard still fires
         run: node --test wasm/invariants.test.mjs
 
+      # V_th is a *product* of the connectome, not anatomy, so the exported copy describes
+      # a network that stops existing the moment a lineage mutates a weight (#96). The
+      # runtime can now solve for it from the CSR graph the payload already carries. The
+      # step still reads the exported array, so this changes no trajectory -- what it
+      # guards is that the two agree, which is what makes it safe to flip over later.
+      - name: the runtime solves for its own resting potentials
+        run: node --test wasm/solve.test.mjs
+
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
       # port gets measured against a model that no longer exists.

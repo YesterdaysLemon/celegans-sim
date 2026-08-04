@@ -1950,6 +1950,130 @@ export const INVARIANT_OK: i32 = 0;
 export const INVARIANT_ANGLES_NOT_FINITE: i32 = 1;
 export const INVARIANT_POTENTIALS_NOT_FINITE: i32 = 2;
 export const INVARIANT_CURVATURE_OVER_LIMIT: i32 = 3;
+/* ------------------------------------------------------------- the resting-potential solve
+ *
+ * The runtime reads `V_th` out of the payload, where `NervousSystem._resting_potentials`
+ * put it. That is fine for one fixed animal and is exactly what #96 is about: `V_th` is not
+ * anatomy, it is a *product* of the anatomy, so the moment a lineage mutates a synaptic
+ * weight or adds a connection the exported array describes a network that no longer exists.
+ *
+ * The graph itself is already here. `tools/export_model.py` writes G_syn, GE_syn and G_gap
+ * as CSR (`b.csr("syn", ...)`, `b.csr("gap", ...)`), so nothing about the payload format has
+ * to change to make weights heritable -- only the runtime has to gain the solve. This is
+ * that solve.
+ *
+ * NOTHING CALLS IT YET, DELIBERATELY. The step still reads the exported `V_th`, so this
+ * changes no trajectory and no conformance number. What it buys today is the check in
+ * wasm/solve.test.mjs: computing the array the exporter computed, from the graph the
+ * exporter used, and comparing. Two sources of truth with something comparing them is a
+ * different situation from two sources of truth; that comparison is what makes it safe to
+ * flip the step over to the computed value later.
+ *
+ * WHY A PLAIN LU IS ENOUGH, WHICH WAS MEASURED BEFORE IT WAS WRITTEN. Porting a dense solve
+ * and still conforming at 1e-13 is the kind of thing that eats a fortnight and then does not
+ * work, so NEXT.md measured it first: the matrix is well conditioned at cond(A) = 94,
+ * consistent with the docstring's claim that it is a strictly diagonally dominant M-matrix;
+ * a plain LU with partial pivoting matches numpy's LAPACK solve to 3.6e-14 mV, 5.7e-16
+ * relative; and that difference does not amplify -- applied to every threshold and run 4000
+ * steps it moves nodes by 5.3e-15 mm against a conformance tolerance of 1e-9.
+ *
+ * Only the gap junctions appear off the diagonal: a chemical synapse contributes a
+ * conductance towards E_pre, not a coupling to V_pre, so it lands on the diagonal and in b.
+ * The intrinsic gates enter at their resting openings m0 and n0, which is what keeps the
+ * fixed point exact rather than approximate and the system linear even though the currents
+ * are not.
+ *
+ * A is 302x302 f64, 730 kB, and is allocated inside the call rather than held at module
+ * level so it is collectable -- an animal is 234 kB, and a permanent scratch three times
+ * that for something run once at construction would be a poor trade.
+ */
+export function computeRestingPotentials(): usize {
+  const n = G.N_NEURONS;
+
+  // Both constants the payload did not carry until #96. s_half is the release variable's
+  // steady state at rest; m0 is the calcium gate's opening there.
+  const sHalf: f64 = 0.5 * G.NEURAL_A_RISE / (0.5 * G.NEURAL_A_RISE + G.NEURAL_A_DECAY);
+  const m0: f64 = 0.5 * (1.0 + Math.tanh(-G.NEURAL_CA_OFFSET / G.NEURAL_CA_SLOPE));
+
+  const gLeak = m(G.OFF_g_leak, 0), eLeak = m(G.OFF_E_leak, 0);
+  const A = new StaticArray<f64>(n * n);
+  const b = new StaticArray<f64>(n);
+
+  for (let i = 0; i < n; i++) {
+    // Off-diagonal: -G_gap, straight out of the CSR.
+    const e = mi(G.OFF_gap_ptr, i + 1);
+    for (let k = mi(G.OFF_gap_ptr, i); k < e; k++) {
+      unchecked(A[i * n + mi(G.OFF_gap_idx, k)] -= m(G.OFF_gap_val, k));
+    }
+    // Chemical synapses, weighted by the presynaptic cell's resting resource. G_syn and
+    // GE_syn share one index array between two value arrays, so one walk does both sums.
+    let gs: f64 = 0.0, es: f64 = 0.0;
+    const se = mi(G.OFF_syn_ptr, i + 1);
+    for (let k = mi(G.OFF_syn_ptr, i); k < se; k++) {
+      const d = m(G.OFF_d_rest, mi(G.OFF_syn_idx, k));
+      gs += m(G.OFF_syn_val, k) * d;
+      es += m(G.OFF_syn_val2, k) * d;
+    }
+    // g_leak and E_leak are network-wide scalars, shape [1] in the payload, not per-neuron
+    // arrays -- the step reads them at index 0 and so must this. Indexing them by `i` runs
+    // straight off the end of an 8-byte array into whichever array the exporter laid down
+    // next, which is silent: it produces plausible finite numbers for every cell.
+    const gA = m(G.OFF_g_adapt, i), gC = m(G.OFF_g_ca, i);
+    unchecked(A[i * n + i] += gLeak + m(G.OFF_gap_total, i) + sHalf * gs
+                              + G.N0 * gA + m0 * gC);
+    unchecked(b[i] = gLeak * eLeak + sHalf * es
+                     + G.N0 * gA * G.NEURAL_E_K + m0 * gC * G.NEURAL_E_CA);
+  }
+
+  luSolveInPlace(A, b, n);
+  return changetype<usize>(b);
+}
+
+/* Gaussian elimination with partial pivoting, then back substitution, writing the solution
+ * over `b`. Written the way the measurement above was written -- the plain textbook thing --
+ * because the point of measuring first was to find out whether the plain thing suffices, and
+ * it does by four orders of margin. A pivot that comes out at zero would mean the matrix is
+ * not the diagonally dominant M-matrix the model says it is, which is a broken model rather
+ * than a hard linear system, so it aborts rather than limping on with an infinity. */
+function luSolveInPlace(A: StaticArray<f64>, b: StaticArray<f64>, n: i32): void {
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    let best = Math.abs(unchecked(A[c * n + c]));
+    for (let r = c + 1; r < n; r++) {
+      const v = Math.abs(unchecked(A[r * n + c]));
+      if (v > best) { best = v; piv = r; }
+    }
+    if (best == 0.0) {
+      unreachable();      // singular: the connectome is not what the model claims it is
+    }
+    if (piv != c) {
+      for (let k = c; k < n; k++) {
+        const t = unchecked(A[c * n + k]);
+        unchecked(A[c * n + k] = unchecked(A[piv * n + k]));
+        unchecked(A[piv * n + k] = t);
+      }
+      const tb = unchecked(b[c]); unchecked(b[c] = unchecked(b[piv])); unchecked(b[piv] = tb);
+    }
+    const d = unchecked(A[c * n + c]);
+    for (let r = c + 1; r < n; r++) {
+      const f = unchecked(A[r * n + c]) / d;
+      if (f == 0.0) continue;
+      for (let k = c; k < n; k++) unchecked(A[r * n + k] -= f * unchecked(A[c * n + k]));
+      unchecked(b[r] -= f * unchecked(b[c]));
+    }
+  }
+  for (let r = n - 1; r >= 0; r--) {
+    let acc = unchecked(b[r]);
+    for (let k = r + 1; k < n; k++) acc -= unchecked(A[r * n + k]) * unchecked(b[k]);
+    unchecked(b[r] = acc / unchecked(A[r * n + r]));
+  }
+}
+
+/* The exported thresholds, so a caller can compare them against the solve above without
+ * having to know the payload layout. */
+export function ptrExportedVth(): usize { return B + G.OFF_V_th; }
+
+
 export const INVARIANT_NODES_NOT_FINITE: i32 = 4;
 export const INVARIANT_LEFT_THE_DISH: i32 = 5;
 
