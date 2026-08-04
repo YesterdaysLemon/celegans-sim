@@ -286,7 +286,21 @@ Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19
 shared between animals, and so is the runtime's per-step scratch, so a second worm
 duplicates only state. State is not small: 210,936 of those bytes are `headHist`, the
 560-sample delay line behind `head_delay = 0.28 s`, and the other 28 kB is everything else
-the animal remembers. A population of 100 is 22.8 MB, on top of a shared `World` whose six
+the animal remembers.
+
+That is **89%** of an animal, and the figure is worth stating as a share because the share
+is what went stale. This file had the byte count right the whole time while `NEXT.md` and
+`index.ts` both carried a much smaller one -- true back when a worm cost 372 kB, before the
+per-step scratch was hoisted to module level. Hoisting shrank the animal by a third, which *raised* every
+remaining array's share, and the sentences quoting the share were not among the things
+updated. `wasm/memory.mjs` checked that four documents quoted the total and nothing checked
+that they quoted the share; it now checks both, and any percentage written within a couple
+of lines of the largest per-worm array has to be the measured one.
+
+So nine tenths of an animal is a ring buffer for the model's least-defended constant. If the
+head cascade under test in `worm/params.py` survives its remaining checks, `head_delay` goes
+to zero and that ring goes with it -- four scalars a joint instead of 561 -- and a population
+of 100 stops costing 22.8 MB. A population of 100 is 22.8 MB, on top of a shared `World` whose six
 256² f64 grids — food, attractant, repellent, oxygen, the diffusion scratch, and the
 attractant source added by #48 — come to 3,145,728 bytes, plus 606,208 for the egg record.
 
@@ -310,6 +324,48 @@ space is enough and 140,776 bytes an animal was buying nothing. Two arrays that 
 scratch are **not**: `contactX`/`contactY` are read by `sense()` before `contact()` rewrites
 them, so they carry the previous step's wall forces and stay per-worm. See `wasm/memory.mjs`
 and case 12 of `wasm/population.mjs`.
+
+## It can now solve for its own thresholds
+
+Everything above describes a runtime that reads precomputed answers out of the payload. That
+is exactly right for one fixed animal and exactly wrong for a lineage, and it is the thing
+standing between tier one of the evolution project and tiers two and three.
+
+**The graph was never the problem.** `tools/export_model.py` already writes `G_syn`, `GE_syn`
+and `G_gap` through `Blob.csr`, so the connectome's topology *and* its per-synapse weights
+are in the payload in a form this runtime already walks every step. Making weights heritable
+needs no change to the model format at all. What is baked is not the graph but its
+**products** -- `V_th` above all, the fixed point `NervousSystem._resting_potentials` solves
+for so that every release curve sits half-activated on the steep part of its transfer
+function. Mutate a weight and the exported `V_th` describes a network that no longer exists.
+
+`computeRestingPotentials()` assembles that system from the CSR and solves it here: only the
+gap junctions land off the diagonal, because a chemical synapse contributes a conductance
+towards `E_pre` rather than a coupling to `V_pre`, and the intrinsic gates enter at their
+resting openings `m0` and `n0`, which is what keeps the fixed point exact and the system
+linear even though the currents are not. A plain LU with partial pivoting is enough, and that
+was measured before it was written: the matrix is a strictly diagonally dominant M-matrix at
+**cond(A) = 94**, and the port lands at **6.395e-14 mV, 1.734e-15 relative** against numpy's
+LAPACK solve -- four orders inside the conformance tolerance.
+
+Only two constants were missing and only one genuinely: `s_half` was always derivable from
+`a_rise` and `a_decay`, and `ca_offset` is now exported so `m0` can be formed.
+
+**Nothing calls it.** The step still reads the exported `V_th`, so no trajectory and no
+conformance number moves. What the runtime now has is two sources of truth for the same 302
+numbers, which is this project's favourite defect, so `wasm/solve.test.mjs` compares them --
+and asserts the agreement is **approximate**, because an independent LU cannot reproduce
+LAPACK bit for bit and an exact match across all 302 cells would be aliasing rather than a
+very good solve. That second assertion is not decoration: writing it is what caught the bug,
+which was that `g_leak` and `E_leak` are network-wide scalars of shape `[1]` rather than
+per-neuron arrays. Indexing an eight-byte array by neuron runs off its end into whichever
+array the exporter laid down next, silently, producing a plausible finite number for every
+cell -- and the first symptom was a zero pivot three hundred columns later.
+
+`_balance` is the other half and it needs one thing this did not. The exported muscle `G` is
+*post*-balance, so the balance can be neither recomputed nor checked from the payload as it
+stands; the raw `G` has to go out alongside it. That is a payload addition, not a format
+change.
 
 ## Running measurements on it
 

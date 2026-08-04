@@ -702,6 +702,41 @@ not zero.
 docker build -t celegans-sim . && docker run --rm -p 8080:8080 celegans-sim
 ```
 
+### Putting it on a server
+
+**There is no backend to deploy.** The image is `nginx:alpine` with a directory of static
+files in it, because the animal runs in the visitor's browser. One instance serves as many
+people as the bandwidth allows, the CPU cost is theirs rather than yours, and there is no
+database, no queue, no session and nothing to scale. A 1 GB VPS is generous.
+
+The build is two stages and the first one is the reason to use it rather than copying `web/`
+somewhere by hand. It regenerates `worm.model` from the Python and recompiles `worm.wasm`
+from source, then runs the conformance check and **fails the build if the port has drifted**
+from the model. A container that quietly shipped a diverged animal would be worse than no
+container. It also runs `tools/manifest.py`, which content-hashes the assets so the cache
+policy below is safe.
+
+```bash
+docker run -d --restart=unless-stopped -p 127.0.0.1:8080:8080 --name celegans celegans-sim
+```
+
+Bind to loopback and put your own TLS terminator in front — Caddy, Traefik, or nginx with
+certbot; anything that speaks HTTP to an upstream will do. Two things to keep in mind if you
+do put a proxy in front of it:
+
+- **Do not let the proxy rewrite `Content-Type`.** `docker/nginx.conf` has a long comment
+  about why, and it is the sharpest failure mode this repo has had in production shape: a
+  browser refuses an ES module served with a non-JavaScript MIME type, so the page can fail
+  before it runs a line of its own code.
+- **Keep the caching split.** Hashed assets are immutable and cached hard; the viewer's
+  source modules are deliberately unhashed — there is no build step to rewrite their import
+  specifiers — so they are revalidated instead. That is what stops a redeploy serving
+  modules from two different commits at once. `npm run check` exercises the real nginx
+  config against that policy, in a container, rather than trusting the local dev server.
+
+Redeploying is `docker build` and `docker run` again; there is no state to migrate, and the
+only thing that changes for a visitor is which files their browser revalidates.
+
 ## The viewer
 
 `web/` is a set of native ES modules — no build step, no bundler, no dependencies. There
@@ -753,6 +788,19 @@ kymograph; live membrane traces. Transport controls change the medium under the 
 live, poke it at either end, ablate neurons by clicking them, and drop new food where you
 double-click. A lamp in the header flashes once per pharyngeal pump — at 250 a minute on
 food that is a flicker, and off food an occasional blink.
+
+**And the transport bar scrubs.** The media-player metaphor at the top of this file was
+missing the one control that makes it one, because there was no history to scrub — every
+frame was drawn once and dropped. `viewer/history.js` keeps a ring of past frames and the
+slider walks it; dragging pauses, and dragging to the right-hand end resumes live.
+
+Two things about that ring are worth stating because both were bugs first. It **copies**:
+`LocalEngine.frame(i)` hands out `act`, `V`, `tension` and `kappa` as views into WASM linear
+memory, so storing those objects would hold thousands of aliases of one live animal, and
+`memory.grow` detaches them outright. And its budget is in **bytes, not frames** — a frame
+costs **3,376 B per animal**, measured, so a fixed frame count would quietly mean a 27 MB
+ring on a populated plate. 24 MB buys about 7,100 frames with one animal and about 930 with
+eight, and the readout says how many seconds are actually held.
 
 ## Layout
 
@@ -846,6 +894,27 @@ a real defect, and that is worth knowing — `EVO_FITNESS=eaten` is kept for exa
 as an adversarial probe rather than a default. It is an argument for keeping the two kinds
 of claim in separate boxes, which is cheap now and impossible to do retroactively.
 
+**Three measures exist, and two of them are there to be argued with.**
+
+| `EVO_FITNESS` | what it scores | what it is for |
+|---|---|---|
+| `energy` (default) | intake in pump-volumes, less a locomotion cost | the honest one; #37's exploit costs fitness under it rather than paying |
+| `eaten` | raw intake | adversarial probe. Exploitable on purpose, kept to find defects |
+| `eggs` | eggs produced, normalised by `eggs_per_food` | **measured to be intake in different units** — see below |
+
+That last row is the useful kind of negative result. `laid + held` is *conserved* across a
+laying event, so eggs produced is blind to the egg-laying circuit by construction and tracks
+feeding alone: score divided by intake is 5.000000e-3 across three seeds, a relative spread
+of 4.2e-11. `wasm/eggs-fitness.test.mjs` keeps that attached to the measure and prints the
+verdict, so nobody quotes a number out of it without it.
+
+The probe has been run, and it found nothing — which is not the same as there being nothing.
+Selection minus control over three seeds was 0.032 ± 0.022, which does not clear twice its
+own standard error, so the run could not detect selection at all and therefore had no
+sensitivity with which to detect an exploit either. A probe that cannot see the thing it is
+a control for is not evidence of absence. What it bought is a price for the real experiment,
+which `NEXT.md` records.
+
 ## Running the checks yourself
 
 **CI is paused, at the jobs rather than at the triggers.** This account's Actions minutes
@@ -905,6 +974,10 @@ node tools/check_web.mjs                  # module graph: cycles, unresolved imp
 node --test tools/sim_rate.test.mjs       # the rate readouts measure what their labels claim
 node --test wasm/conform-inputs.test.mjs  # the conformance inputs are present and not stale
 node --test wasm/invariants.test.mjs      # the runtime's physics guard still fires
+node --test wasm/solve.test.mjs           # the runtime's resting-potential solve vs the exporter's
+node --test wasm/eggs-fitness.test.mjs    # what the egg measure actually measures
+node wasm/memory.mjs                      # an animal costs what the documents say it costs
+node wasm/population.mjs                  # animals do not perturb one another
 node tools/smoke_web.mjs                  # the viewer in a real browser, desktop and mobile
 node tools/smoke_server.mjs               # the ?server transport, against a live Python model
 ```
