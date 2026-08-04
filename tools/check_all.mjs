@@ -250,6 +250,11 @@ const GATES = [
     needs: ['model'], run: sh('node --test wasm/solve.test.mjs'),
   },
   {
+    id: 'eggs-fitness', job: 'conformance', step: 'the egg measure says what it is',
+    covers: ['the egg measure says what it is'],
+    needs: ['model'], run: sh('node --test wasm/eggs-fitness.test.mjs'),
+  },
+  {
     id: 'population', job: 'conformance', step: 'the population behaves as a population',
     covers: ['the population behaves as a population'],
     needs: ['model'], run: sh('node wasm/population.mjs'),

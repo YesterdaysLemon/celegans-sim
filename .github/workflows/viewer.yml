@@ -187,6 +187,14 @@ jobs:
       - name: the runtime solves for its own resting potentials
         run: node --test wasm/solve.test.mjs
 
+      # #98 wanted reproduction scored on egg output. The measure exists now, and this is
+      # what keeps its limitation attached to it: `laid + held` is conserved across a laying
+      # event, so eggs produced is blind to the egg-laying circuit and tracks feeding alone.
+      # At 20 s it is intake in different units, measured at a relative spread of 4e-11.
+      # If that ever stops being true the verdict printed here changes, which is the point.
+      - name: the egg measure says what it is
+        run: node --test wasm/eggs-fitness.test.mjs
+
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
       # port gets measured against a model that no longer exists.
