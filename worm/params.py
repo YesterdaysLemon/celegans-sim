@@ -667,6 +667,26 @@ class BodyParams:
     # Fang-Yen et al. bound the internal (tissue) viscosity at < 5e-16 N m^2 s = 5e-4
     # uN mm^2 s, i.e. negligible against the external medium. We keep a small nonzero
     # value inside that bound; it damps the highest bending modes and buys nothing else.
+    #
+    # "Negligible against the external medium" was checked, because it is a claim made on
+    # agar and the external drag falls four and a half orders of magnitude by the time the
+    # animal is in buffer. It holds anyway. tools/damping_sweep.py, four values from this one
+    # down to zero, both media, three seeds:
+    #
+    #   damping   agar Hz    buffer Hz
+    #   2.0e-04    0.656       0.833     <- shipped
+    #   5.0e-05    0.667       0.867
+    #   1.0e-05    0.678       0.867
+    #   0.0e+00    0.667       0.867
+    #
+    # Switching it off entirely moves buffer by 1.04x and agar by 1.02x. So this term is not
+    # what pins the swimming end, and the documented claim survives in the regime it was
+    # never tested in. The value stands.
+    #
+    # One incidental observation, recorded rather than acted on: at zero the buffer travelling
+    # index is +0.756 against the shipped +0.657, while agar's falls +0.846 to +0.809. Mixed,
+    # small, and not obviously worth a change -- but if this parameter is ever revisited for
+    # its own sake, that is the trade to look at.
     internal_damping: float = 2.0e-4   # uN*mm^2*s
 
     # Moment arm of the body-wall muscles about the centreline, as a fraction of the
@@ -736,10 +756,43 @@ class MediumParams:
     change, and this animal does not change it. Net speed in buffer is 0.038 mm/s against a
     real swim of roughly 0.4: it undulates at a plausible frequency and goes nowhere.
 
-    That reframes the search. Whatever is missing is not in the head reflex's phase -- a pure
-    delay and a saturating cascade give the same span in every medium -- and it is not
-    something that shows up between agar and viscous, where the model already responds. It
-    is whatever should keep the loop speeding up and lengthening its wave as K falls past 9.
+    AND THE REASON IT SATURATES IS STRUCTURAL, WHICH IS WORTH STATING PLAINLY BECAUSE IT
+    MEANS NO AMOUNT OF TUNING FIXES IT.
+
+    The undulation frequency is set by where the loop's total lag reaches half a period, and
+    in this model that total is a sum of fixed constants plus exactly one term that depends
+    on the medium -- the body's own drag response. Measured against the head reflex's lag
+    budget, which is the largest single contributor (tools/head_cascade.py, on agar):
+
+        head lag    frequency    product
+        0.22 s       1.300 Hz     0.286
+        0.50 s       0.644 Hz     0.322     (four stages, no transport delay)
+        0.50 s       0.656 Hz     0.328     (head_tau plus head_delay, as shipped)
+
+    Frequency goes as roughly 1/lag, and -- the part that matters -- **two structurally
+    different implementations of the same 0.50 s land within 0.012 Hz of each other.** The
+    ceiling is set by the lag's magnitude, not its shape. That is the same result the
+    cascade's failure reported from the other direction.
+
+    Everything else in the chain is a constant too: `head_tau` 0.22 s, `head_delay` 0.28 s,
+    `tau_calcium` 0.060 s, `tau_tension` 0.035 s, the synapses. The muscle is
+    `calcium -> tension` through two first-order lags with **no dependence on shortening
+    velocity at all** -- no Hill force-velocity term, nothing that knows how fast it is being
+    asked to contract.
+
+    So the body's drag response is the only load-dependent element in the entire loop, and by
+    K = 9 it has already become small compared with the fixed remainder. Below that the
+    frequency is pinned by constants the medium cannot reach, and the wavelength -- set by a
+    fixed proprioceptive reach -- has nothing to scale it either. The animal saturates
+    because the model gave it exactly one way to feel the medium and it runs out.
+
+    Reaching the animal's 5.87x therefore needs **a second load-dependent element**, not a
+    bigger gain on an existing one. Muscle force-velocity is the physiological candidate and
+    the obvious first thing to try: real muscle produces less force the faster it shortens,
+    which in a light medium is precisely a load-dependent change in the muscle's contribution
+    to the loop. It is also real work -- `MuscleParams` has no velocity term to widen -- so it
+    deserves its own change and its own conformance run rather than being folded into
+    something else.
     """
 
     name: str = "agar"
