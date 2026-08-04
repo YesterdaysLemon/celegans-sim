@@ -162,6 +162,19 @@ class Senses:
         # Scalar for the lumped reflex, one per neuron for the distributed one.
         self.head_signal = np.zeros(conn.n) if p.head_distributed else 0.0
         self._head_decay = np.exp(-dt / p.head_tau)
+        # The cascade. `head_stages` first-order lags in series, each carrying
+        # `head_tau / stages`, so that at one stage this is precisely the filter above and
+        # the arithmetic below reduces to the single line it replaces. See
+        # SensoryParams.head_stages for why series and not parallel.
+        self._head_stages = max(1, int(p.head_stages))
+        self._head_stage_decay = np.exp(-dt / (p.head_tau / self._head_stages))
+        # One row per stage. Only allocated past the first when there is a cascade, so the
+        # shipped configuration carries no extra state at all.
+        self._head_chain = (
+            np.zeros((self._head_stages - 1, conn.n) if p.head_distributed
+                     else (self._head_stages - 1,))
+            if self._head_stages > 1 else None
+        )
         # Ring buffer for the head reflex's transport delay. Sized in steps from a delay
         # in seconds, so the delay the loop actually sees does not depend on dt. Length
         # zero means no buffer and the previous behaviour exactly.
@@ -439,7 +452,17 @@ class Senses:
             raw = self.W_head @ k_head
         else:
             raw = float(np.dot(self._head_window, k_head))
-        self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
+        if self._head_chain is None:
+            self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
+        else:
+            # Each stage sees the previous stage's output, which is what makes the phase
+            # add rather than average. The last stage is `head_signal`, so everything
+            # downstream -- the tanh, the gain, the omega suppression -- is untouched.
+            a = 1.0 - self._head_stage_decay
+            for s in range(self._head_stages - 1):
+                self._head_chain[s] += (raw - self._head_chain[s]) * a
+                raw = self._head_chain[s]
+            self.head_signal += (raw - self.head_signal) * a
         # Stand the reflex down while the turn runs. It regulates head curvature, which is
         # the quantity the turn is displacing, so left at full gain it opposes the turn
         # until the oscillator stalls. See SensoryParams.omega_reflex_suppression.
