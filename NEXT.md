@@ -232,6 +232,41 @@ worm" are different claims, and only one of them is interesting.
 > is the delay line for the model's least-defended constant; every other per-worm array put
 > together is about 27 kB.
 >
+> ### And the adversarial probe ran, and priced itself out
+>
+> `EVO_FITNESS=eaten` was run deliberately, as the top of this file says it should be —
+> aimed at the model rather than at the checks. Eight animals, eight generations, 20 s,
+> three seeds, with the selection-off control arm. 4,997 s of wall clock.
+>
+> ```
+>   seed |  selected gain |  control gain |  difference
+>      5 |        0.01938 |       0.00027 |     0.01911
+>     11 |        0.02120 |       0.01925 |     0.00195
+>     23 |        0.07338 |      -0.00193 |     0.07531
+>
+>   selection - control, over 3 seeds: 0.03212 +- 0.02215 (s.e.)
+> ```
+>
+> **No detectable effect of selection**, and the per-seed column is the finding. Seeds 5 and
+> 23 read as clear wins — the selected arm gaining 70× and 38× what its control did — and
+> seed 11's control gained almost as much as its selected arm. Day eighteen arriving again,
+> on a run built specifically to be able to see it. Seed 5 alone would have been written up
+> as selection working.
+>
+> **No exploit was found, and this run is not entitled to say more than that.** It could not
+> detect selection at all, so it had no sensitivity with which to detect an exploit either;
+> a probe that cannot see the thing it is a control for is not evidence of absence. What it
+> bought is a price: about four times the seeds to bring that ±0.022 down far enough for a
+> 0.032 difference to clear it — twelve seeds, five and a half hours — and more generations
+> would probably do more than more seeds, with eight being few for 15 genes.
+>
+> Against the pessimism: a null result under `eaten` is what this gene list was *designed*
+> to produce. Every one of the fifteen is a sensory gain, a time constant or a decision
+> threshold, and none is a conversion factor in front of intake. The version of this probe
+> worth real compute is the one after the genome grows to weights and topology, where the
+> space is large enough to hold surprises and the argument for why it cannot reach a
+> conversion factor has to be made again from scratch.
+>
 > ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
 >
 > **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
