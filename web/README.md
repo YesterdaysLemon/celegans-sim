@@ -20,9 +20,10 @@ belongs on `S` instead.
 | `viewer/dish.js` | plate, grid, chemical fields, obstacles, trails, minimap, scale bar, camera transforms | state, themes, worm |
 | `viewer/panels.js` | neuron grid, muscle sheet, kymograph, membrane traces, receptor bars, neuron hit-testing | state, scales |
 | `viewer/stats.js` | header readouts, undulation frequency, pump lamp, dish legend | state |
-| `viewer/transport.js` | the WebSocket feed, and `send()` — the command seam | state, panels, stats, dish |
-| `viewer/controls.js` | every event listener; worm selector, ablation mode, tooltip | state, themes, dish, panels, stats, transport |
-| `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls |
+| `viewer/history.js` | the bounded ring of past frames behind the scrubber | *nothing* |
+| `viewer/transport.js` | the WebSocket feed, and `send()` — the command seam | state, panels, stats, dish, history |
+| `viewer/controls.js` | every event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, stats, transport, history |
+| `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls, history |
 | `app.js` | bootstrap: pick a transport, wire, start | all of the above |
 | `local.js` | the WASM engine itself — model loading, stepping budget, the two rate readouts, frame extraction | — |
 

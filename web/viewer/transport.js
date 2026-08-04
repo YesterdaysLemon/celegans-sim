@@ -13,6 +13,7 @@ import { S, el } from './state.js';
 import { drawSenses, pushKymo, invalidateLayout } from './panels.js';
 import { updateFreq, updateStats, updatePump, updateEggs } from './stats.js';
 import { follow } from './dish.js';
+import { record } from './history.js';
 
 /* The frame protocol, and its version. See worm/server.py, which is the other half.
  *
@@ -247,6 +248,7 @@ function onFrame(buf, dv) {
   S.frame.cy = cy;
   S.worms = [S.frame];
   S.focus = 0;
+  record(S.worms, S.eggs);
 
   const last = S.trail[S.trail.length - 1];
   if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {

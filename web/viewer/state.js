@@ -31,6 +31,15 @@ export const S = {
   worms: [],           // every animal's frame, for the dish
   trails: [],          // one track per animal
   focus: 0,            // which animal the camera and the panels are about
+  /* Where the scrubber is, as an index into viewer/history.js, or null for live.
+   *
+   * null rather than "the last index" on purpose: those are different states. Live means
+   * the renderer takes whatever the engine last produced and the ring keeps growing under
+   * it; parked on the newest frame means the display is pinned to one moment that happens
+   * to be the newest, and eviction will slide out from under it. A single index cannot
+   * express the first, and code that tried would resume playback every time the ring
+   * turned over. */
+  playhead: null,
 };
 
 export const el = (id) => document.getElementById(id);

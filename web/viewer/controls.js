@@ -13,6 +13,82 @@ import { setCam, zoom, worldAt } from './dish.js';
 import { neuronAt, neuronCentre, neuronStep, invalidateLayout } from './panels.js';
 import { buildLegend } from './stats.js';
 import { send } from './transport.js';
+import { count as historyCount, at as historyAt, reset as historyReset,
+         stats as historyStats } from './history.js';
+
+/* ------------------------------------------------------------------- scrubbing ---- */
+
+/* The transport bar's scrubber, and the two states it moves between.
+ *
+ * Scrubbing pauses. That is the media-player convention, and here it is also the only
+ * honest option: the ring records what was displayed, so leaving the engine running while
+ * you drag would have the history growing and evicting underneath the very index you are
+ * holding. Both feeds are paused through the same `send()` seam, so this works over the
+ * socket as well as against the local engine.
+ *
+ * Going live is a separate action from moving to the last frame -- see S.playhead.
+ */
+export function goLive() {
+  if (S.playhead === null) return;
+  S.playhead = null;
+  const slider = el('r-scrub');
+  if (slider) { slider.value = String(slider.max); slider.setAttribute('aria-valuetext', 'live'); }
+  el('o-scrub').textContent = 'live';
+}
+
+function setPlayhead(i) {
+  const n = historyCount();
+  if (!n) return;
+  const slider = el('r-scrub');
+
+  /* Live is "the thumb is at the end of its travel", not "the index equals count - 1".
+   *
+   * Those come apart, and the difference is a real gesture that failed. `syncScrub` only
+   * rewrites `max` every 250 ms, while the ring grows sixty times a second, so between two
+   * syncs the slider's maximum is up to fifteen frames behind the ring. An `input` event
+   * carries a value bounded by that stale maximum -- so dragging the thumb hard against the
+   * right-hand end produced an index below `n - 1`, and the viewer stayed parked in the past
+   * with the thumb visibly at the end. Comparing against the slider's own maximum is what
+   * the user actually did; comparing against the count is what was true 250 ms ago.
+   */
+  const travelEnd = Number(slider.max);
+  if (i >= travelEnd || i >= n - 1) { slider.max = String(n - 1); goLive(); return; }
+  slider.max = String(n - 1);
+  S.playhead = Math.max(0, Math.min(n - 1, i));
+  if (el('b-play').getAttribute('aria-pressed') === 'true') el('b-play').click();
+  const e = historyAt(S.playhead);
+  const newest = historyAt(n - 1);
+  const behind = newest && e ? newest.t - e.t : 0;
+  el('o-scrub').textContent = `-${behind.toFixed(1)}s`;
+  el('r-scrub').setAttribute('aria-valuetext',
+    `${behind.toFixed(1)} seconds before the live frame`);
+}
+
+/* Keep the slider's range in step with a ring that is still filling and already evicting.
+ *
+ * Called from the animation loop but throttled: `max` is the only thing that changes while
+ * live, and writing it on every frame is a layout-invalidating DOM write sixty times a
+ * second for a number that moves by one. While the user is actually dragging, nothing here
+ * touches the slider at all -- rewriting `value` under a thumb someone is holding is how a
+ * scrubber develops a stutter.
+ */
+let scrubClock = 0;
+export function syncScrub(now) {
+  const slider = el('r-scrub');
+  if (!slider || now - scrubClock < 250) return;
+  scrubClock = now;
+  const n = historyCount();
+  slider.disabled = n < 2;
+  slider.max = String(Math.max(0, n - 1));
+  if (S.playhead === null) {
+    slider.value = String(Math.max(0, n - 1));
+    const h = historyStats();
+    // Say what the ring actually holds rather than what it was sized for. The frame count
+    // is a consequence of the byte budget and the number of animals, so it is the sort of
+    // figure that becomes folklore unless it is on screen.
+    el('o-scrub').textContent = h.seconds > 0 ? `live · ${h.seconds.toFixed(0)}s held` : 'live';
+  }
+}
 
 /* -------------------------------------------------------------------- tooltip ----- */
 
@@ -234,8 +310,13 @@ export function wire() {
     const playing = e.target.getAttribute('aria-pressed') === 'true';
     e.target.setAttribute('aria-pressed', String(!playing));
     e.target.textContent = playing ? 'Play' : 'Pause';
+    // Pressing Play while parked in the past means "carry on from now", not "run the
+    // engine while the display stays pinned to a frame from thirty seconds ago".
+    if (!playing) goLive();
     send({ cmd: playing ? 'pause' : 'play' });
   });
+
+  el('r-scrub').addEventListener('input', (e) => setPlayhead(Number(e.target.value)));
   el('b-reset').addEventListener('click', () => {
     // Reset repopulates the plate, so every record is about an animal that no longer
     // exists; over the socket it restores the one animal there is. Either way nothing is
@@ -243,6 +324,9 @@ export function wire() {
     S.ablations.clear();
     S.trail = []; S.kymo = null; S.traces = S.selected.map(() => []);
     S.freqBuf = []; S.speedWin = [];
+    // The history is about animals that no longer exist, and its timestamps are about to
+    // run backwards. Scrubbing into it after a reset would show the previous run.
+    goLive(); historyReset();
     if (S.engine) {
       S.engine.reset();
       S.trails = S.engine.worms.map(() => []);

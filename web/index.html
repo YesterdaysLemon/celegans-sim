@@ -114,6 +114,13 @@
       <button id="b-reset">Reset</button>
     </div>
 
+    <div class="group grow" role="group" aria-label="History">
+      <label class="cap" for="r-scrub">History</label>
+      <input type="range" id="r-scrub" min="0" max="0" step="1" value="0" disabled
+             aria-valuetext="live">
+      <span class="readout" id="o-scrub">live</span>
+    </div>
+
     <div class="group" role="group" aria-label="Speed">
       <label class="cap" for="r-rate">Rate</label>
       <input type="range" id="r-rate" min="-2" max="2.2" step="0.05" value="0"

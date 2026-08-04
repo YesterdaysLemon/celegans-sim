@@ -92,7 +92,7 @@ const VIEWPORTS = [
 // Ids that must exist and be visible at every viewport. These are the controls, not the
 // readouts: a missing readout is a bug, a missing control is an unusable page.
 const REQUIRED = [
-  'c-dish', 'b-play', 'b-reset', 'r-rate', 'b-poke-a', 'b-poke-p',
+  'c-dish', 'b-play', 'b-reset', 'r-rate', 'r-scrub', 'b-poke-a', 'b-poke-p',
   'b-ablate', 'b-restore', 'b-worm-add', 'b-worm-del', 'b-rail',
   'b-centre', 'b-zin', 'b-zout',
 ];
@@ -470,6 +470,83 @@ try {
       const dupes = [...seen.entries()].filter(([, ids]) => ids.length > 1)
         .map(([n, ids]) => `"${n}" x${ids.length} (${ids.join('/')})`);
       check(vp.name, dupes.length === 0, `controls sharing an accessible name: ${dupes.join('; ')}`);
+    }
+
+    /* The scrubber shows the past, and not an alias of the present.
+     *
+     * Desktop only, because it needs several seconds of history and the assertion is about
+     * the ring rather than about the layout.
+     *
+     * The failure this is really guarding is subtle and would look exactly like success.
+     * `LocalEngine.frame(i)` returns `act`, `V`, `tension` and `kappa` as Float64Array
+     * *views into WASM linear memory*, so a ring that stored those objects rather than
+     * copies would hold N aliases of one live animal, and every scrubber position would
+     * show the current neurons and muscles.
+     *
+     * Which array this asserts on is the whole check, and the first version of it was
+     * wrong. Asserting on `nodes` proves nothing: `frame(i)` already allocates a fresh
+     * Float32Array for the centreline on every call, so the body positions are copies
+     * whether or not this ring copies anything. Removing the copy step entirely and
+     * re-running left every assertion here passing. `t` is no better -- a plain number is
+     * copied either way.
+     *
+     * So it asserts on `V`, which is one of the four genuine views. Watched to fail with
+     * `copy` replaced by the identity function, which is the bug in question.
+     */
+    if (vp.name === 'desktop') {
+      const scrub = await page.evaluate(async () => {
+        const H = await import('./viewer/history.js');
+        const S = window.__sim;
+        const slider = document.getElementById('r-scrub');
+        const frameNow = () => ({
+          t: S.frame ? S.frame.t : null,
+          x: S.worms[0] ? S.worms[0].nodes[0] : null,
+          // One of the four arrays the engine hands out as a view into WASM memory. This
+          // is the field that can tell a copied ring from an aliased one.
+          v: S.worms[0] ? S.worms[0].V[0] : null,
+        });
+        const settle = () => new Promise((r) =>
+          requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const live = frameNow();
+        const held = H.count();
+        const budget = H.BUDGET_BYTES;
+        const bytes = H.stats().bytes;
+
+        slider.value = '0';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        await settle();
+        const past = frameNow();
+        const parked = S.playhead;
+        const playText = document.getElementById('b-play').textContent;
+
+        slider.value = String(slider.max);
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        await settle();
+        return { live, past, held, parked, playText, bytes, budget,
+                 backToLive: S.playhead };
+      });
+
+      // A floor, not a target. By the time this runs the page has been up for a second or
+      // so, which is tens of frames, and the assertions that matter are the ones below --
+      // this one only catches a ring that is not recording at all, where "the scrubbed
+      // frame equals the live frame" would pass for the trivial reason that there is only
+      // one frame in it.
+      check(vp.name, scrub.held > 20, `the history ring holds only ${scrub.held} frames`);
+      check(vp.name, scrub.parked === 0, 'dragging the scrubber did not park the playhead');
+      check(vp.name, scrub.past.t !== null && scrub.past.t < scrub.live.t,
+        `scrubbing back showed t=${scrub.past.t}, not before the live t=${scrub.live.t}`);
+      check(vp.name, scrub.past.v !== scrub.live.v,
+        `the scrubbed frame reports the live membrane potential (${scrub.live.v}): the ring `
+        + 'is holding views into WASM memory rather than copies, so every scrubber position '
+        + 'shows the current neurons and muscles');
+      check(vp.name, scrub.past.x !== scrub.live.x,
+        'the scrubbed body is at the live body\'s coordinates');
+      check(vp.name, scrub.playText === 'Play', 'scrubbing did not pause the engine');
+      check(vp.name, scrub.bytes <= scrub.budget,
+        `the ring holds ${scrub.bytes} bytes, over its ${scrub.budget} budget`);
+      check(vp.name, scrub.backToLive === null,
+        'dragging the scrubber to the end did not return the viewer to live');
     }
 
     console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}  ` +
