@@ -225,6 +225,29 @@ function onFrame(buf, dv) {
   const cy = nodes.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0) / nNodes;
   follow(cx, cy);
 
+  /* The dish draws every body out of `S.worms`, and this feed is one animal.
+   *
+   * It has to be said explicitly, because for a while it was not said at all and the
+   * `?server` page drew a plate, three chemical fields and a trail crawling around with no
+   * animal at the end of it. `S.worms` arrived with the multi-animal WASM port; the socket
+   * path, which predates it and carries exactly one worm, was never migrated onto it, and
+   * `S.frame` alone is not something dish.js looks at for a body.
+   *
+   * Nothing caught it. tools/smoke_server.mjs is called "the Python WebSocket reaches the
+   * viewer" and it passes -- the frames genuinely do reach it, with the right node count and
+   * finite values, which is all it ever asserted. That the viewer then *drew* them was the
+   * part no check covered. Measured before this line was written: connected true, 98 nodes,
+   * t advancing, S.trail 40 points long, S.worms.length 0.
+   *
+   * S.frame already carries every field a painter reads, so it is the animal rather than a
+   * copy of it -- one object, so the panels and the dish cannot disagree about what is on
+   * screen. Focus is pinned because this feed has nobody else to focus.
+   */
+  S.frame.cx = cx;
+  S.frame.cy = cy;
+  S.worms = [S.frame];
+  S.focus = 0;
+
   const last = S.trail[S.trail.length - 1];
   if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {
     S.trail.push([cx, cy]);

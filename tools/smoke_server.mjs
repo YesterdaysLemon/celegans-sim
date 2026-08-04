@@ -237,8 +237,25 @@ try {
       // server's, with no slack: anything the server appends and the client forgets to
       // read shows up here as a nonzero remainder.
       tail: f.kappa.buffer.byteLength - (f.kappa.byteOffset + f.kappa.byteLength),
+      // Whether the frame reached the *renderer*, which is a different question from
+      // whether it arrived, and the one this file's name overstated for a while.
+      //
+      // dish.js paints bodies out of `S.worms` and out of nothing else. `S.worms` arrived
+      // with the multi-animal WASM port and the single-animal socket path was never moved
+      // onto it, so this page connected, passed every assertion above with the right node
+      // count and finite values, and drew a plate, three fields and a trail with no animal
+      // at the end of it. Measured at the time: S.trail 43 points, S.worms.length 0.
+      drawnBodies: S.worms.length,
+      drawnIsTheFrame: S.worms[0] === f,
     };
   });
+  assert.ok(transport.drawnBodies >= 1,
+    'frames arrive, but S.worms is empty. dish.js paints bodies out of S.worms alone, so '
+    + 'this is a viewer that connects, reports a healthy frame in every other assertion '
+    + 'here, and draws an empty plate.');
+  assert.equal(transport.drawnIsTheFrame, true,
+    'the animal the dish draws is not the frame the panels read, so the two halves of the '
+    + 'page can disagree about which moment is on screen');
   assert.equal(transport.connected, true);
   assert.equal(transport.neurons, 302);
   assert.equal(transport.muscles, 95);
