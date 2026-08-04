@@ -586,6 +586,43 @@ class MuscleParams:
     # at the same 100 ms.
     tau_calcium: float = 0.060      # s   membrane potential -> intracellular calcium
     tau_tension: float = 0.035      # s   calcium -> active tension
+
+    # -- force-velocity, off by default ---------------------------------------------------
+    #
+    # Muscle here produces a tension that depends on calcium and on nothing else. Real muscle
+    # produces less force the faster it is shortening and more while being stretched -- Hill
+    # (1938), and the single most-cited property of the tissue after its length-tension curve.
+    # This model has no term for it, and `MediumParams` records why that became interesting:
+    #
+    #   the loop's frequency is set by its total lag, every element of which is a fixed
+    #   constant except the body's drag response, and by K = 9 that one has become small
+    #   against the rest. So the frequency saturates and gait modulation stops at 1.29x
+    #   where the animal manages 5.87x.
+    #
+    # Force-velocity is a *second* load-dependent element and therefore the obvious candidate.
+    # It is stated here as a candidate rather than as a fix, because there is a real argument
+    # against it that the measurement has to settle: the shortening rate depends on the gait,
+    # and the gait is currently similar in both media -- kappa_rms 4.45 on agar and 4.39 in
+    # buffer at 0.66 and 0.83 Hz -- so the derating may simply apply about equally at both
+    # ends and cancel out of the span. If it does, the load-dependence has to come from
+    # proprioception instead, and that is a different change.
+    #
+    # `fv_vmax` is the characteristic shortening rate, in the units of d(kappa)/dt that the
+    # joints actually see: 1/(mm*s). **Zero disables the whole term**, which is the shipped
+    # state and is bit-identical to having no force-velocity code at all. For scale, an
+    # animal at kappa_rms 4.4 /mm and 0.7 Hz sweeps d(kappa)/dt of roughly 19 /(mm*s), so
+    # values of order 10-100 span "dominant" to "barely there".
+    fv_vmax: float = 0.0            # 1/(mm*s), 0 = off
+
+    # Hill's curvature constant, the `a/F0` of the classic hyperbola. 4 is the usual value
+    # for vertebrate skeletal muscle; the concentric branch is (1 - x)/(1 + fv_curvature*x)
+    # with x = v/vmax, which is 1 at rest and 0 at vmax.
+    fv_curvature: float = 4.0
+
+    # How much more force the muscle makes while being lengthened, as a fraction above F0.
+    # Real muscle plateaus around 1.4-1.8 F0; 0.5 puts the plateau at 1.5. This limb matters
+    # here because half of every undulation is a muscle being stretched by its antagonist.
+    fv_eccentric: float = 0.5
     # Body-wall muscle has its own reversal potentials, and they are not the neuronal ones.
     # It rests at -25.0 +- 1.0 mV (Gao & Zhen 2011 PNAS), sits between E_ACh ~ +20 mV and
     # E_Cl ~ -30 mV, and its capacitance is an order of magnitude larger than a neuron's.

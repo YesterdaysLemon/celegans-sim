@@ -89,6 +89,11 @@ class Simulation:
 
         self._contact = np.zeros((self.p.body.n_links + 1, 2))
         self._nodes = self.body.nodes()
+        # Previous joint curvature, for the force-velocity term's shortening rate. None
+        # until the second step, where a rate first exists; the first step therefore runs
+        # with no derating at all, which is right -- a muscle that has not moved yet has no
+        # shortening velocity to be derated by.
+        self._kappa_prev = None
         self.ablated: list[str] = []
         self._nmj0 = None
 
@@ -160,7 +165,18 @@ class Simulation:
         # system and its fast bending modes are what make the gait depend on dt. The
         # muscle moment and the contact forces are held constant across the substeps,
         # which is right -- they are outputs of the slow subsystem.
-        moment = self.muscles.joint_moment()
+        # Force-velocity, when it is on, needs the rate at which each joint is bending --
+        # that is what a body-wall muscle's shortening velocity *is* here. It is
+        # finite-differenced from the curvature this step against the curvature last step,
+        # both of which are read before the body moves, so the rate is the one the muscle
+        # has just experienced rather than the one it is about to cause. With the term off
+        # nothing here is computed and the call is exactly what it was.
+        kappa_rate = None
+        if self.p.muscle.fv_vmax > 0.0:
+            if self._kappa_prev is not None:
+                kappa_rate = (curvature - self._kappa_prev) / self.dt
+            self._kappa_prev = curvature.copy()
+        moment = self.muscles.joint_moment(kappa_rate)
         n_sub = self.p.body.substeps
         if n_sub > 1:
             sub = self.dt / n_sub

@@ -221,14 +221,53 @@ class Muscles:
         v = (self._row_mask_v @ self.tension) / self._row_n_v
         return d, v
 
-    def joint_moment(self) -> np.ndarray:
+    def joint_moment(self, kappa_rate: np.ndarray | None = None) -> np.ndarray:
         """(n_links-1,) active bending moment at each mechanical joint, uN*mm.
 
         Positive is a dorsal bend. Muscle can only pull, so the moment is the *difference*
         of two one-sided tensions rather than a signed quantity in its own right -- a worm
         with both sides fully contracted is rigid and straight, not bent.
+
+        `kappa_rate` is d(kappa)/dt at each joint, and is only read when force-velocity is
+        switched on. It is an argument rather than state because the rate belongs to the
+        body, not to the muscle: `Simulation` has both and is the honest place to join them.
+        Passing nothing keeps the call exactly as it was, which is what every existing caller
+        -- tools/moment_ceiling.py among them -- relies on.
         """
         d, v = self.row_tension()
         dj = np.interp(self.joint_s, self.row_pos, d)
         vj = np.interp(self.joint_s, self.row_pos, v)
+        if self.p.fv_vmax > 0.0 and kappa_rate is not None:
+            # A dorsal muscle shortens as the joint bends dorsally, so its shortening
+            # velocity is +d(kappa)/dt and the ventral one's is the negative of that. One
+            # array, used with both signs, which is also why the two sides cannot be folded
+            # into the moment difference before this point.
+            dj = dj * self._force_velocity(kappa_rate)
+            vj = vj * self._force_velocity(-kappa_rate)
         return self.joint_gain * (dj - vj)
+
+    def _force_velocity(self, v: np.ndarray) -> np.ndarray:
+        """Hill's factor on active tension: < 1 while shortening, > 1 while lengthening.
+
+        Positive `v` is shortening. The concentric branch is the classic hyperbola
+        `(1 - x)/(1 + c*x)` in `x = v/vmax`, which is 1 at rest and reaches 0 at vmax; it is
+        clipped at zero because a muscle shortening faster than vmax produces no force, not
+        negative force, and letting it go negative would turn the antagonist into a driver.
+        The eccentric branch saturates at `1 + fv_eccentric` rather than growing without
+        bound, which is what real muscle does and what keeps a fast stretch from injecting
+        arbitrary energy into the body.
+        """
+        p = self.p
+        x = v / p.fv_vmax
+        # Each branch is evaluated over the whole array -- that is what np.where does -- and
+        # each has a pole inside the other's domain: the concentric denominator vanishes at
+        # x = -1/fv_curvature and the eccentric one at x = +1. Clamping the *input* to each
+        # branch's own side keeps both denominators >= 1 everywhere, so the unused half is
+        # finite rather than an infinity that is quietly discarded. Nothing downstream would
+        # have noticed the infinity, which is exactly the objection: see
+        # tests/test_silent_numerics.py.
+        xp = np.maximum(x, 0.0)
+        xm = np.minimum(x, 0.0)
+        short = np.clip((1.0 - xp) / (1.0 + p.fv_curvature * xp), 0.0, None)
+        long = 1.0 + p.fv_eccentric * (-xm) / (1.0 - xm)
+        return np.where(x >= 0.0, short, long)
