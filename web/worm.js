@@ -21,6 +21,14 @@ export async function instantiate(module, imports = {}) {
       // assembly/index/alloc(i32) => usize
       return exports.alloc(nbytes) >>> 0;
     },
+    computeRestingPotentials() {
+      // assembly/index/computeRestingPotentials() => usize
+      return exports.computeRestingPotentials() >>> 0;
+    },
+    ptrExportedVth() {
+      // assembly/index/ptrExportedVth() => usize
+      return exports.ptrExportedVth() >>> 0;
+    },
     ptrAct(w) {
       // assembly/index/ptrAct(i32) => usize
       return exports.ptrAct(w) >>> 0;

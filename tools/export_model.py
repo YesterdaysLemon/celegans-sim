@@ -112,8 +112,14 @@ GENES = (
 # They are module level rather than inline in `export()` so that a test can resolve every
 # name against a real `Params()` without building a simulation, and so `SCALAR_GROUPS`
 # below can say which dataclass each list is read off.
-NEURAL_SCALARS = ("beta", "ca_slope", "k_slope", "E_K", "E_Ca", "E_inh", "a_rise",
-                  "a_decay", "noise_tau", "noise_sigma", "depression_tau", "C_m")
+# `ca_offset` is here for the resting-potential solve rather than for the step. The runtime
+# never needs it while running -- `ca_vhalf` is exported ready-made -- but `m0`, the calcium
+# gate's opening at rest, is `0.5 * (1 + tanh(-ca_offset / ca_slope))`, and that is one of
+# the two constants the solve needs that the payload did not carry. The other, `s_half`, is
+# already derivable: `0.5 * a_rise / (0.5 * a_rise + a_decay)`, both of which are here.
+# See #96 -- the graph itself was already exported as CSR, so this pair was the whole gap.
+NEURAL_SCALARS = ("beta", "ca_slope", "ca_offset", "k_slope", "E_K", "E_Ca", "E_inh",
+                  "a_rise", "a_decay", "noise_tau", "noise_sigma", "depression_tau", "C_m")
 MUSCLE_SCALARS = ("g_leak", "E_leak", "beta", "v_half", "rest_tension")
 # `nose_touch_gain` was the last name on the sensory list below and has been removed rather
 # than added, because there is nothing for it to carry yet. Both implementations drive nose

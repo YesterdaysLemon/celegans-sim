@@ -230,18 +230,53 @@ def _conform(rebuild, root):
     )
 
 
+def _runtime(rebuild, root):
+    """The checks that need a runtime and no Python reference.
+
+    These were missing from the battery, and their absence was itself a coverage hole of
+    exactly the kind this file exists to find. `checkInvariants` is owned by
+    `wasm/invariants.test.mjs` -- the file whose own header says a guard that has never
+    been observed to fire is not known to work -- and until this entry existed there was no
+    battery any mutation to that guard could be put in front of. The audit would have
+    reported "nothing caught it" and been describing itself.
+
+    `wasm/population.mjs` is deliberately not here. It costs over two minutes per mutation,
+    and the two multi-animal defects in the catalogue below already name `conform` as their
+    owner because conform.mjs grew a MULTI-ANIMAL case for exactly them. Adding it would
+    multiply the battery's cost without putting a new question to any mutation. If a
+    population-only defect is ever written down, this is where its check goes.
+    """
+    if rebuild == "full":
+        result = command([PYTHON, "tools/export_model.py"], root)
+        if result.state is not CommandState.PASS:
+            return CommandResult(result.state, "export: " + result.message)
+    if rebuild in ("full", "asc"):
+        result = command(_asc_command(), Path(root) / "wasm")
+        if result.state is not CommandState.PASS:
+            return CommandResult(result.state, "compile: " + result.message)
+    # Both exit 1 on a finding and 2 on a setup failure, so a broken build is reported as
+    # an incomplete audit rather than as a detection.
+    for script in ("wasm/invariants.test.mjs", "wasm/memory.mjs"):
+        argv = [NODE, "--test", script] if script.endswith(".test.mjs") else [NODE, script]
+        result = command(argv, root, detector_exit_codes=(1,))
+        if result.state is not CommandState.PASS:
+            return result
+    return result
+
+
 CHECKS = {
     "graph":  lambda rb, root: command([NODE, "tools/check_web.mjs"], root,
                                         detector_exit_codes=(FINDING_EXIT_CODE,)),
     "viewer": lambda rb, root: command([NODE, "tools/smoke_web.mjs"], root,
                                          detector_exit_codes=(FINDING_EXIT_CODE,)),
+    "runtime": _runtime,
     "conform": _conform,
     "tests":  lambda rb, root: command(
         [PYTHON, "-m", "pytest", "tests/", "-x", "-q"], root,
         detector_exit_codes=(1,),
     ),
 }
-FAST = ["graph", "viewer", "conform"]
+FAST = ["graph", "viewer", "runtime", "conform"]
 SLOW = FAST + ["tests"]
 
 # `tests` is the Python model's owning check and it costs twenty-six minutes. Running it
@@ -364,6 +399,28 @@ MUTATIONS = [
          find="      this.refreshSources();\n",
          repl="",
          expect=["conform"]),
+
+    # --- the checks that landed after round one, and had never been audited ------------
+
+    dict(name="wasm/self-contact-inert", file="wasm/assembly/index.ts", rebuild="asc",
+         imitates="a guard that is present, runs, and can never fire -- this project's "
+                  "most repeated bug, applied to the newest guard. #86 added "
+                  "self-avoidance while it was still inert on the live animal, precisely so "
+                  "it could be shown to change nothing at the one moment that was "
+                  "possible. That argument only holds if something would notice it being "
+                  "switched off, which had never been established.",
+         find="        if (pen <= 0.0) continue;",
+         repl="        if (pen <= 1e9) continue;   // never penetrating, so never a force",
+         expect=["conform"]),
+
+    dict(name="wasm/invariant-curvature-inert", file="wasm/assembly/index.ts", rebuild="asc",
+         imitates="the physics guard raised past anything the body can reach, so an animal "
+                  "that folds through itself scores well instead of scoring zero. Evolution "
+                  "runs on this runtime, so a guard that cannot fire is not a cosmetic "
+                  "defect -- it is a lineage optimised against a broken integrator.",
+         find="    if (!isFinite(k) || Math.abs(k) >= limit) return INVARIANT_CURVATURE_OVER_LIMIT;",
+         repl="    if (!isFinite(k) || Math.abs(k) >= limit * 1e6) return INVARIANT_CURVATURE_OVER_LIMIT;",
+         expect=["runtime"]),
 
     dict(name="py/proprio-reach", file="worm/params.py", rebuild="full",
          imitates="a gait-critical model constant moved. The wave should not survive it.",

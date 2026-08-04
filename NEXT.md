@@ -1,5 +1,55 @@
 # Where this is, and what to do next
 
+## Start here
+
+Ordered, with the reason each one is where it is. Everything below this section is the
+record that justifies the order; this is the part to read if you are picking the project up.
+
+**1. Finish the head cascade, because it is the only live route to gait modulation.** Four
+first-order stages of 0.125 s in series, with `head_delay = 0`, match the shipped frequency
+(0.644 against 0.656 Hz, inside the seed scatter) and beat it on everything else measured --
+travelling index +0.880 against +0.846, net speed 0.369 against 0.295, net-to-path 0.94
+against 0.80. It is built, inert at `head_stages = 1`, and **not adopted**. Three things
+stand between it and adoption, in this order:
+
+  * `tools/scorecard.py` and `tools/ethogram.py` against the frozen baseline on identical
+    seeds, with the trajectory guards reported. This is the standing requirement for any
+    change to the shared gait, which can move every behavioural assay at once;
+  * **the medium sweep, which is the actual prize.** Gait modulation is why this was worth
+    building: the model goes 0.66 -> 0.85 Hz where the animal goes 0.30 -> 1.76, and a
+    cascade's phase depends on frequency through `arctan` where a pure delay's is exactly
+    linear in it. Nothing has measured this yet. If it fails here, the cascade is a better
+    gait for the same price and no more;
+  * the port to `wasm/assembly/index.ts`, after which `head_delay` can go to zero and
+    `headHist` -- 210,936 B, **89% of an animal** -- goes with it.
+
+**2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
+payload as CSR, so weights need no format change; `computeRestingPotentials` already solves
+for `V_th` on the runtime and agrees with the exporter to 6.395e-14 mV. The remaining blocker
+is narrow: the exported muscle `G` is *post*-`_balance`, so the balance can be neither
+recomputed nor checked from the payload. Export the raw one alongside it, port the bisection
+-- 70 iterations over 95 cells, no linear algebra -- and tiers two and three of the evolution
+project are unblocked together.
+
+**3. Make egg production depend on laying having made room for it.** `EVO_FITNESS=eggs`
+exists and is measured to be intake in different units, because `laid + held` is conserved
+across a laying event and eggs produced is therefore blind to the egg-laying circuit. A real
+uterus is not a bucket that fills regardless. This is a model change rather than a fitness
+change, it is small, and it is what would make the feeding -> transport -> HSN/VC chain
+load-bearing at any assay length.
+
+**4. Re-run the adversarial probe once the genome is bigger.** Priced: twelve seeds, about
+five and a half hours, to bring the standard error down far enough for the effect size seen
+at three seeds to clear it. Not worth spending before step 2, because the current fifteen
+genes were deliberately chosen so that nothing in them can reach a conversion factor -- a
+null result there is the gene list working, not the model being clean.
+
+**Two standing habits, neither optional.** Run `npm run check` before pushing; it runs every
+gate CI would and reports what it skipped rather than counting a skip as a pass. And a check
+is not real until you have watched it fail -- `tools/audit.py --only <name>` takes seconds,
+and on the day this section was written seven checks were wrong before they were right, six
+of them written by the person who then had to find out.
+
 ## Decided: the shape of the evolution project
 
 Settled 2026-08-03, and written here because until now it lived only in a conversation.
@@ -22,10 +72,37 @@ rather than its precomputed products — `_balance` and `_resting_potentials` bo
 it — and once that rework is done, weights ride along for free. Doing weights first would
 mean doing the same rework twice.
 
+> **Half of that turned out to be already done, and the paragraph above overstates the
+> work.** The graph *is* carried: `tools/export_model.py` writes `G_syn`, `GE_syn` and
+> `G_gap` through `Blob.csr`, so topology and per-synapse weight are both in the payload
+> already and **making weights heritable needs no payload format change at all.** What is
+> baked is the graph's *products*. `_resting_potentials` is now ported and agrees with the
+> exporter to 6.395e-14 mV; `_balance` is the remainder, and it needs the raw muscle `G`
+> exported alongside the balanced one, because what goes out today is post-balance and so
+> the balance can be neither recomputed nor checked from the payload.
+
 **Reproduction goes generational first, then continuous.** Fitness reads egg output, which
 requires eating, pharyngeal transport and the HSN/VC circuit all working, inside the
 existing generational loop and its harness. The standing in-dish population, where animals
 lay eggs that hatch into animals and selection becomes implicit, comes after that behaves.
+
+> **But not eggs *laid*, and that is settled by arithmetic rather than by preference.** The
+> rate is 11.0 eggs/hour, so a 20 s assay produces 0.061 eggs and `evolve.mjs`'s 25 s
+> default produces 0.076. `eglLaid` is an integer count, so every animal in the population
+> lays zero, every individual scores identically, and truncation selection has nothing to
+> act on — the selected arm would match the selection-off control by construction and the
+> run would read as a null result rather than as a measure with no range. A countable number
+> needs about an hour per animal, which at ~1.5 animal-seconds per wall-second is 8 animals
+> × 8 generations ≈ **43 hours per seed per arm**. Two orders of magnitude, not a tuning
+> problem.
+>
+> Select on **eggs produced** instead: `eggsLaid * uterus_capacity + eggsHeld`. `getEggsHeld`
+> is already exported, the uterus fills from what the pharynx transported, and it moves on
+> the feeding timescale rather than the laying one — so it keeps the whole chain load-bearing
+> while having range at 20 s. It still needs normalising by `egl_eggs_per_food`, which is in
+> the header for exactly that and is `volume_per_pump`'s hole one layer along (#37). Sizing
+> measured under #98; the branch is deliberately not written until it has been run, because
+> a measure nobody has tested is what that file's own header warns against.
 
 **Evolution runs on the runtime, not in Python**, and evolved animals are fenced off from
 every claim about the animal — see "Evolved animals are not C. elegans" in the README.
@@ -78,7 +155,8 @@ no ceiling. The real table:
 on top of a ~2.6 MB shared `World` (5 × 256² f64 grids) and whatever the canvas holds. Two
 things follow. **`memory.grow` is one-way**, so a run that peaks at 500 animals keeps that
 high-water mark for the life of the tab -- size the population for the peak, not the mean.
-And **55% of an animal is `headHist`**, the 560-sample delay line for `head_delay = 0.28 s`,
+And **89% of an animal is `headHist`** -- 210,936 B, the 560-sample delay line for
+`head_delay = 0.28 s`,
 which `README.md` names as one of the two fitted parameters it is least happy about
 ("nothing that slow exists in a real stretch receptor"). The single largest cost of running
 a population is the model's least-defended constant; if that number ever comes down, the
@@ -125,6 +203,223 @@ up. That is not a reason to avoid it; it is a reason to keep `tools/conform.py` 
 assay suite pointed at whatever comes out. "It evolved a high fitness" and "it evolved a
 worm" are different claims, and only one of them is interesting.
 
+> ## Day twenty-two. The checks get somewhere to run, and two of them turn out never to have run at all.
+>
+> Nothing in the model moved today. Everything below is about whether the things that
+> watch it are real, which is the question this project keeps answering badly.
+>
+> **The gates got one command.** CI is paused at the jobs, so the gates live in two
+> workflow files and a README section, in an order that matters —
+> `every module parses` before the browser check, so a syntax error arrives as a syntax
+> error rather than as a blank rectangle. `tools/check_all.mjs` runs them in that order,
+> probes for Docker, Chrome and a Python with numpy, and **skips what it cannot honestly
+> do, loudly**. Skips are counted apart from passes and reprinted with the reason and the
+> fix; `--strict` makes any skip a non-zero exit. That is the whole design. A local runner
+> is what you consult to decide you are finished, so one that folded an unrunnable gate
+> into a green summary would be this project's most repeated bug installed in the worst
+> possible place. `tests/test_local_checks.py` pins the gate list against both workflows
+> in both directions, and its own parser initially matched only `- name:` and so silently
+> missed python.yml's discovery step — the file's subject matter caught in the file itself.
+>
+> **The `?server` viewer had not drawn an animal for some time.** `dish.js` paints bodies
+> out of `S.worms` and out of nothing else. `S.worms` arrived with the multi-animal port;
+> the socket path predates it, carries one worm, and was never moved onto it. Measured
+> before the fix: connected, 98 nodes, t advancing, `S.trail` 40 points long, and
+> `S.worms.length` **0**. The page drew a plate, three chemical fields, and a track
+> crawling around the dish with nothing at the end of it.
+>
+> `tools/smoke_server.mjs` is called *"the Python WebSocket reaches the viewer"* and it
+> passed the whole time, because the frames genuinely do reach it — node counts, neuron and
+> muscle counts, finiteness, the egg fields, no unparsed bytes at the tail, all true.
+> Whether the viewer then *drew* them was the one question it never asked, and its name
+> reads as though it had.
+>
+> **A scrubber, and what it cost to size it.** `viewer/history.js` is a ring of past frames
+> bounded in *bytes* rather than in frames, because a frame costs 3,376 B per animal —
+> measured — so a fixed frame count would quietly mean a 27 MB ring on a populated plate.
+> It copies on the way in: `LocalEngine.frame(i)` returns `act`, `V`, `tension` and `kappa`
+> as views into WASM linear memory, and `memory.grow` detaches them.
+>
+> The assertion written to catch exactly that was itself wrong first time. It compared node
+> coordinates — but `frame(i)` already allocates a fresh array for the centreline, so nodes
+> are copies whether or not the ring copies anything. Replacing the copy step with the
+> identity function left every assertion passing. It asserts on `V` now. **A check is not
+> real until you have watched it fail, including a check you wrote ten minutes ago for
+> precisely this failure mode.**
+>
+> ### The audit's second round, and the battery that could not ask the question
+>
+> `tools/audit.py` ran graph, viewer, conform and pytest. CI also runs
+> `invariants.test.mjs`, `population.mjs` and `memory.mjs`. `checkInvariants` is owned by
+> `invariants.test.mjs` — the file whose own header says a guard never observed to fire is
+> not known to work — so **there was no battery a mutation to that guard could be measured
+> against.** The audit would have reported "nothing caught it" and been describing itself.
+>
+> With a `runtime` entry added, two mutations, both imitating *a guard that is present,
+> runs, and can never fire*:
+>
+> | mutation | graph | viewer | runtime | conform |
+> |---|---|---|---|---|
+> | `wasm/self-contact-inert` | missed | missed | missed | **CAUGHT** (126 s) |
+> | `wasm/invariant-curvature-inert` | missed | missed | **CAUGHT** | — |
+>
+> So #86's self-avoidance is real rather than assumed. It was installed while inert on the
+> live animal precisely so it could be shown to change nothing at the one moment that was
+> possible, and that argument only held if something would notice it being switched off.
+> Something does.
+>
+> And the curvature guard is caught only by the entry that did not exist this morning.
+>
+> **`wasm/invariants.test.mjs` appears in no workflow and no README.** The physics guard
+> was ported to the runtime because evolution runs there; its test was written, works, and
+> has never run anywhere. Now wired into the conformance job and into `check_all.mjs`.
+>
+> ### And a number that was measured once and then quietly became wrong
+>
+> `headHist` is **89%** of an animal, 210,936 B. This file and `wasm/assembly/index.ts`
+> both carried a much smaller figure, and it was not invented — it was true back when a
+> worm cost 372 kB, before the per-step scratch was hoisted to module level. Hoisting
+> shrank the animal by a third, which *raised* every remaining array's share, and the two
+> sentences quoting that share were not among the things updated.
+>
+> It survived because `memory.mjs` checked that four documents quote the **total** and
+> nothing checked that they quote the **share**. It does now, watched to fail against the
+> stale figure. This is #33 in miniature: a measured number, a reason to go stale that
+> nobody was tracking, and a check next to it looking at a different number.
+>
+> It also makes `head_delay`'s case sharper than the roadmap put it. Nine tenths of a worm
+> is the delay line for the model's least-defended constant; every other per-worm array put
+> together is about 27 kB.
+>
+> ### And the adversarial probe ran, and priced itself out
+>
+> `EVO_FITNESS=eaten` was run deliberately, as the top of this file says it should be —
+> aimed at the model rather than at the checks. Eight animals, eight generations, 20 s,
+> three seeds, with the selection-off control arm. 4,997 s of wall clock.
+>
+> ```
+>   seed |  selected gain |  control gain |  difference
+>      5 |        0.01938 |       0.00027 |     0.01911
+>     11 |        0.02120 |       0.01925 |     0.00195
+>     23 |        0.07338 |      -0.00193 |     0.07531
+>
+>   selection - control, over 3 seeds: 0.03212 +- 0.02215 (s.e.)
+> ```
+>
+> **No detectable effect of selection**, and the per-seed column is the finding. Seeds 5 and
+> 23 read as clear wins — the selected arm gaining 70× and 38× what its control did — and
+> seed 11's control gained almost as much as its selected arm. Day eighteen arriving again,
+> on a run built specifically to be able to see it. Seed 5 alone would have been written up
+> as selection working.
+>
+> **No exploit was found, and this run is not entitled to say more than that.** It could not
+> detect selection at all, so it had no sensitivity with which to detect an exploit either;
+> a probe that cannot see the thing it is a control for is not evidence of absence. What it
+> bought is a price: about four times the seeds to bring that ±0.022 down far enough for a
+> 0.032 difference to clear it — twelve seeds, five and a half hours — and more generations
+> would probably do more than more seeds, with eight being few for 15 genes.
+>
+> Against the pessimism: a null result under `eaten` is what this gene list was *designed*
+> to produce. Every one of the fifteen is a sensory gain, a time constant or a decision
+> threshold, and none is a conversion factor in front of intake. The version of this probe
+> worth real compute is the one after the genome grows to weights and topology, where the
+> space is large enough to hold surprises and the argument for why it cannot reach a
+> conversion factor has to be made again from scratch.
+>
+> ### The exporter rework is smaller than this file said, and half of it is done
+>
+> **The graph was already in the payload.** `tools/export_model.py` writes G_syn, GE_syn and
+> G_gap through `Blob.csr`, so *making weights heritable needs no payload format change at
+> all*. What is baked is not the graph but its **products** — `V_th`, `V_init`, and the
+> muscle balance. The job restates as "give the runtime the two solves", which is a much
+> better-bounded thing than "carry the graph rather than its precomputed products".
+>
+> `computeRestingPotentials` does the hard half. It assembles A and b from the CSR and runs
+> a plain LU with partial pivoting, and it lands where the measurement above predicted:
+> **6.395e-14 mV, 1.734e-15 relative** against the exporter's LAPACK solve, four orders
+> inside the conformance tolerance. Only two constants were missing and only one genuinely —
+> `s_half` was always derivable from `a_rise` and `a_decay`; `ca_offset` is now exported.
+>
+> Nothing calls it. The step still reads the exported `V_th`, so no trajectory moves. What
+> the runtime now has is *two sources of truth for the same 302 numbers*, which is this
+> project's favourite defect, so `wasm/solve.test.mjs` compares them — and asserts the
+> agreement is **approximate**, because an independent LU cannot reproduce LAPACK bit for
+> bit and an exact match across all 302 cells would be aliasing rather than a good solve.
+>
+> Writing that test is what caught the bug. **`g_leak` and `E_leak` are network-wide scalars,
+> shape [1]**, not per-neuron arrays. Indexing an 8-byte array by neuron runs off the end
+> into whichever array the exporter laid down next, and it is silent: every cell got a
+> plausible finite number, and the first sign of trouble was a zero pivot 300 columns later.
+>
+> `_balance` is the remaining half, and it needs one thing this did not: the exported muscle
+> G is *post*-balance, so the balance cannot be recomputed or checked from the payload as it
+> stands. The raw G has to go out alongside it — a payload addition, not a format change.
+>
+> ### And egg fitness turns out to be intake wearing a hat
+>
+> `EVO_FITNESS=eggs` exists now, and it does not measure what #98 wanted, for a structural
+> reason. **`laid + held` is conserved across a laying event** — laying decrements `eglEggs`
+> and increments `eglLaid` by the same egg — so eggs *produced* is blind to laying by
+> construction. The HSN/VC circuit, the whole reason the measure was wanted, cannot move it.
+>
+> Measured, three seeds at 20 s: score divided by intake is **5.000000e-3 in every case,
+> relative spread 4.195e-11**. It is `ingested`, exactly, in different units.
+>
+> The prediction that got there was wrong, and worth recording as such. This file argued the
+> problem was assay length — 0.061 eggs in 20 s, so everyone scores zero. In fact every
+> animal lays exactly one egg, because the uterus starts stocked at `eggs_initial` and the
+> first lay is not earned. It simply does not matter.
+>
+> The fix worth having is a model change rather than a fitness change: **make production
+> depend on laying having made room for it.** A real uterus is not a bucket that fills
+> regardless, and that single change would make the chain load-bearing at any assay length.
+>
+> ### And the head cascade works, which retires the largest fitted number in the model
+>
+> `head_delay` has been the largest fitted number here for a long time, openly recorded as
+> unearned — "the size of what the model is missing, stated plainly". Its own note named the
+> replacement: a distributed multi-stage circuit accumulates phase a single first-order lag
+> cannot. That is now built, measured, and it works.
+>
+> The first attempt failed for a reason worth keeping. A cascade of N stages of
+> `head_tau / N` lowers the frequency — 1.300 Hz at one stage to 1.033 at four, the first
+> thing in this project to move it *without* the delay, and it improved the wave doing so —
+> but it plateaus far above the shipped 0.656 Hz. The ceiling is arithmetic: that
+> construction converges on a pure delay of `head_tau`, worth **51.96°** at 0.656 Hz against
+> the 42.20° of the single lag it replaces. Under ten degrees, at any stage count, while
+> `head_delay` supplies another 66.12°. It was subdividing the wrong budget.
+>
+> Given its own budget — `head_stage_tau`, four stages of 0.125 s, totalling the 0.50 s the
+> shipped loop actually carries — **with no transport delay at all**:
+>
+> ```
+>   stages delay stage_tau | freq Hz        wavelen   TWI    k_rms  net mm/s  n/p
+>     1     0.28    --     | 0.656 +-0.031    0.83   +0.846   4.45   0.2949   0.80  <- shipped
+>     4     0.00   0.1250  | 0.644 +-0.016    0.86   +0.880   4.58   0.3688   0.94
+>     6     0.00   0.0833  | 0.611 +-0.016    0.84   +0.799   4.52   0.2718   0.75
+> ```
+>
+> Same frequency to well inside the seed scatter, and better on everything else measured:
+> travelling index +0.880 against +0.846, net speed 0.369 against 0.295, net-to-path 0.94
+> against 0.80. **The delay bought its frequency by giving away the wave. This does not.**
+>
+> Six stages is *worse*, and that is the more interesting row. More stages is nearer a pure
+> delay, and nearer a pure delay is nearer what the model already had. The cascade wins at
+> four because it approximates a delay **badly**, in the particular way that makes the loop's
+> phase depend on frequency — which is exactly the property `head_delay`'s note says gait
+> modulation needs and a fixed delay cannot offer. Argued for a long time; measured now.
+>
+> **Not adopted, and the gap is coverage rather than doubt.** One assay, bare world, 30 s,
+> three seeds. Before it replaces anything it needs `tools/scorecard.py` and
+> `tools/ethogram.py` against the frozen baseline on identical seeds with the trajectory
+> guards reported, and it needs the medium sweep — gait modulation is the entire reason to
+> want this and nothing here has measured it. It is also not ported to the runtime.
+>
+> If it survives those, `headHist` goes: 210,936 B, **89% of an animal**, a 560-sample ring
+> per joint held only to look up one sample 0.28 s old. A cascade is four scalars per joint.
+> The population budget in this file — 22.8 MB for 100 animals — improves by close to an
+> order of magnitude, and `memory.grow` being one-way stops being the constraint it is.
+>
 > ## Day twenty-one. Eight more neurons get a job, and the checks get audited.
 >
 > **Egg-laying.** HSN and the VCs had the pharynx's problem with the opposite cause. The
@@ -2181,6 +2476,15 @@ None of what is above reinstates it. The claim here is only that the magnitude i
 times short, and that the frontier now makes that shortfall load-bearing for the turn rather
 than a separate quantitative gap to get to later.
 
+> **That circuit now exists, and the first half of the prediction held.** Four first-order
+> stages in series carrying 0.50 s between them reach the shipped frequency with
+> `head_delay = 0` and improve the wave rather than trading it away — see
+> `SensoryParams.head_stages` for the tables and `tools/head_cascade.py` for the runs. The
+> half that is *not* measured is the one this paragraph is about: whether the cascade's
+> frequency-dependent phase actually follows the mechanical load. **The medium sweep is the
+> test, and it has not been run.** Until it has, the cascade is a better gait for the same
+> price, and the claim that it fixes gait modulation is a prediction rather than a result.
+
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 
 `tools/scorecard.py` on 2026-07-30 measured five seeds from the same configuration:
@@ -2401,6 +2705,33 @@ table's five rows fix themselves at once.
 
 ## Things that will bite whoever picks this up
 
+- **A payload array may not be the shape you assume, and reading past it is silent.**
+  `g_leak` and `E_leak` are network-wide scalars of shape `[1]`, not per-neuron arrays.
+  Indexing an eight-byte array by neuron walks straight into whichever array the exporter
+  laid down next and produces a plausible finite number for every cell. The first symptom
+  was a zero pivot three hundred columns into an LU. Check `head['arrays'][name]['shape']`
+  before writing `m(OFF_x, i)`, and note that the step functions already read both of these
+  at index 0 — the existing code was right and the new code was not.
+- **Choose the assertion that can detect the bug, not the one that is easy to write.** The
+  scrubber's ring had to copy, because the engine hands out views into WASM memory. The
+  first test compared node coordinates — but `frame(i)` already allocates a fresh centreline
+  array, so nodes are copies whether or not the ring copies anything. Deleting the copy step
+  entirely left every assertion passing. It asserts on `V` now. *Which* field a check reads
+  is usually the whole check.
+- **Order a sweep so that being cut short still answers something.** The first cascade sweep
+  ordered its jobs stage-major, timed out with three quarters unrun, and had measured
+  exactly one stage count — the single arrangement that answers nothing — under a table that
+  looked populated. Seed-major means a truncated run holds every configuration at fewer
+  seeds instead. And report `n` per row: a divergence left one row averaged over a single
+  surviving seed, printed `+-0.000`, reading as the most precise row rather than the least
+  supported.
+- **A conserved quantity cannot measure the thing it is conserved under.** `laid + held`
+  does not change when an egg is laid, so egg *production* is blind to the egg-laying
+  circuit however long the assay runs. The measure looked integrative and was intake in
+  different units. Before building a fitness function, ask what it is invariant to.
+- **Do not edit the working tree while `tools/audit.py` is running.** It fingerprints the
+  caller's checkout and exits 2 if it moves. That is the tool working; it still costs you
+  the run.
 - **Do not trust a single seed.** The gait was bistable across seeds until very late, and
   two thirds of seeds went the wrong way. `test_gait_is_reproducible_across_seeds` guards
   it now. Any change to the head loop should be checked against at least three seeds.
@@ -2455,9 +2786,18 @@ PYTHONPATH=. .venv/bin/python tools/calibrate_body.py       # mechanics only, no
 PYTHONPATH=. .venv/bin/python tools/head_mode.py            # which limit cycle, and why
 PYTHONPATH=. .venv/bin/python tools/habituation.py          # the only memory in the model
 PYTHONPATH=. .venv/bin/python tools/timestep_convergence.py # is the gait converged? (~4 min)
+PYTHONPATH=. .venv/bin/python tools/head_circuit.py         # lumped vs spatially distributed
+PYTHONPATH=. .venv/bin/python tools/head_cascade.py         # can stages in series pay for head_delay?
+PYTHONPATH=. .venv/bin/python tools/audit.py --only <name>  # watch a check fail, in seconds
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q           # full regression suite
 .venv/bin/python run.py --headless 60
+npm run check                                               # every gate CI would run, locally
+npm run check -- --rebuild                                  # ...including the artifact rebuilds
 ```
+
+`npm run check` is the one to reach for before pushing while CI is paused. It runs the gates
+in the workflows' own order and **reports what it skipped rather than counting a skip as a
+pass**; `--strict` turns any skip into a non-zero exit.
 
 Every tool takes `key=value` overrides for the parameters it cares about, e.g.
 `tools/kymo.py pg=180 moment=3.0 medium=buffer`.

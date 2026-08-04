@@ -10,13 +10,13 @@ name: python
 on:
   push:
     branches: [main]
-    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
-            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+    paths: ['worm/**', 'tests/**', 'tools/*.py', 'tools/check_all.mjs', 'data/**',
+            'pyproject.toml', 'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
             'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
             '.github/workflows/python.yml']
   pull_request:
-    paths: ['worm/**', 'tests/**', 'tools/*.py', 'data/**', 'pyproject.toml',
-            'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
+    paths: ['worm/**', 'tests/**', 'tools/*.py', 'tools/check_all.mjs', 'data/**',
+            'pyproject.toml', 'requirements*.txt', 'web/worm.model', 'web/worm.wasm',
             'wasm/assembly/**', 'wasm/asconfig.json', 'wasm/package*.json',
             '.github/workflows/python.yml']
   workflow_dispatch:

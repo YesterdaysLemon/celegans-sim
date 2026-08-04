@@ -1319,6 +1319,134 @@ class SensoryParams:
     # and leaves the slow one.
     head_tau: float = 0.22            # s   stretch-receptor adaptation of the head reflex
 
+    # How many first-order stages that lag is split into, in *series*.
+    #
+    # 1 is exactly the filter above and is the shipped behaviour; this parameter is inert
+    # at its default and exists to be swept. What it is for needs the negative result in
+    # tools/head_circuit.py stated first, because it is the reason the obvious version of
+    # this idea does not work:
+    #
+    #   "a spread of delays low-passes the loop rather than adding phase to it, and this
+    #    crossover is phase-limited, so the anatomical spread cannot substitute for the
+    #    invented one."
+    #
+    # That was measured on the *spatial* spread -- letting each head cell read its own
+    # patch of body. Cells in parallel, each with the same first-order filter, still only
+    # ever supply one lag's worth of phase, because parallel paths average rather than
+    # compose. Distributing bought a better wave (+0.68 TWI against +0.58) and cut the
+    # delay from 0.60 s to 0.28, but it did not remove it, and this is why.
+    #
+    # Stages in series are the other thing, and the arithmetic is the whole argument. One
+    # lag contributes at most 90 degrees of phase however hard it is driven, so a loop
+    # needing 180 cannot get there from one filter and a pure delay had to supply the rest.
+    # N stages of `head_tau / N` each contribute arctan(w*tau/N), so together they give
+    # N*arctan(w*tau/N) -- which is about w*tau at low frequency, identical to the single
+    # lag, and rises to N*90 degrees instead of 90. As N grows that expression converges on
+    # exp(-i*w*tau), a pure transport delay of `head_tau`. So a cascade is not an
+    # approximation *of* something else here: it is what a transport delay is made of when
+    # you build it out of cells instead of out of a ring buffer.
+    #
+    # Which is what `head_delay`'s own note asks for -- "a distributed multi-stage circuit
+    # accumulates phase that a single first-order lag cannot. Replacing this number with
+    # that circuit is the way to earn it back." RMD, SMD and SMB are three cell classes
+    # with their own kinetics, and three stages is what three classes in series look like.
+    #
+    # Two things ride on it beyond honesty about the constant. A cascade's phase is
+    # frequency-dependent through arctan rather than the pure delay's exactly-linear
+    # 2*pi*f*tau, so its crossover moves with loop gain, and loop gain moves with
+    # mechanical load -- which is the mechanism gait modulation needs and a fixed delay
+    # cannot offer. And `headHist` is 210,936 B, 89% of an animal (node wasm/memory.mjs);
+    # a cascade is `head_stages` scalars per joint instead of a 560-sample ring, so a
+    # configuration that reaches the right frequency with `head_delay = 0` makes a
+    # population an order of magnitude cheaper.
+    #
+    # Not adopted, and deliberately not ported to the runtime: at 1 this changes nothing,
+    # which is the state a thing should be measured in before it is believed. Same order
+    # self-avoidance was built in (#86).
+    #
+    # MEASURED, and the answer is half yes and decisively not enough. tools/head_cascade.py,
+    # three seeds, 30 s, no delay at all except in the shipped row:
+    #
+    #   stages delay | freq Hz  wavelen   TWI    k_rms  net mm/s
+    #     1    0.00  |  1.300    0.48   +0.754   2.22    0.190
+    #     2    0.00  |  1.100    0.53   +0.804   2.78    0.258
+    #     3    0.00  |  1.067    0.54   +0.811   2.95    0.278
+    #     4    0.00  |  1.033    0.55   +0.815   3.00    0.292
+    #     6    0.00  |  1.033    0.55   +0.820   3.05    0.291
+    #     1    0.28  |  0.656    0.83   +0.846   4.45    0.295   <- shipped
+    #
+    # The mechanism is real: unlike the spatial spread, which did nothing to the frequency
+    # at all, stages in series do lower it -- and they *improve* the wave while doing so,
+    # TWI +0.754 to +0.820 and net speed 0.190 to 0.291, which is the opposite of the trade
+    # the delay made. But it plateaus at 1.03 Hz and never approaches the shipped 0.656.
+    #
+    # One caveat on reading that plateau: a 30 s window gives 1/30 Hz of frequency
+    # resolution, and 1.033, 1.067 and 1.100 are 31, 32 and 33 bins. So 3, 4 and 6 stages
+    # differ by a single bin and are **not resolved** by this run. What is resolved is 1 to 2
+    # stages (6 bins) and the gap from the plateau to the shipped row (11 bins).
+    #
+    # The ceiling is arithmetic and was there to be predicted. N stages of `head_tau / N`
+    # converge on a pure delay of `head_tau` -- that is the whole point of the construction --
+    # so the most phase they can ever supply is the phase of a 0.22 s delay. At 0.656 Hz:
+    #
+    #   N = 1   42.20 deg      N = 4   51.09 deg
+    #   N = 2   48.78 deg      N = 6   51.56 deg
+    #   N -> inf   51.96 deg   (a pure delay of head_tau = 0.22 s)
+    #
+    # So the entire cascade is worth 9.8 degrees more than the single lag it replaces, while
+    # the shipped configuration carries `head_delay = 0.28 s` on *top* of head_tau, which is
+    # another 66.12 degrees. The cascade is short by that, permanently, at any stage count.
+    # It was never subdividing the right budget: it redistributes head_tau's existing lag
+    # into more phase, and cannot manufacture lag the model did not already have.
+    #
+    # Which makes the next experiment obvious and cheap: give the cascade its own total lag
+    # rather than subdividing head_tau. See `head_stage_tau`.
+    head_stages: int = 1              #     first-order stages in series, 1 = shipped
+
+    # Per-stage time constant, when the cascade should not simply subdivide `head_tau`.
+    #
+    # Zero means `head_tau / head_stages`, which is the construction measured above and the
+    # one whose ceiling is a pure delay of head_tau. Any positive value is used directly, so
+    # N stages carry N * head_stage_tau of total lag and the cascade converges on a pure
+    # delay of *that* instead.
+    #
+    # The prediction this exists to test: the shipped loop's phase comes from head_tau plus
+    # head_delay, 0.22 + 0.28 = 0.50 s, so a cascade carrying 0.50 s in total should reach
+    # the shipped frequency with `head_delay = 0` and no ring buffer at all. At four stages
+    # that is 0.125 s each. If it lands, `headHist` -- 210,936 B, 89% of an animal -- goes
+    # away, and the phase becomes frequency-dependent through arctan rather than exactly
+    # linear, which is the property gait modulation needs and a fixed delay cannot offer.
+    #
+    # IT LANDED. tools/head_cascade.py phase two, three seeds, 30 s:
+    #
+    #   stages delay stage_tau | freq Hz        wavelen   TWI    k_rms  net mm/s  n/p
+    #     1     0.28    --     | 0.656 +-0.031    0.83   +0.846   4.45   0.2949   0.80  <- shipped
+    #     4     0.00   0.1250  | 0.644 +-0.016    0.86   +0.880   4.58   0.3688   0.94
+    #     6     0.00   0.0833  | 0.611 +-0.016    0.84   +0.799   4.52   0.2718   0.75
+    #
+    # Four stages of 0.125 s, with **no transport delay at all**, match the shipped
+    # frequency to well inside the seed scatter and are better on everything else that was
+    # measured: travelling index +0.880 against +0.846, net speed 0.369 against 0.295, and
+    # net-to-path 0.94 against 0.80. The delay bought its frequency by giving away the wave;
+    # this does not.
+    #
+    # Six stages at the same total lag is *worse* -- 0.611 Hz, TWI +0.799 -- and that is the
+    # result worth thinking about rather than the headline. More stages is nearer a pure
+    # delay, and nearer a pure delay is nearer what the shipped model already had. The
+    # cascade is not better because it approximates the delay well; it is better because at
+    # four stages it approximates it *badly*, in the specific way that makes the loop's phase
+    # depend on frequency. That is the same property the note above wants for gait
+    # modulation, and it is now measured rather than argued.
+    #
+    # NOT ADOPTED, and the reasons are about coverage rather than doubt. This is a bare
+    # world, 30 s, three seeds, one assay. Before it can replace the delay it needs the
+    # standing comparison -- tools/scorecard.py and tools/ethogram.py against the frozen
+    # baseline, on identical seeds, with the trajectory guards reported -- and it needs the
+    # medium sweep, because gait modulation is the whole reason to want it and nothing here
+    # has measured it. It is also not ported to the runtime, so the browser and every
+    # conformance number still run the shipped loop.
+    head_stage_tau: float = 0.0       # s   0 = head_tau / head_stages
+
     # A transport delay in the head reflex, and the reason it exists is numerical as much
     # as biological.
     #
@@ -1962,10 +2090,39 @@ class Params:
             positive(path)
 
         # Every first-order time constant appears in a denominator or exponential rate.
+        #
+        # `sensory.head_stage_tau` is the one exception and it is exempted here rather than
+        # renamed out of the pattern, because the pattern is worth more than the name. Zero
+        # is its "derive it" sentinel and never reaches a denominator: `worm/senses.py`
+        # substitutes `head_tau / head_stages`, which is positive because `head_tau` is and
+        # is checked by this same loop. The effective value is asserted below, so the
+        # guarantee the rule exists for still holds -- it is the sentinel that is exempt,
+        # not the quantity.
         for path in values:
             leaf = path.rsplit(".", 1)[-1]
+            if path == "sensory.head_stage_tau":
+                continue
             if leaf.startswith("tau_") or "_tau" in leaf:
                 positive(path)
+        nonnegative("sensory.head_stage_tau")
+
+        # The cascade must have at least one stage, and whichever lag each stage ends up
+        # carrying has to be a real positive time. This is the check the exemption above
+        # hands off to, written against the value senses.py will actually use.
+        stages = values["sensory.head_stages"]
+        if not isinstance(stages, Real) or isinstance(stages, bool) or stages < 1:
+            problems.append("sensory.head_stages must be >= 1 (got %r)" % (stages,))
+        else:
+            declared = values["sensory.head_stage_tau"]
+            head_tau = values["sensory.head_tau"]
+            if (isinstance(declared, Real) and isinstance(head_tau, Real)
+                    and math.isfinite(declared) and math.isfinite(head_tau)):
+                effective = declared if declared > 0.0 else head_tau / int(stages)
+                if effective <= 0.0:
+                    problems.append(
+                        "the head cascade's per-stage time constant works out at %r, which "
+                        "is a denominator; set sensory.head_stage_tau > 0 or give "
+                        "sensory.head_tau a positive value" % (effective,))
 
         nonnegative("body.internal_damping")
         if (isinstance(values["medium.c_normal"], Real)

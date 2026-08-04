@@ -277,6 +277,7 @@ export const NEURAL_E_INH: f64 = -48.0;
 export const NEURAL_A_DECAY: f64 = 20.0;
 export const NEURAL_A_RISE: f64 = 4.0;
 export const NEURAL_BETA: f64 = 0.125;
+export const NEURAL_CA_OFFSET: f64 = 0.0;
 export const NEURAL_CA_SLOPE: f64 = 8.0;
 export const NEURAL_DEPRESSION_TAU: f64 = 20.0;
 export const NEURAL_K_SLOPE: f64 = 12.0;

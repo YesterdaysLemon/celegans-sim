@@ -10,7 +10,8 @@ import { drawDish, follow } from './dish.js';
 import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
          invalidateLayout } from './panels.js';
 import { updateFreq, updateStats, updatePump, updateEggs } from './stats.js';
-import { buildWormSel, clampFocus } from './controls.js';
+import { buildWormSel, clampFocus, syncScrub } from './controls.js';
+import { record, at as historyAt } from './history.js';
 
 let fieldClock = 0;
 
@@ -123,6 +124,30 @@ function localTick(now) {
     S.field.stamp = now;              // invalidates the field-image cache in drawFields
     fieldClock = now;
   }
+
+  // Last, because it snapshots what is about to be drawn and S.eggs is only settled above.
+  record(S.worms, S.eggs);
+}
+
+/* Draw a moment out of the ring instead of out of the engine.
+ *
+ * Only the things that describe *this frame* are restored. The kymograph, the neuron
+ * traces and the trails are accumulated histories of their own, and rewinding them to
+ * match would mean either storing five more buffers per frame or truncating them
+ * destructively -- so they keep showing the whole run, which is also what you want while
+ * you are scrubbing to find a moment in them.
+ */
+function applyHistory() {
+  const e = historyAt(S.playhead);
+  if (!e || !e.worms.length) return;
+  S.worms = e.worms;
+  S.eggs = e.eggs;
+  // Focus is a live setting, so it may name an animal that did not exist at this instant.
+  const f = e.worms[Math.min(S.focus, e.worms.length - 1)];
+  S.frame = f;
+  drawSenses(f.sensed);
+  updatePump(f.pumpRate, f.pumping);
+  updateEggs(f.eggsLaid, f.eggsHeld, f.eglActive);
 }
 
 let lastTick = 0;
@@ -133,7 +158,12 @@ function tick(now) {
   const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
   lastTick = now;
   if (S.pumpFlash > 0) S.pumpFlash = Math.max(0, S.pumpFlash - dt * 6.5);
-  if (S.engine) localTick(now);
+  // Parked in the past, the ring is the source of frames and the engine is paused, so
+  // localTick would only overwrite what applyHistory just restored. The socket feed cannot
+  // be stopped from here, but it records and returns without touching the display.
+  if (S.playhead !== null) applyHistory();
+  else if (S.engine) localTick(now);
+  syncScrub(now);
 
   drawDish();
   drawNeurons();

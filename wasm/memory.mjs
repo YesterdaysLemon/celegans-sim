@@ -335,6 +335,55 @@ const N = 64;
   );
 }
 
+/* The same question one level down: the documents also quote a *share*, and nothing read
+ * that either.
+ *
+ * The total was checked above and was right everywhere. The share was not, and it was
+ * wrong in two places: NEXT.md and index.ts both said `headHist` was 55% of an animal
+ * where it measures 89%. That figure was not invented -- it was true when a worm cost
+ * 372 kB, before the per-step scratch was hoisted to module level. Hoisting shrank the
+ * animal by a third, which *raised* every remaining array's share, and the sentence that
+ * quoted the share was not among the things updated.
+ *
+ * So it is the #33 failure in miniature: a number that was measured once, went stale for a
+ * reason nobody was tracking, and survived because the check next to it was looking at a
+ * different number. Any percentage written within a couple of lines of `headHist` now has
+ * to be the measured one.
+ *
+ * That rule is deliberately blunt, and the cost is worth stating because it caught the
+ * commit that introduced it: a document *recording* the correction -- "89%, not the 55% we
+ * used to say" -- reads to this check exactly like a document still claiming 55%, and
+ * fails. There is no way to tell those apart by looking at the digits, and the alternative
+ * is a check that can be talked out of firing by nearby prose, which is the weaker of the
+ * two mistakes. So the history goes in words and the measurement goes in digits: say what
+ * the animal used to cost, not what share it used to imply.
+ */
+{
+  const largest = [...wormArrays].sort((a, b) => b.bytes - a.bytes)[0];
+  const share = Math.round(100 * largest.bytes / declared);
+  const rows = QUOTES.map((f) => {
+    const text = fs.readFileSync(at(f), 'utf8');
+    // Every percentage appearing near a mention of the array, in either order -- the claim
+    // is written as "89% of an animal is headHist" in one file and "headHist ... is also
+    // 89% of what a worm costs" in another.
+    const near = [];
+    for (const m of text.matchAll(new RegExp(largest.name, 'g'))) {
+      const window = text.slice(Math.max(0, m.index - 220), m.index + 220);
+      for (const p of window.matchAll(/(\d+)\s*%/g)) near.push(Number(p[1]));
+    }
+    return { f, quoted: [...new Set(near)], wrong: [...new Set(near)].filter((p) => p !== share) };
+  });
+  const ok = rows.every((r) => !r.wrong.length);
+  report(
+    `THE DOCUMENTS QUOTE THE SHARE -- ${largest.name} is ${share}% of ${declared.toLocaleString()} B`,
+    ok,
+    rows.map((r) =>
+      `  ${r.f.padEnd(24)} ${r.quoted.length ? `quotes ${r.quoted.map((p) => p + '%').join(', ')}` : 'quotes no share'}` +
+      `${r.wrong.length ? `   STALE: ${r.wrong.map((p) => p + '%').join(', ')} against a measured ${share}%` : ''}`)
+      .join('\n'),
+  );
+}
+
 const ok = results.every(Boolean);
 console.log(ok
   ? `\nAn animal costs ${PER_WORM_MEASURED.toLocaleString()} B, and every document says so.`

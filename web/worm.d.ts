@@ -182,6 +182,16 @@ declare namespace __AdaptedExports {
     /** @type `i32` */
     get value(): number
   };
+  /**
+   * assembly/index/computeRestingPotentials
+   * @returns `usize`
+   */
+  export function computeRestingPotentials(): number;
+  /**
+   * assembly/index/ptrExportedVth
+   * @returns `usize`
+   */
+  export function ptrExportedVth(): number;
   /** assembly/index/INVARIANT_NODES_NOT_FINITE */
   export const INVARIANT_NODES_NOT_FINITE: {
     /** @type `i32` */

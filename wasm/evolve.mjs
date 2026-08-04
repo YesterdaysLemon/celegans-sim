@@ -208,9 +208,11 @@ function bail(msg) {
 // Checked here rather than where it is first used, which is inside the scoring loop after
 // a generation has already been simulated. A typo in an environment variable should cost a
 // second, not forty minutes.
-if (FITNESS !== 'energy' && FITNESS !== 'eaten') {
+if (FITNESS !== 'energy' && FITNESS !== 'eaten' && FITNESS !== 'eggs') {
   bail(`EVO_FITNESS=${FITNESS} is not a measure this file implements; use 'energy' (the `
-     + `energy budget, the default) or 'eaten' (raw intake, exploitable -- see #37)`);
+     + `energy budget, the default), 'eaten' (raw intake, exploitable -- see #37) or `
+     + `'eggs' (eggs produced, normalised -- see #98, and read the note on what it is `
+     + `worth at short assay lengths before believing a result from it)`);
 }
 if (!Number.isFinite(LAMBDA) || LAMBDA < 0) {
   bail(`EVO_LAMBDA=${process.env.EVO_LAMBDA} is not a non-negative number; it is the price `
@@ -235,7 +237,7 @@ const GENES = head.genes || [];
 if (!GENES.length) {
   bail('this model declares no genes; export it from a tree that has them');
 }
-const DT = head.scalars.dt;
+export const DT = head.scalars.dt;
 const STEPS = Math.round(SECONDS / DT);
 
 /* The pharyngeal conversion constant, read from the model rather than assumed.
@@ -249,6 +251,19 @@ export const VOLUME_PER_PUMP = head.scalars.ph_volume_per_pump;
 if (!(VOLUME_PER_PUMP > 0)) {
   bail('this model exports no positive ph_volume_per_pump, so intake cannot be normalised '
      + 'into pump-volumes; re-export with tools/export_model.py');
+}
+
+/* The egg measure's two constants, read from the header for the same reason
+ * `volume_per_pump` is: `eggs_per_food` sits in front of the score exactly the way that one
+ * does, and a model that did not export it would make the normalisation a silent no-op.
+ * `eggs_initial` is the uterus's starting fill, which the animal did not earn and which
+ * would otherwise be a free constant added to every individual's fitness. */
+export const EGGS_PER_FOOD = head.scalars.egl_eggs_per_food;
+export const EGGS_INITIAL = head.scalars.egl_eggs_initial;
+export const UTERUS_CAPACITY = head.scalars.egl_uterus_capacity;
+if (FITNESS === 'eggs' && !(EGGS_PER_FOOD > 0)) {
+  bail('this model exports no positive egl_eggs_per_food, so egg output cannot be '
+     + 'normalised; re-export with tools/export_model.py');
 }
 
 /* How often the head position is read to build the drag proxy. See the header: 0.01 s is
@@ -390,6 +405,11 @@ export function assay(E, ids, steps, opts = {}) {
     eaten: E.getEaten(id),
     ingested: E.getIngested(id),
     laid: E.getEggsLaid(id),
+    // The uterus fill, in eggs. Recorded alongside `laid` because over any assay this
+    // file can afford, `laid` is almost always zero -- 11 eggs/hour is 0.06 eggs in 20 s
+    // -- and a fitness that is zero for every individual gives selection nothing to act
+    // on. See the `eggs` measure below.
+    held: E.getEggsHeld(id),
     drag: drag[i],
     path: path[i],
     moved: Math.hypot(E.getX(id) - x0[i], E.getY(id) - y0[i]),
@@ -421,8 +441,38 @@ export function fitness(rec, opts = {}) {
   if (rec.diverged) return 0;
   const mode = opts.mode ?? FITNESS;
   if (mode === 'eaten') return rec.eaten;
+  /* Eggs produced, which is what #98 asked reproduction to be scored on -- and which over
+   * the assays this file can afford is intake wearing a hat. Both halves of that are worth
+   * having in the code rather than in a comment on an issue.
+   *
+   * `laid` alone is unusable: 11.0 eggs/hour is 0.061 eggs in 20 s, `eglLaid` is an integer
+   * count, so every animal in the population scores zero and truncation selection has
+   * nothing to sort. Getting to a countable number needs about an hour per animal, which is
+   * 43 hours per seed per arm at this throughput.
+   *
+   * So the measure is eggs *produced*, laid plus still held, which moves on the feeding
+   * timescale rather than the laying one. `eglEggs` starts at EGGS_INITIAL, which the animal
+   * did not earn, so it is subtracted; and the total is divided by EGGS_PER_FOOD for exactly
+   * the reason intake is divided by volume_per_pump (#37) -- it is the coefficient that
+   * converts transported food into eggs, and leaving it in front of the measure means a
+   * re-export can multiply the score without the animal doing anything differently.
+   *
+   * NOW THE HONEST PART, because it decides what this measure is worth. The uterus fills as
+   * `eglEggs += EGGS_PER_FOOD * ingestedDelta` and caps at UTERUS_CAPACITY. Below that cap,
+   * and with no laying, eggs produced is *exactly* EGGS_PER_FOOD times ingested -- a
+   * rescaling of intake, inheriting every exploit intake has and adding nothing. The
+   * egg-laying circuit only becomes load-bearing once the cap or the laying dynamics
+   * actually bite, which needs an assay long enough to fill 12 eggs of headroom or to lay
+   * one. `wasm/eggs-fitness.test.mjs` measures which regime a given assay is in rather than
+   * assuming, and reports the correlation against intake.
+   */
+  if (mode === 'eggs') {
+    const perFood = opts.eggsPerFood ?? EGGS_PER_FOOD;
+    const initial = opts.eggsInitial ?? EGGS_INITIAL;
+    return Math.max(0, (rec.laid + rec.held - initial)) / perFood;
+  }
   if (mode !== 'energy') {
-    throw new Error(`unknown EVO_FITNESS=${mode}; expected 'energy' or 'eaten'`);
+    throw new Error(`unknown EVO_FITNESS=${mode}; expected 'energy', 'eaten' or 'eggs'`);
   }
   const vpp = opts.volumePerPump ?? VOLUME_PER_PUMP;
   const lambda = opts.lambda ?? LAMBDA;
