@@ -5,23 +5,52 @@
 Ordered, with the reason each one is where it is. Everything below this section is the
 record that justifies the order; this is the part to read if you are picking the project up.
 
-**1. Finish the head cascade, because it is the only live route to gait modulation.** Four
-first-order stages of 0.125 s in series, with `head_delay = 0`, match the shipped frequency
-(0.644 against 0.656 Hz, inside the seed scatter) and beat it on everything else measured --
-travelling index +0.880 against +0.846, net speed 0.369 against 0.295, net-to-path 0.94
-against 0.80. It is built, inert at `head_stages = 1`, and **not adopted**. Three things
-stand between it and adoption, in this order:
+**1. Adopt the head cascade -- but not for the reason it was built.** Four first-order stages
+of 0.125 s in series, with `head_delay = 0`, match the shipped frequency and beat it on
+everything else in every medium: travelling index +0.880 against +0.846 on agar and +0.761
+against +0.657 in buffer, net speed 0.369 against 0.295, net-to-path 0.94 against 0.80. It
+retires the largest fitted number in the model and takes `headHist` with it -- 210,936 B,
+**89% of an animal**. That is a good change on its own merits.
 
-  * `tools/scorecard.py` and `tools/ethogram.py` against the frozen baseline on identical
-    seeds, with the trajectory guards reported. This is the standing requirement for any
-    change to the shared gait, which can move every behavioural assay at once;
-  * **the medium sweep, which is the actual prize.** Gait modulation is why this was worth
-    building: the model goes 0.66 -> 0.85 Hz where the animal goes 0.30 -> 1.76, and a
-    cascade's phase depends on frequency through `arctan` where a pure delay's is exactly
-    linear in it. Nothing has measured this yet. If it fails here, the cascade is a better
-    gait for the same price and no more;
-  * the port to `wasm/assembly/index.ts`, after which `head_delay` can go to zero and
-    `headHist` -- 210,936 B, **89% of an animal** -- goes with it.
+> **The medium sweep ran and the argument for it did not survive.** The cascade was supposed
+> to fix gait modulation, because a saturating `arctan` phase should follow the mechanical
+> load where a pure delay's exactly-linear phase cannot. Measured, both arms paired across
+> three media and three seeds: span 1.27x shipped against **1.29x** cascade, where the animal
+> is 5.87x. A difference of 0.02x is nothing. **Do not re-run this as a stage count or a lag
+> budget** -- the two arms are the same shape of animal in every medium, and the difference
+> between a saturating phase and a linear one does not reach the gait. See
+> `SensoryParams.head_stage_tau` and `tools/head_medium.py`.
+
+  What remains before adoption is only the standing requirement for any change to the shared
+  gait: `tools/scorecard.py` and `tools/ethogram.py` against the frozen baseline on identical
+  seeds with the trajectory guards reported, then the port to `wasm/assembly/index.ts`.
+
+**1b. And the gait-modulation search has a new and much sharper target.** Measuring all three
+media rather than the two ends moved the diagnosis:
+
+```
+  arm      agar K=40   viscous K=9   buffer K=1.58
+  shipped   0.656 Hz     0.844 Hz      0.833 Hz
+  cascade   0.644 Hz     0.833 Hz      0.833 Hz
+```
+
+**The model's modulation saturates by K = 9.** All of it happens between K = 40 and K = 9 --
+1.29x -- and from K = 9 to K = 1.58 there is nothing: 0.99x and 1.00x. The animal does not
+saturate, which is how it reaches 1.76 Hz. So this is not a uniformly weak response wanting a
+bigger gain; it is a response that **stops existing exactly where swimming begins**.
+
+And frequency was never the only half. **Wavelength is flat and nobody was watching it**: the
+animal goes 0.65 L to 1.54 L, a factor of 2.37, while this model goes 0.83 to 0.91 -- 1.10x,
+and the cascade 1.06x. At low K an undulating body converts almost nothing to forward
+progress, so waveform is what is left to change, and this animal does not change it. Net speed
+in buffer is 0.038 mm/s against a real swim of roughly 0.4: it undulates at a plausible
+frequency and goes nowhere.
+
+Whatever is missing is therefore not in the head reflex's phase, and not anything that shows
+up between agar and viscous where the model already responds. It is whatever should keep the
+loop speeding up and lengthening its wave as K falls past 9. Start by asking what in the
+model is even *aware* of K below 9 -- proprioceptive load, muscle force-velocity, the body's
+own drag term -- rather than by sweeping the head loop again.
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves
@@ -2476,14 +2505,16 @@ None of what is above reinstates it. The claim here is only that the magnitude i
 times short, and that the frontier now makes that shortfall load-bearing for the turn rather
 than a separate quantitative gap to get to later.
 
-> **That circuit now exists, and the first half of the prediction held.** Four first-order
-> stages in series carrying 0.50 s between them reach the shipped frequency with
-> `head_delay = 0` and improve the wave rather than trading it away — see
-> `SensoryParams.head_stages` for the tables and `tools/head_cascade.py` for the runs. The
-> half that is *not* measured is the one this paragraph is about: whether the cascade's
-> frequency-dependent phase actually follows the mechanical load. **The medium sweep is the
-> test, and it has not been run.** Until it has, the cascade is a better gait for the same
-> price, and the claim that it fixes gait modulation is a prediction rather than a result.
+> **That circuit now exists, the first half of the prediction held, and the second half
+> failed.** Four first-order stages in series carrying 0.50 s between them reach the shipped
+> frequency with `head_delay = 0` and improve the wave rather than trading it away — see
+> `SensoryParams.head_stages` for the tables. But the claim this paragraph actually makes,
+> that such a circuit's phase "can follow the mechanical load", **was tested and is false in
+> this model**: `tools/head_medium.py` puts the cascade's frequency span at 1.29x against the
+> shipped 1.27x, where the animal is 5.87x. The sentence above is left standing because it is
+> the argument that motivated the work and it deserves to be visible next to its refutation,
+> not because it survived. The live diagnosis is now under **Start here, 1b** — the
+> modulation saturates by K = 9 and the wavelength never moves at all.
 
 ### Current gait baseline, so the turn project does not reopen a solved diagnosis
 

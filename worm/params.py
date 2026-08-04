@@ -715,6 +715,31 @@ class MediumParams:
     around it, and the animal's gait changed continuously from a 1.76 Hz, 1.54-body-length
     swim to a 0.30 Hz, 0.65-body-length crawl. In this model, as in theirs, nothing about
     the nervous system changes between the two -- only these two numbers.
+
+    WHERE THIS MODEL'S MODULATION ACTUALLY FAILS, measured across all three media rather
+    than at the two ends (tools/head_medium.py, three seeds):
+
+        arm      agar K=40   viscous K=9   buffer K=1.58
+        shipped   0.656 Hz     0.844 Hz      0.833 Hz
+        cascade   0.644 Hz     0.833 Hz      0.833 Hz
+
+    **It saturates by K = 9.** Every bit of the response happens between K = 40 and K = 9 --
+    1.29x -- and from K = 9 to K = 1.58 there is nothing at all: 0.99x and 1.00x. The animal
+    does not saturate; it keeps accelerating the whole way down, which is how it reaches
+    1.76 Hz. So the shortfall is not a uniformly weak response that wants a bigger gain. It
+    is a response that stops existing exactly where swimming begins.
+
+    And the frequency was never the only half of it. **Wavelength is flat**, and it is the
+    variable that was not being watched: the animal goes 0.65 L to 1.54 L, a factor of 2.37,
+    while this model goes 0.83 to 0.91 -- 1.10x, and the cascade 1.06x. At low K, where an
+    undulating body converts almost nothing to forward progress, waveform is what is left to
+    change, and this animal does not change it. Net speed in buffer is 0.038 mm/s against a
+    real swim of roughly 0.4: it undulates at a plausible frequency and goes nowhere.
+
+    That reframes the search. Whatever is missing is not in the head reflex's phase -- a pure
+    delay and a saturating cascade give the same span in every medium -- and it is not
+    something that shows up between agar and viscous, where the model already responds. It
+    is whatever should keep the loop speeding up and lengthening its wave as K falls past 9.
     """
 
     name: str = "agar"
@@ -1438,13 +1463,39 @@ class SensoryParams:
     # depend on frequency. That is the same property the note above wants for gait
     # modulation, and it is now measured rather than argued.
     #
-    # NOT ADOPTED, and the reasons are about coverage rather than doubt. This is a bare
-    # world, 30 s, three seeds, one assay. Before it can replace the delay it needs the
-    # standing comparison -- tools/scorecard.py and tools/ethogram.py against the frozen
-    # baseline, on identical seeds, with the trajectory guards reported -- and it needs the
-    # medium sweep, because gait modulation is the whole reason to want it and nothing here
-    # has measured it. It is also not ported to the runtime, so the browser and every
-    # conformance number still run the shipped loop.
+    # THE MEDIUM SWEEP RAN, AND THE ARGUMENT FOR THE CASCADE DID NOT SURVIVE IT.
+    #
+    # The reason to want a cascade was never the frequency on agar. It was the shape of the
+    # phase: a pure delay contributes 2*pi*f*tau, exactly linear, so it pins the loop's
+    # crossover wherever it was fitted whatever the medium does to the load; a cascade
+    # contributes N*arctan(w*tau/N), which saturates, so its phase should depend on where
+    # the loop is running. That was supposed to be the mechanism gait modulation needs.
+    # tools/head_medium.py tested it, three media, three seeds, both arms paired:
+    #
+    #   arm      medium   K     | freq Hz        wavelen   TWI    net mm/s
+    #   shipped  agar    40.00  | 0.656 +-0.031    0.83   +0.846   0.2949
+    #   shipped  viscous  9.00  | 0.844 +-0.016    0.87   +0.724   0.2330
+    #   shipped  buffer   1.58  | 0.833 +-0.027    0.91   +0.657   0.0380
+    #   cascade  agar    40.00  | 0.644 +-0.016    0.86   +0.880   0.3688
+    #   cascade  viscous  9.00  | 0.833 +-0.000    0.90   +0.742   0.2386
+    #   cascade  buffer   1.58  | 0.833 +-0.000    0.91   +0.761   0.0394
+    #
+    # Span across the continuum: shipped 1.27x, cascade 1.29x, against the animal's 5.87x.
+    # A difference of 0.02x is nothing. **The frequency-dependent-phase argument is retired**
+    # -- do not re-run it as a stage count or a lag budget, the two arms are the same shape
+    # of animal in every medium and the difference between a saturating phase and a linear
+    # one does not reach the gait.
+    #
+    # ADOPT IT ANYWAY, for the reasons that did survive. At matched frequency the cascade is
+    # better or equal in every medium -- travelling index +0.880 against +0.846 on agar and
+    # +0.761 against +0.657 in buffer, net speed 0.369 against 0.295, net-to-path 0.94
+    # against 0.80 -- and it does that with `head_delay = 0`, which retires the largest
+    # fitted number in the model and takes `headHist` with it: 210,936 B, 89% of an animal.
+    # That is a good change. It is simply not the gait-modulation change.
+    #
+    # What still stands between it and adoption is the standing comparison for any change to
+    # the shared gait: tools/scorecard.py and tools/ethogram.py against the frozen baseline
+    # on identical seeds with the trajectory guards reported, then the port to the runtime.
     head_stage_tau: float = 0.0       # s   0 = head_tau / head_stages
 
     # A transport delay in the head reflex, and the reason it exists is numerical as much
