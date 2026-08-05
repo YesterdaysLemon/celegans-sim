@@ -87,6 +87,74 @@ Both are printed for every candidate and the verdict names which ones passed. Ou
     finding is that the model needs an afferent it does not have. Expensive to hear and much
     cheaper than hearing it after the wiring.
 
+IT RAN. ONE SIGNAL SURVIVES, AND IT IS THE MOST INTERESTING NUMBER IN THIS SEARCH.
+
+```
+  signal                          agar    viscous   buffer   buffer/agar  leg2  vs gait
+  bending amplitude               4.588    3.791    3.739       0.816      7%    0.8x
+  bend per unit commanded moment 14.445   12.388   12.273       0.850      6%    0.7x
+  moment -> curvature lag, ms      47.9      2.9      1.1       0.022     26%   15.3x
+  travelling index                0.849    0.724    0.657       0.774
+```
+
+**The moment-to-curvature lag separates the media 45x**, and it is the only candidate that
+survives both of the tests above. But the column to read is `leg2`, not the ratio:
+
+**it is the first quantity measured in this project that does not saturate by K = 9.**
+
+Everything else here puts 6-7% of its movement below K = 9, which is the shape of every
+frequency table in `NEXT.md` and the reason this search exists. The lag puts **26%** there --
+a further 2.6x drop across the leg where amplitude manages 1.4% and frequency 1.6%. So there
+*is* something in this animal that tracks the whole drag continuum. It has simply never been
+wired to anything.
+
+TWO CANDIDATES SEPARATED THE ENDS AND WERE THROWN OUT, WHICH IS THE OTHER HALF OF THE RESULT.
+
+Amplitude and compliance both saturate by K = 9, and both move by about what the travelling
+index moves: TWI falls 22% across these media, amplitude 18%, compliance 15%. Same size, same
+shape. A signal that moves no more than the gait's own deterioration is at least as likely to
+be reading *this animal is swimming badly* as *this animal is in water*, and a reach driven
+from it would be positive feedback on gait failure. Separating agar from buffer is the easy
+half and it is not the half that matters.
+
+AND THE MECHANISM ARGUED FOR ABOVE IS REFUTED BY THE MEASUREMENT, WHICH IS WORTH THE SPACE.
+
+This header predicted compliance would be **low** on agar -- "a body pushing against a stiff
+medium bends less for the same muscular effort". It is **higher** on agar, 14.445 against
+12.273. The sign is backwards. What compliance actually tracks is the bend amplitude falling,
+which is the gait confound rather than the load. The lag survives as the load signal, and it
+survives on the time-domain argument alone; the amplitude-domain argument that motivated the
+compliance column was simply wrong, and the column earned its place by failing.
+
+CAN A NEURON COMPUTE IT? YES, AND CHEAPLY -- BUT ONLY IN QUADRATURE.
+
+A cell cannot cross-correlate. It can multiply its own output by its own sensory input and
+low-pass the product, which is a phase detector, and this model already puts both signals in
+the same cell: B-type motor neurons *are* the stretch receptors (Wen et al. 2012), so the cell
+commanding the bend is the cell reading it. No new pathway is needed at all.
+
+Which product matters, because the obvious one does not work. At these frequencies a 47.9 ms
+lag is only **11.9 degrees** of phase, and `cos` is flat near zero:
+
+    in-phase   `output x proprio`        buffer/agar = 1.02   -- useless
+    quadrature `output x d(proprio)/dt`  buffer/agar = 0.028  -- 36x, and leg2 survives at 0.37
+
+So the buildable form is the **quadrature** product, proportional to `sin(phase)` rather than
+`cos(phase)`. It keeps 36x of the 45x, and keeps the property that actually matters: the
+viscous-to-buffer leg still falls 2.7x, where an in-phase detector reads 1.0001 and is blind
+over exactly the half of the continuum that needs it. That is arithmetic off the measured lag
+rather than a measurement, and it is written down here before being built.
+
+ONE CHECK WORTH RECORDING BECAUSE IT CAME BACK CLEAN.
+
+The first run sampled at stride 4 -- 2 ms -- and put the buffer lag at 1.1 ms, *below its own
+sample interval*. The parabolic refinement returns sub-sample numbers happily and that is
+interpolation rather than measurement, so the sweep was re-run at stride 1. Identical to three
+significant figures, including `kdot_rms`, which is a finite difference and had to change if
+anything did. Measured directly, `kdot_rms` moves 0.009% across an eightfold stride change:
+the curvature signal is genuinely smooth at these timescales and the interpolation was honest.
+The worry was reasonable, the check was cheap, and the answer is that the figure stands.
+
 Nothing is adopted here and nothing is ported to the runtime. This file only measures.
 
 Run:  PYTHONPATH=. .venv/bin/python tools/load_signal.py

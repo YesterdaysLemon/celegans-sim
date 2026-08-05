@@ -1500,6 +1500,42 @@ class SensoryParams:
     # which is the bistability NEXT.md has warned about standing, now visible in a sweep
     # that was not looking for it. Anything that moves the reach at runtime has to carry
     # that, and the 0.10/0.24 pair being the two tight cells is what makes it survivable.
+    #
+    # AND THE SELECTION HAS A SIGNAL TO RUN ON. `tools/load_signal.py` asked whether anything
+    # in this animal's own geometry knows which medium it is in, because the answer might have
+    # been no: the nervous system here senses curvature and nothing else, so if no geometric
+    # quantity separates the media then a load-dependent reach is not badly built, it is
+    # unbuildable. Three media x three seeds, seven candidates:
+    #
+    #   signal                          agar    viscous   buffer   buffer/agar  leg2  vs gait
+    #   bending amplitude               4.588    3.791    3.739       0.816      7%    0.8x
+    #   bend per unit commanded moment 14.445   12.388   12.273       0.850      6%    0.7x
+    #   moment -> curvature lag, ms      47.9      2.9      1.1       0.022     26%   15.3x
+    #   travelling index                0.849    0.724    0.657       0.774
+    #
+    # **The moment-to-curvature lag is the signal**, and the column that matters is `leg2` --
+    # the share of a quantity's movement happening below K = 9 -- rather than the ratio.
+    # Everything else in this model puts 6 to 7% of its movement there, which is the shape of
+    # every frequency table in NEXT.md and the whole reason this search exists. The lag puts
+    # **26%** there, a further 2.6x drop across the leg where amplitude manages 1.4%. It is
+    # **the first quantity measured in this project that does not saturate by K = 9.**
+    #
+    # Amplitude and compliance separate the two ends and were thrown out anyway: both saturate
+    # by K = 9, and both move by about what the travelling index moves (TWI -22%, amplitude
+    # -18%, compliance -15%). A signal that moves no more than the gait's own deterioration is
+    # as likely to be reading "this animal is swimming badly" as "this animal is in water".
+    #
+    # A neuron cannot cross-correlate, but it can multiply its own output by its own sensory
+    # input and low-pass the product, and **this model already puts both in the same cell**:
+    # B-type motor neurons are the stretch receptors (Wen et al. 2012), so the cell commanding
+    # the bend is the cell reading it. No new pathway. The form matters, though, because at
+    # these frequencies 47.9 ms is only 11.9 degrees and `cos` is flat near zero:
+    #
+    #   in-phase   output x proprio        buffer/agar 1.02   -- useless
+    #   quadrature output x d(proprio)/dt  buffer/agar 0.028  -- 36x, second leg still 0.37
+    #
+    # so the buildable form is the quadrature product. That last line is arithmetic off the
+    # measured lag rather than a measurement, and it is recorded before being built.
     proprio_reach: float = 0.16      # fraction of body length sampled anteriorly
 
     # The reach the animal falls back to on food, for the basal slowing response.

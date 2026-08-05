@@ -30,11 +30,19 @@ media rather than the two ends moved the diagnosis:
 
 > **If you are picking this up and want the destination rather than the route, skip to
 > "`proprio_reach` swept against the medium" at the end of this item.** Four mechanisms were
-> tested and four failed; the fifth thing tried was not a mechanism but a measurement, and it
-> found that **both of the animal's wavelengths are essentially already reachable by this
-> model** — 0.60 L on agar at reach 0.10 and 1.30 L in buffer at reach 0.24, against the
-> animal's 0.65 and 1.54. What is missing is not range. It is the selection. Everything
-> between here and there is why that is the surprising answer.
+> tested and four failed; the fifth and sixth things tried were not mechanisms but
+> measurements, and between them they turn the search into a build:
+>
+> 1. **Both of the animal's wavelengths are essentially already reachable by this model** —
+>    0.60 L on agar at reach 0.10 and 1.30 L in buffer at reach 0.24, against the animal's
+>    0.65 and 1.54. What is missing is not range. It is the *selection*.
+> 2. **And there is a signal to select on.** The moment-to-curvature lag runs 47.9 → 2.9 →
+>    1.1 ms across K = 40 → 9 → 1.58, and it is **the first quantity measured in this project
+>    that does not saturate by K = 9** — 26% of its movement is below that point, where
+>    everything else manages 6–7%. A neuron can read it as a quadrature phase detector, and
+>    this model already holds both of its inputs in the same cell.
+>
+> Everything between here and there is why those are the surprising answers.
 
 ```
   arm      agar K=40   viscous K=9   buffer K=1.58
@@ -56,6 +64,14 @@ K = 9 — 1.29x — and from K = 9 to K = 1.58 the table shows 0.99x and 1.00x.
 The animal does not saturate, which is how it reaches 1.76 Hz. So this is not a uniformly
 weak response wanting a bigger gain; it is a response that has largely **stopped by the time
 swimming begins**.
+
+> **Amended at the end of this item, and this is the amendment that matters most.** What
+> saturates by K = 9 is everything the *nervous system is currently reading* — frequency,
+> wavelength, bend amplitude, bend per unit commanded moment, all putting 6–7% of their
+> movement below that point. It is not a property of the animal's mechanics. The
+> moment-to-curvature lag falls 47.9 → 2.9 → 1.1 ms and puts **26%** of its movement in that
+> same leg. The model's *body* tracks the whole drag continuum. Its *circuit* has simply never
+> been given the one quantity that does.
 
 And frequency was never the only half. **Wavelength is flat and nobody was watching it**: the
 animal goes 0.65 L to 1.54 L, a factor of 2.37, while this model goes 0.83 to 0.91 -- 1.10x,
@@ -242,9 +258,78 @@ needs no recalibration.
 this. The load signal has to be something the nervous system could actually have — which is
 the standing problem, because **there is no force, velocity, tension or effort afferent
 anywhere in this model.** The nervous system only ever senses geometry. That is the same
-finding from the other side: the medium reaches the circuit only through realised body shape,
-so the honest version of load-dependent reach reads realised curvature — amplitude, or the
-lag between commanded and achieved bend — rather than a drag coefficient.
+finding from the other side: the medium reaches the circuit only through realised body shape.
+
+### And there is a signal. It is the first thing here that does not saturate by K = 9
+
+`tools/load_signal.py` asked whether *anything* in this animal's own geometry knows which
+medium it is in, because the answer might have been no — and if no geometric quantity
+separates the media, a load-dependent reach is not badly built, it is **unbuildable**, and the
+model needs an afferent it does not have. Three media × three seeds, seven candidates:
+
+```
+  signal                          agar    viscous   buffer   buffer/agar  leg2  vs gait
+  bending amplitude               4.588    3.791    3.739       0.816      7%    0.8x
+  bend per unit commanded moment 14.445   12.388   12.273       0.850      6%    0.7x
+  moment -> curvature lag, ms      47.9      2.9      1.1       0.022     26%   15.3x
+  travelling index                0.849    0.724    0.657       0.774
+```
+
+**The moment-to-curvature lag is the signal.** And the column to read is `leg2` — the share of
+a quantity's movement happening *below* K = 9 — not the ratio. Every other quantity in this
+model puts 6–7% of its movement there. That is the shape of every frequency table above and
+the entire reason this search exists. The lag puts **26%** there: a further 2.6× drop across
+the leg where amplitude manages 1.4% and frequency 1.6%.
+
+So the standing diagnosis needs amending. It has never been that *nothing* in this animal
+tracks the drag continuum below K = 9 — **something does, and it has never been wired to
+anything.**
+
+**Two candidates separated the two ends and were thrown out, which is the other half.**
+Amplitude and compliance both saturate by K = 9, and both move by about what the travelling
+index moves — TWI −22%, amplitude −18%, compliance −15%. Same size, same shape. A signal that
+moves no more than the gait's own deterioration is at least as likely to be reading *this
+animal is swimming badly* as *this animal is in water*, and a reach driven from it would be
+positive feedback on gait failure. Separating agar from buffer is the easy half and it is not
+the half that matters.
+
+> **And the mechanism the sweep was built around is refuted by the sweep.** Its header argued
+> compliance would be *low* on agar — "a body pushing against a stiff medium bends less for
+> the same muscular effort". It is **higher** on agar, 14.445 against 12.273: the sign is
+> backwards. What compliance tracks is the bend amplitude falling, which is the gait confound.
+> The lag survives on the time-domain argument alone; the amplitude-domain argument that
+> motivated the compliance column was wrong, and the column earned its place by failing.
+>
+> The verdict also had to be tightened after the fact. It first passed all three of amplitude,
+> compliance and lag, because it tested only separation and monotonicity — neither of which
+> notices a signal that saturates where it matters or one that merely tracks the gait. Both
+> are columns now, with thresholds fixed in the constants. Replaying the measured numbers
+> through them cuts three usable signals to one.
+
+**Can a neuron compute a lag? Yes, and this model is unusually well placed for it.** A cell
+cannot cross-correlate, but it can multiply its own output by its own sensory input and
+low-pass the product — a phase detector — and **both signals are already in the same cell**:
+B-type motor neurons *are* the stretch receptors (Wen et al. 2012), so the cell commanding the
+bend is the cell reading it. No new pathway is needed.
+
+The form matters, though, and the obvious one fails. At these frequencies 47.9 ms is only
+**11.9°** of phase, and `cos` is flat near zero:
+
+```
+  in-phase   output x proprio        buffer/agar 1.02   -- useless
+  quadrature output x d(proprio)/dt  buffer/agar 0.028  -- 36x, second leg still 0.37
+```
+
+So the buildable form is the **quadrature** product. It keeps 36× of the 45×, and keeps the
+property that actually matters — the viscous-to-buffer leg still falls 2.7×, where an in-phase
+detector reads 1.0001 and is blind over exactly the half of the continuum that needs it. That
+is arithmetic off the measured lag rather than a measurement, and it is written down here
+before being built.
+
+**So the next build is well posed**: a quadrature phase detector on each B-type cell's own
+output against its own proprioceptive input, low-passed, driving a signed blend between
+receptive-field banks at reach 0.10 and 0.24. Then `tools/scorecard.py` and `tools/ethogram.py`
+against the frozen baseline before anything is adopted.
 
 **And a warning that came out of this sweep unasked for.** The shipped 0.16 is the
 reproducible one: frequency sd 0.012 and 0.023 Hz there against 0.229, 0.261 and 0.295 at
