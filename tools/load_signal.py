@@ -120,6 +120,25 @@ BODY = (0.25, 0.75)
 SEPARATION = 2.0        # multiples of the paired seed sd
 CIRCULAR = ("freq", "wavelength")   # usable as evidence, not as an input; see the header
 
+# Two further tests, both added after the first run and both because the first run's verdict
+# passed signals it should not have.
+#
+# `SECOND_LEG` is the share of a signal's total movement that has to happen between K = 9 and
+# K = 1.58. Everything measured in this project so far saturates by K = 9 -- that is the
+# standing puzzle NEXT.md is built around -- so a candidate that also saturates there is
+# useless for exactly the half of the continuum that needs fixing, however cleanly it
+# separates the two ends. 15% is deliberately lenient: a signal splitting its movement evenly
+# would score 50%.
+SECOND_LEG = 0.15
+
+# `GAIT_MULTIPLE` is the movement a signal must show as a multiple of the travelling index's
+# own decline across the same media. The gait degrades along this continuum -- TWI runs +0.849,
+# +0.724, +0.657 -- and any amplitude-like quantity falls with it. A signal that moves no more
+# than the gait does is at least as likely to be reading "this animal is swimming badly" as
+# "this animal is in water", and driving the reach from it would be positive feedback on gait
+# failure rather than load-dependence. 2.0 asks only that a candidate be twice the confound.
+GAIT_MULTIPLE = 2.0
+
 
 def _job(job):
     medium, seed = job
@@ -128,7 +147,13 @@ def _job(job):
     sim.run(6.0)
 
     dt = sim.dt
-    stride = 4
+    # Every step, not every fourth. The first run of this file sampled at stride 4 -- 2 ms --
+    # and measured the buffer moment-to-curvature lag at **1.1 ms**, which is below its own
+    # sample interval. The parabolic refinement on the cross-correlation will happily return
+    # a sub-sample number, and that number is interpolation rather than measurement. The lag
+    # is the one candidate here whose whole value is that it is small at the buffer end, so
+    # it is the one that must not be quoted off a grid coarser than itself.
+    stride = 1
     n = int(MEASURE / dt)
     s = sim.body.joint_s
     keep = (s > BODY[0]) & (s < BODY[1])
@@ -250,16 +275,30 @@ def main():
         return 1
 
     # ---- separation and monotonicity, paired by seed --------------------------------
-    print("\n  DOES IT SEPARATE, AND DOES IT TRACK THE CONTINUUM?")
-    print("  Ratios are per-seed and paired; a signal has to clear BOTH columns to be usable.")
-    print("  %-34s %-20s %-12s %s" % ("signal", "buffer/agar", "monotone", "verdict"))
-    usable, circular_only = [], []
+    # The gait itself degrades across this continuum -- TWI falls, and the bend gets smaller
+    # with it. So a signal has to be shown to be measuring the *medium* rather than measuring
+    # the animal's own deterioration, and two extra columns do that. Both were missing from
+    # the first run of this file, and both change its answer.
+    twi_ratio, _, _ = paired(agg["agar"], agg["buffer"], "twi")
+    twi_move = abs(np.log(twi_ratio)) if np.isfinite(twi_ratio) and twi_ratio > 0 else 0.0
+
+    print("\n  DOES IT SEPARATE, TRACK THE CONTINUUM, AND MEAN ANYTHING?")
+    print("  Ratios are per-seed and paired. Four columns, and a signal has to clear all of")
+    print("  them. `leg2` is the share of the total movement that happens BELOW K = 9, where")
+    print("  everything in this project saturates; `vs gait` is the movement as a multiple of")
+    print("  the travelling index's own %.0f%% decline over the same three media, because a"
+          % (100.0 * (1.0 - twi_ratio)))
+    print("  signal that merely tracks the animal swimming worse is not a load sensor.")
+    print("  %-32s %-16s %-6s %-7s %-8s %s"
+          % ("signal", "buffer/agar", "mono", "leg2", "vs gait", "verdict"))
+    usable, circular_only, rejected = [], [], []
     for key, label, _ in CANDIDATES:
         ratio, r_sd, n = paired(agg["agar"], agg["buffer"], key)
         mid, _, _ = paired(agg["agar"], agg["viscous"], key)
         far, _, _ = paired(agg["viscous"], agg["buffer"], key)
-        if n < len(SEEDS) or not np.isfinite(ratio):
-            print("  %-34s %-20s %-12s %s" % (label, "unpaired", "--", "withheld"))
+        if n < len(SEEDS) or not np.isfinite(ratio) or ratio <= 0:
+            print("  %-32s %-16s %-6s %-7s %-8s %s"
+                  % (label, "unpaired", "--", "--", "--", "withheld"))
             continue
         # Both legs must move the same way, and the sign is taken against 1.0 because these
         # are ratios. A signal that rises then falls is a switch, not a continuum.
@@ -267,17 +306,32 @@ def main():
                    and np.sign(mid - 1.0) == np.sign(far - 1.0)
                    and abs(mid - 1.0) > 1e-9 and abs(far - 1.0) > 1e-9)
         separated = abs(ratio - 1.0) > SEPARATION * max(r_sd, 1e-9)
-        if separated and legs_ok:
-            tag = "CIRCULAR" if key in CIRCULAR else "USABLE"
-            (circular_only if key in CIRCULAR else usable).append((key, label, ratio, r_sd))
-        elif separated:
-            tag = "ends only"
-        elif legs_ok:
-            tag = "monotone, not separated"
+        # Movement measured in logs, so the two legs are commensurable and a halving counts
+        # the same as a doubling.
+        l1 = abs(np.log(mid)) if np.isfinite(mid) and mid > 0 else 0.0
+        l2 = abs(np.log(far)) if np.isfinite(far) and far > 0 else 0.0
+        leg2 = l2 / (l1 + l2) if (l1 + l2) > 1e-12 else 0.0
+        vs_gait = abs(np.log(ratio)) / twi_move if twi_move > 1e-12 else float("inf")
+        alive = leg2 >= SECOND_LEG
+        beats_gait = vs_gait >= GAIT_MULTIPLE
+
+        if not (separated and legs_ok):
+            tag = "ends only" if separated else ("monotone, weak" if legs_ok else "no")
+        elif key in CIRCULAR:
+            tag = "CIRCULAR"
+            circular_only.append((key, label, ratio, r_sd))
+        elif not alive:
+            tag = "saturates by K=9"
+            rejected.append((key, label, tag))
+        elif not beats_gait:
+            tag = "tracks the gait"
+            rejected.append((key, label, tag))
         else:
-            tag = "no"
-        print("  %-34s %.3f +-%.3f       %-12s %s"
-              % (label, ratio, r_sd, "yes" if legs_ok else "no", tag))
+            tag = "USABLE"
+            usable.append((key, label, ratio, r_sd))
+        print("  %-32s %.3f +-%-8.3f %-6s %-7s %-8s %s"
+              % (label, ratio, r_sd, "yes" if legs_ok else "no",
+                 "%.0f%%" % (100.0 * leg2), "%.1fx" % vs_gait, tag))
 
     print("\n  VERDICT")
     if usable:
@@ -298,6 +352,11 @@ def main():
         print("  separation relative to its own seed scatter. Next: a third receptive-field")
         print("  bank and a signed blend in Senses.step, then scorecard and ethogram against")
         print("  the frozen baseline before anything is adopted.")
+        if rejected:
+            print("\n  And these separated the ends and were thrown out anyway, which is the")
+            print("  part of this table worth reading twice:")
+            for _, lab, why in rejected:
+                print("    %-32s %s" % (lab, why))
         if circular_only:
             print("\n  (%s also separated, and is excluded on purpose: it is what the reach"
                   % ", ".join(c[1] for c in circular_only))
@@ -310,6 +369,17 @@ def main():
               % circular_only[0][2])
         print("  and that is a control-stability question before it is a biology one. The")
         print("  load-dependent reach is not cleanly buildable out of what this animal senses.")
+    elif rejected:
+        print("  %d signal(s) separated the two ends and every one of them was thrown out:"
+              % len(rejected))
+        for _, lab, why in rejected:
+            print("    %-32s %s" % (lab, why))
+        print("  Separating agar from buffer is the easy half and it is not the half that")
+        print("  matters. A signal that saturates by K = 9 is blind over exactly the stretch")
+        print("  of the continuum this project cannot already handle, and one that moves no")
+        print("  more than the travelling index does is as likely to be reading the animal's")
+        print("  own deterioration as the medium's. Nothing here is a load sensor, and the")
+        print("  load-dependent reach cannot be built from what this animal senses.")
     else:
         print("  NOTHING separates the media monotonically. The medium does not reach this")
         print("  animal's geometry in any form a motor neuron could act on, so the")
