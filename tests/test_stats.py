@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tools.assays import ASSAYS, apply_overrides, current_params
+from tools.assays import ASSAYS, apply_overrides, current_params, paired
 from tools.stats import (bootstrap_ci, clears_zero, fmt, mde, paired_ci, ratio_ci,
                          verdict)
 from worm.params import Params
@@ -171,3 +171,69 @@ def test_every_assay_reporter_survives_its_own_rows():
                      final=12.0 if d else 10.0)
                 for i in range(4) for d in (True, False)]
         report(rows)          # must not raise
+
+
+def _cell(seeds, values, **extra):
+    return [dict(seed=s, freq=v, **extra) for s, v in zip(seeds, values)]
+
+
+def test_paired_span_carries_a_spread_that_a_pooled_ratio_throws_away():
+    """The defect that made every published span in this project unreadable.
+
+    Two arms with a large seed-to-seed swing and a per-seed ratio that is *identical* in
+    every seed. The truth is unambiguous -- the span is exactly 1.30 with zero scatter --
+    and pairing recovers it. Ratio-of-pooled-means gets a different number and, worse,
+    has no spread to report, so a reader has nothing to judge it against.
+    """
+    seeds = (0, 3, 7)
+    agar = _cell(seeds, (0.40, 0.70, 1.00))
+    buffer = _cell(seeds, (0.52, 0.91, 1.30))          # exactly 1.30x, every seed
+
+    mean, sd, n = paired(agar, buffer, "freq")
+    assert n == 3
+    assert mean == pytest.approx(1.30, abs=1e-12)
+    assert sd == pytest.approx(0.0, abs=1e-12)
+
+    # And a pooled ratio would have printed a bare number with nothing attached. It happens
+    # to be close here because the ratio is constant; the point is that there is no second
+    # value to print beside it, so `sd = 0` and `sd = 0.44` look the same on the page.
+    pooled_ratio = np.mean([r["freq"] for r in buffer]) / np.mean([r["freq"] for r in agar])
+    assert pooled_ratio == pytest.approx(1.30, abs=1e-12)
+
+
+def test_paired_span_refuses_the_survivorship_bias_a_pooled_ratio_walks_into():
+    """A diverged trial in one arm must not silently become a comparison of two arms.
+
+    Seed 7 is the fast one and it is missing from buffer, exactly as it would be if that
+    trial had hit the divergence guard. Pooled, the buffer mean loses its fast seed while
+    the agar mean keeps it and the span collapses -- a large apparent effect made entirely
+    of a missing row. Paired, seed 7 leaves both arms together and the answer is unchanged
+    except for saying that it rests on two seeds now instead of three.
+    """
+    agar = _cell((0, 3, 7), (0.40, 0.70, 4.00))
+    buffer = _cell((0, 3), (0.52, 0.91))               # seed 7 diverged
+
+    mean, sd, n = paired(agar, buffer, "freq")
+    assert n == 2, "the caller has to be able to see that a seed went missing"
+    assert mean == pytest.approx(1.30, abs=1e-12)
+    assert sd == pytest.approx(0.0, abs=1e-12)
+
+    pooled_ratio = np.mean([r["freq"] for r in buffer]) / np.mean([r["freq"] for r in agar])
+    assert pooled_ratio < 0.5, (
+        "expected the pooled ratio to be wrecked by the missing seed, got %.3f" % pooled_ratio)
+
+
+def test_paired_handles_the_degenerate_cells_without_returning_an_infinity():
+    """`np.nanmean` does not filter `inf`, so a zero denominator has to be dropped here."""
+    empty = paired([], [], "freq")
+    assert np.isnan(empty[0]) and np.isnan(empty[1]) and empty[2] == 0
+    assert paired(_cell((0,), (1.0,)), _cell((3,), (2.0,)), "freq")[2] == 0, "no shared seed"
+
+    # A zero denominator is skipped rather than producing inf; the surviving seed answers.
+    mean, _, n = paired(_cell((0, 3), (0.0, 2.0)), _cell((0, 3), (1.0, 4.0)), "freq")
+    assert n == 1 and mean == pytest.approx(2.0)
+
+    # Differences take the same path and keep the sign.
+    mean, sd, n = paired(_cell((0, 3), (1.0, 2.0)), _cell((0, 3), (0.5, 1.5)), "freq",
+                         op="diff")
+    assert (mean, sd, n) == (pytest.approx(-0.5), pytest.approx(0.0), 2)

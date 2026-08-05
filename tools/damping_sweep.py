@@ -60,7 +60,7 @@ import dataclasses
 
 import numpy as np
 
-from tools.assays import pooled
+from tools.assays import paired, pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
@@ -143,22 +143,35 @@ def main():
             print("    damping %.1e in %s: %d of %d seeds" % (k[0], k[1], n, len(SEEDS)))
 
     print("\n  WHAT MOVED, per medium, from the shipped damping to zero")
-    moved = {}
+    # Per-seed ratios averaged rather than a ratio of two pooled means -- see
+    # `tools.assays.paired`. The 1.02x and 1.04x this file first published had no error bar,
+    # which for a claim of the form "nothing moved" is the whole question: a 1.04x with a
+    # +-0.4 scatter and a 1.04x with a +-0.01 scatter exonerate the term to very different
+    # degrees, and only one of those is worth writing down as an exoneration.
+    moved, moved_sd = {}, {}
     for med in MEDIA:
         hi, lo = agg.get((DAMPINGS[0], med)), agg.get((DAMPINGS[-1], med))
-        if not hi or not lo:
-            print("  %-8s not measurable, an end is missing" % med)
+        m, s, n = paired(hi, lo, "freq")
+        if n < len(SEEDS):
+            print("  %-8s only %d of %d seeds have both ends -- withheld" % (med, n, len(SEEDS)))
             continue
-        f_hi, f_lo = mean(hi, "freq"), mean(lo, "freq")
-        w_hi, w_lo = mean(hi, "wavelength"), mean(lo, "wavelength")
-        moved[med] = f_lo / max(f_hi, 1e-9)
-        print("  %-8s freq %.3f -> %.3f Hz (%.2fx), wavelength %.2f -> %.2f L  "
+        moved[med], moved_sd[med] = m, s
+        print("  %-8s freq %.3f -> %.3f Hz (%.2f +-%.2fx), wavelength %.2f -> %.2f L  "
               "[animal: %.2f Hz, %.2f L]"
-              % (med, f_hi, f_lo, moved[med], w_hi, w_lo, *ANIMAL[med]))
+              % (med, mean(hi, "freq"), mean(lo, "freq"), m, s,
+                 mean(hi, "wavelength"), mean(lo, "wavelength"), *ANIMAL[med]))
 
     if len(moved) == len(MEDIA):
         b, a = moved["buffer"], moved["agar"]
         print("\n  VERDICT")
+        # An exoneration is only as good as the scatter behind it, so say the scatter before
+        # saying the verdict rather than after.
+        print("  (seed scatter on these ratios: buffer +-%.2f, agar +-%.2f)"
+              % (moved_sd["buffer"], moved_sd["agar"]))
+        if max(moved_sd.values()) > 0.15:
+            print("  That scatter is as large as the effect being tested for, so this run")
+            print("  cannot exonerate or convict the term. Read the branch below as the")
+            print("  shape of the answer, not as the answer.")
         if b > 1.15 and a < 1.10:
             print("  Buffer moved %.2fx while agar moved %.2fx. Internal damping is what" % (b, a))
             print("  pins the swimming end: the docstring's \"negligible against the external")

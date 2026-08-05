@@ -257,25 +257,38 @@ Before adopting anything that touches the shared gait, freeze the baseline with
 `tools/scorecard.py` and `tools/ethogram.py` on identical seeds — it can move every
 behavioural assay at once.
 
-**1c. Move the other five sweep tools onto per-seed pairing, before quoting their spans
-again.** `tools/head_cascade.py`, `tools/head_medium.py`, `tools/damping_sweep.py`,
-`tools/force_velocity.py` and `tools/lag_span.py` all divide two pooled means and print the
-result with no error bar. `tools/reach_span.py` does it per seed and averages the ratios,
-which is a dozen lines and gives the number a spread — and the spread turned out to be **±0.44
-on a quantity whose interesting differences are 0.02 to 0.10**. The seeds were always paired,
-same seed both media; pooling first threw that away, let the two ends come from different seed
-subsets, and put a survivorship bias in the numerator whenever a buffer arm diverged and its
-agar partner did not. Cheap to fix, expensive to re-run, and until it is done the honest form
-of every span above is "about 1.3, we cannot say to what precision".
+**1c. The five sweep tools are on per-seed pairing now — so re-run them before quoting any
+span above.** The code is done; the numbers in this file are not. Every span printed above was
+a ratio of two *pooled* means, and a ratio of two means has **no error bar at all**.
 
-Two smaller defects of the same family are already fixed, both watched failing first:
+`tools.assays.paired` computes the statistic within each seed and averages those, which is
+what the tools now call. Three defects it cures, and the third is the one that bites:
+
+- **no spread.** A bare ratio invites belief in its last digit. Per-seed values give a sd for
+  free, which is what makes a `2·sd` threshold meaningful rather than decorative.
+- **animal-to-animal variance stays in.** The seeds are the same in both arms by construction —
+  `tools/compare.py`'s common-random-numbers argument, applied to sweeps — so pairing cancels
+  most of the variance instead of adding the two arms'.
+- **survivorship bias.** Pooling lets the two ends come from different seed subsets. When a
+  buffer trial diverges and its agar partner does not, the numerator loses a seed the
+  denominator keeps and the ratio silently compares different animals. Not hypothetical:
+  `force_velocity.py` records buffer diverging at every value it first tried.
+
+Each tool's verdict now names the case where the scatter, not the effect, decided the call.
+`tests/test_stats.py` pins the helper — including a case where a pooled ratio is wrecked by one
+missing seed and the paired one is not, watched failing first.
+
+Two smaller defects of the same family are fixed too, both watched failing first:
 `force_velocity.py` took `spans[0]` as the force-velocity-off baseline, which is the off arm
 only while the off arm completes — a diverged one silently promoted `vmax = 1000` to the label
-"(off)", and this sweep's own header records buffer diverging at every value it first tried.
-It now looks the baseline up by value and refuses to print a verdict without it.
+"(off)". It now looks the baseline up by value and refuses to print a verdict without it.
 `damping_sweep.py` had one verdict branch covering two opposite outcomes, so "damping moves
 the crawl and not the swim" — the one arrangement that would make removing it *narrow* the
 span — printed the text written for "damping moves both".
+
+Until the re-runs happen, the honest form of every span in this file is **"about 1.3, and this
+project cannot yet say to what precision"**. The conclusions built on them survive that, because
+they rest on the gap to 5.87× rather than on differences of 0.02; the trend *shapes* do not.
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves

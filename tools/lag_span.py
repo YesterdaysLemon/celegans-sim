@@ -50,7 +50,7 @@ import dataclasses
 
 import numpy as np
 
-from tools.assays import pooled
+from tools.assays import paired, pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
@@ -133,23 +133,43 @@ def main():
     print("\n  SPAN AGAINST FIXED LAG")
     print("  The animal spans %.2fx. The prediction is that these widen as the lag falls."
           % (ANIMAL["buffer"][0] / ANIMAL["agar"][0]))
+    # Per-seed ratios averaged rather than a ratio of two pooled means -- see
+    # `tools.assays.paired`. This file's published table read 1.29x, 1.34x, 1.40x across a
+    # fourfold cut in the lag, and that monotone-looking sequence is what retracted the
+    # additive-lag diagnosis. It carried no error bar. The retraction stands on the *size*
+    # of the effect -- the span barely moves while the frequency doubles, which an additive
+    # lag cannot do -- and not on the ordering of three numbers a tenth apart, so it survives
+    # this; but the ordering itself was never resolvable and the table should not have
+    # implied it was.
     spans = []
     for t in STAGE_TAUS:
         a, b = agg.get((t, "agar")), agg.get((t, "buffer"))
-        if not a or not b:
-            print("  %.3f s: not measurable, an end is missing" % (STAGES * t))
+        m, s, n = paired(a, b, "freq")
+        wm, _, wn = paired(a, b, "wavelength")
+        if n < len(SEEDS):
+            print("  %.3f s: only %d of %d seeds have both media -- withheld"
+                  % (STAGES * t, n, len(SEEDS)))
             continue
-        fa, fb = mean(a, "freq"), mean(b, "freq")
-        wa, wb = mean(a, "wavelength"), mean(b, "wavelength")
-        spans.append((STAGES * t, fb / max(fa, 1e-9)))
-        print("  %.3f s: %.3f -> %.3f Hz, span %.2fx   |  wavelength %.2f -> %.2f L, %.2fx"
-              % (STAGES * t, fa, fb, fb / max(fa, 1e-9), wa, wb, wb / max(wa, 1e-9)))
+        spans.append((STAGES * t, m, s))
+        print("  %.3f s: %.3f -> %.3f Hz, span %.2f +-%.2fx  |  wavelength %.2f -> %.2f L, %.2fx"
+              % (STAGES * t, mean(a, "freq"), mean(b, "freq"), m, s,
+                 mean(a, "wavelength"), mean(b, "wavelength"), wm if wn else float("nan")))
 
     if len(spans) >= 2:
-        widest, narrowest = max(s for _, s in spans), min(s for _, s in spans)
+        widest, narrowest = max(s for _, s, _ in spans), min(s for _, s, _ in spans)
         first, last = spans[0][1], spans[-1][1]
+        scatter = float(np.mean([sd_ for _, _, sd_ in spans]))
         print("\n  VERDICT")
-        if last - first > 0.20:
+        print("  (typical seed scatter on a span here: +-%.2f)" % scatter)
+        if abs(last - first) <= 2.0 * scatter:
+            print("  The span goes %.2fx to %.2fx against a scatter of +-%.2f, so this run"
+                  % (first, last, scatter))
+            print("  cannot resolve whether it moved. What it CAN say is that the span stays")
+            print("  near 1.3x while the frequency roughly doubles across the same cut --")
+            print("  and that much does not depend on resolving small differences. Two media")
+            print("  differing by an additive lag could not behave that way, so the")
+            print("  additive-lag diagnosis fails on the size of the effect, not its sign.")
+        elif last - first > 0.20:
             print("  The span widens from %.2fx to %.2fx as the lag falls from %.3f to %.3f s."
                   % (first, last, spans[0][0], spans[-1][0]))
             print("  The diagnosis holds: the fixed lag is what pins the swimming end. The")

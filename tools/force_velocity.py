@@ -86,7 +86,7 @@ import dataclasses
 
 import numpy as np
 
-from tools.assays import pooled
+from tools.assays import paired, pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
@@ -174,17 +174,28 @@ def main():
     print("  The animal spans %.2fx in frequency and %.2fx in wavelength."
           % (ANIMAL["buffer"][0] / ANIMAL["agar"][0],
              ANIMAL["buffer"][1] / ANIMAL["agar"][1]))
-    spans = {}
+    # Per-seed ratios averaged rather than a ratio of two pooled means -- see
+    # `tools.assays.paired`. This matters more here than anywhere else in tools/, because
+    # this file's published sequence was 1.27x, 1.23x, 1.22x, 1.17x and it was written up as
+    # narrowing *monotonically*. Four numbers spanning 0.10 in total, with no spread printed
+    # beside any of them. The seed sd on a span in this model is around +-0.4, so that
+    # ordering was never resolvable and the monotonicity was a pattern read out of noise.
+    # The conclusion it supported survives -- nothing here comes within a factor of four of
+    # the animal's 5.87x, and no error bar rescues that -- but the shape of the trend does not.
+    spans, span_sd = {}, {}
     for v in VMAXES:
         a, b = agg.get((v, "agar")), agg.get((v, "buffer"))
-        if not a or not b:
+        m, s, n = paired(a, b, "freq")
+        wm, _, wn = paired(a, b, "wavelength")
+        if n < len(SEEDS):
+            if a or b:
+                print("  vmax %-5s only %d of %d seeds have both media -- withheld"
+                      % ("off" if v == 0.0 else "%.0f" % v, n, len(SEEDS)))
             continue
-        fa, fb = mean(a, "freq"), mean(b, "freq")
-        wa, wb = mean(a, "wavelength"), mean(b, "wavelength")
-        spans[v] = fb / max(fa, 1e-9)
-        print("  vmax %-5s %.3f -> %.3f Hz, span %.2fx  |  wavelength %.2f -> %.2f L, %.2fx"
-              % ("off" if v == 0.0 else "%.0f" % v, fa, fb, fb / max(fa, 1e-9),
-                 wa, wb, wb / max(wa, 1e-9)))
+        spans[v], span_sd[v] = m, s
+        print("  vmax %-5s %.3f -> %.3f Hz, span %.2f +-%.2fx  |  wavelength %.2f -> %.2f L, %.2fx"
+              % ("off" if v == 0.0 else "%.0f" % v, mean(a, "freq"), mean(b, "freq"), m, s,
+                 mean(a, "wavelength"), mean(b, "wavelength"), wm if wn else float("nan")))
 
     # The baseline is the arm with the term switched OFF, looked up by value. It used to be
     # `spans[0]`, the first arm that happened to complete -- which is the vmax = 0 row only
@@ -201,8 +212,21 @@ def main():
         base = spans[0.0]
         best_v = max(on_arms, key=lambda v: spans[v])
         best = spans[best_v]
+        scatter = float(np.mean(list(span_sd.values())))
         print("\n  VERDICT")
-        if best - base > 0.20:
+        print("  (typical seed scatter on a span here: +-%.2f)" % scatter)
+        if abs(best - base) <= 2.0 * scatter:
+            print("  Off spans %.2fx and the best arm %.2fx, a difference of %+.2f against a"
+                  % (base, best, best - base))
+            print("  scatter of +-%.2f. This run cannot tell them apart, so nothing should be"
+                  % scatter)
+            print("  read into the ordering of the arms above -- in particular not that the")
+            print("  span narrows monotonically, which is what an earlier run of this file")
+            print("  reported off four numbers spanning 0.10 with no error bars on them.")
+            print("  What survives regardless: every arm is a factor of four short of the")
+            print("  animal's 5.87x, and no plausible error bar closes that. Force-velocity")
+            print("  is not the gait-modulation mechanism. Proprioception next.")
+        elif best - base > 0.20:
             print("  The span widens from %.2fx (off) to %.2fx at vmax %.0f. Force-velocity"
                   % (base, best, best_v))
             print("  supplies the second load-dependent element the diagnosis said was")
