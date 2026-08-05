@@ -1627,6 +1627,13 @@ class SensoryParams:
     # gait chase its own noise.
     load_tau: float = 2.0            # s
 
+    # Band-limit on both signals before the comparison, just above the undulation frequency.
+    # `d/dt` weights the nth harmonic by n, so an unfiltered derivative is dominated by
+    # content well above the gait -- and inside a closed loop that content carries the loop's
+    # phase rather than the body's. 0.15 s is a 1.1 Hz corner against gait frequencies of 0.69
+    # to 0.85. Both signals get it, so the phase between them is untouched.
+    load_band_tau: float = 0.15      # s
+
     # The detector value at which the animal is half-way between its crawling and swimming
     # reaches. Measured `sin(phi)` is 0.206 on agar, 0.015 in viscous and 0.006 in buffer, and
     # the map is the saturating `load_half / (load_half + max(det, 0))` -- a hyperbola rather
@@ -1634,7 +1641,15 @@ class SensoryParams:
     # three give 0.09, 0.56 and 0.78 of the way to the swimming reach, which is graded across
     # the whole continuum rather than switching at one end. **This number is a first estimate
     # from the measured lags and has not been fitted to any behaviour.**
-    load_half: float = 0.02
+    load_half: float = 0.063
+
+    # Hill coefficient on that map. At 1 it is a plain hyperbola, and the detector's measured
+    # 13x range then maps onto a swimming fraction of only 0.08 to 0.54 -- the reach moves
+    # 0.11 to 0.17 and most of the span the mechanism exists to produce is thrown away. At 2
+    # it saturates at both ends, 0.07 and 0.93, putting the reach at 0.11 on agar and 0.23 in
+    # buffer, which is the pair `tools/reach_span.py` measured the wavelengths for. A Hill
+    # coefficient of 2 is the least exotic nonlinearity available in this subject.
+    load_hill: float = 2.0
 
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel

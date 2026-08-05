@@ -216,7 +216,11 @@ class Senses:
         # the disabled path bit-identical rather than merely close.
         self._load_dt = dt
         self._load_rate = -np.expm1(-dt / p.load_tau)
-        self._load_act_adapt = np.zeros(conn.n)
+        self._load_band_rate = -np.expm1(-dt / p.load_band_tau)
+        self._load_m_band = np.zeros(conn.n)
+        self._load_k_band = np.zeros(conn.n)
+        self._load_m_adapt = np.zeros(conn.n)
+        self._load_k_adapt = np.zeros(conn.n)
         # THE EFFERENCE COPY IS THE MOMENT ITSELF, AND THAT IS AN ASSUMPTION, NOT A SHORTCUT.
         #
         # The detector needs the phase between what a cell's muscle is pulling with and what
@@ -256,6 +260,19 @@ class Senses:
         self._load_q = np.zeros(conn.n)   # <act * d(local)/dt>
         self._load_a2 = np.zeros(conn.n)  # <act^2>
         self._load_b2 = np.zeros(conn.n)  # <(d(local)/dt)^2>
+        # Second stage on each of those three, and it is not fussiness. The instantaneous
+        # product carries a component at twice the undulation frequency whose mean is the
+        # signal, and one first-order stage at `load_tau` leaves about 5.7% of that ripple
+        # through. That is fine while the phase being measured is large and fatal when it is
+        # not: at 0.33 degrees -- the buffer end, the whole point of the exercise -- the true
+        # mean is 0.006 and the residual ripple is 0.057, ten times larger, so a reading taken
+        # at any one instant is mostly ripple phase. Measured against known phases through one
+        # stage: 45 degrees recovered to 1.006 of sin(phi), 12 degrees to 0.886, 5 degrees to
+        # 0.649, 2 degrees to 0.049. The error is invisible exactly where the mechanism lives.
+        # Cascading squares the attenuation, 0.057 -> 0.0032.
+        self._load_q2 = np.zeros(conn.n)
+        self._load_a22 = np.zeros(conn.n)
+        self._load_b22 = np.zeros(conn.n)
         # Which cells hold both halves of the comparison: a proprioceptive field and an
         # output. Anything else has no input to compare its output against and would
         # contribute a ratio of two zeros to the average.
@@ -335,11 +352,33 @@ class Senses:
         # sign -- negative for dorsal cells, positive for ventral -- and it is applied to both,
         # so the sign cancels out of the phase comparison and does not have to be reasoned
         # about separately for the two sheets.
-        act = (self.W_b_local @ moment) * gate_fwd + (self.W_a_local @ moment) * gate_bwd
-        self._load_act_adapt += (act - self._load_act_adapt) * self._load_rate
-        act_ac = act - self._load_act_adapt
+        m_raw = (self.W_b_local @ moment) * gate_fwd + (self.W_a_local @ moment) * gate_bwd
+        k_raw = (self.W_b_local @ k) * gate_fwd + (self.W_a_local @ k) * gate_bwd
 
-        local = (self.W_b_local @ k) * gate_fwd + (self.W_a_local @ k) * gate_bwd
+        # BOTH SIGNALS GET THE SAME FILTERS, AND THAT IS THE WHOLE CORRECTION.
+        #
+        # The first version high-passed the moment at `load_tau` to remove its DC and left the
+        # curvature alone, on the reasoning that differentiating removes DC anyway. It does --
+        # but a high-pass is not only a DC removal, it is a phase shift, worth
+        # `arctan(1 / (2*pi*f*tau))` and therefore **5.4 to 6.6 degrees** at these frequencies.
+        # Applied to one signal and not the other that lands entirely in the answer, and the
+        # buffer signal it has to be compared against is 0.33 degrees. Measured on recorded
+        # traces: filtering one side gives a 2.8x separation across the media and filtering
+        # both identically gives 12.9x, against a true 35x.
+        #
+        # The band-limit is the smaller half and is here for a real reason too. `d/dt` weights
+        # the nth harmonic by n, so an unfiltered derivative is dominated by content well above
+        # the undulation -- and inside a closed loop that content carries the loop's phase
+        # rather than the body's. Low-passing just above the gait frequency removes it. Both
+        # filters shift both signals equally, so the phase between them survives untouched;
+        # that is the only property either of them has to have.
+        self._load_m_band += (m_raw - self._load_m_band) * self._load_band_rate
+        self._load_k_band += (k_raw - self._load_k_band) * self._load_band_rate
+        self._load_m_adapt += (self._load_m_band - self._load_m_adapt) * self._load_rate
+        self._load_k_adapt += (self._load_k_band - self._load_k_adapt) * self._load_rate
+        act_ac = self._load_m_band - self._load_m_adapt
+        local = self._load_k_band - self._load_k_adapt
+
         if self._load_local_prev is None:
             # No previous sample means no derivative. Seed and leave the detector where it
             # is, rather than manufacturing a large spurious rate out of the first step.
@@ -351,9 +390,12 @@ class Senses:
         self._load_q += (act_ac * d_local - self._load_q) * self._load_rate
         self._load_a2 += (act_ac * act_ac - self._load_a2) * self._load_rate
         self._load_b2 += (d_local * d_local - self._load_b2) * self._load_rate
+        self._load_q2 += (self._load_q - self._load_q2) * self._load_rate
+        self._load_a22 += (self._load_a2 - self._load_a22) * self._load_rate
+        self._load_b22 += (self._load_b2 - self._load_b22) * self._load_rate
 
         m = self._load_cells
-        denom = np.sqrt(self._load_a2[m] * self._load_b2[m])
+        denom = np.sqrt(self._load_a22[m] * self._load_b22[m])
         live = denom > 1e-12
         if not np.any(live):
             # While the animal is settling both variances are near zero and the ratio is
@@ -367,12 +409,17 @@ class Senses:
         # mostly scatter about zero, and averaging absolute values would turn that scatter
         # into a confident positive reading indistinguishable from a real lag. Averaging
         # signed values lets it cancel, which is what keeps the buffer end near zero.
-        det = abs(float(np.mean(self._load_q[m][live] / denom[live]))) * self.p.load_detect_gain
+        det = abs(float(np.mean(self._load_q2[m][live] / denom[live]))) * self.p.load_detect_gain
         # Saturating rather than thresholded, because gait modulation is continuous in the
         # animal. At load_half = 0.02 the measured sin(phi) of 0.206, 0.015 and 0.006 give
         # 0.09, 0.56 and 0.78 -- graded across the whole continuum, not switching at one end.
+        # Hill rather than the plain hyperbola this started as. With n = 1 the detector's
+        # 13x range maps onto a swimming fraction of only 0.08 to 0.54, which moves the reach
+        # 0.11 to 0.17 and throws away most of the span the whole mechanism exists to produce.
+        # n = 2 saturates at both ends -- 0.07 and 0.93, so reach 0.11 to 0.23 -- and a Hill
+        # coefficient of 2 is the least exotic nonlinearity available in this subject.
         half = max(self.p.load_half, 1e-12)
-        self._load_swim = half / (half + det)
+        self._load_swim = 1.0 / (1.0 + (det / half) ** self.p.load_hill)
 
     def sense(self, world: World, nodes: np.ndarray, contact: np.ndarray,
               curvature: np.ndarray, activation: np.ndarray,

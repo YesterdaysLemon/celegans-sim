@@ -82,16 +82,6 @@ def test_enabled_actually_changes_the_animal():
     assert not np.array_equal(_state(off)[1], _state(on)[1])
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "The detector is correctly ordered and far too weakly separated: agar 0.051 against "
-    "buffer 0.060, where the measured lags differ 45x. The cause is known and is not this "
-    "test. A cell's output sits several lags upstream of the moment its muscle applies -- "
-    "synaptic release, the muscle's own membrane, calcium, tension -- and those lags are "
-    "medium-independent, so read raw they swamp the body's lag: 23-28 degrees of muscle "
-    "against 11.9 of body on agar and 0.33 in buffer. The corollary discharge in "
-    "Senses._update_load subtracts two of them and moved the detector 0.648 -> 0.433, which "
-    "is progress and not enough. Strict, so that finishing the forward model turns this into "
-    "a failure that says to delete the marker rather than into a silent pass."))
 def test_the_detector_points_the_right_way_round():
     """Thick medium -> crawl -> short reach. Thin medium -> swim -> long reach.
 
@@ -113,6 +103,35 @@ def test_the_detector_points_the_right_way_round():
         % (s_agar, s_buffer))
 
 
+def _drive(sim, amp, phi_deg, cycles=60.0, f=0.7):
+    """Drive the REAL detector with synthetic joint signals at a known phase, return `det`.
+
+    Calls `Senses._update_load` itself rather than reimplementing its arithmetic. The first
+    version of this test did reimplement it, and then the detector was rewritten underneath
+    -- new filters, a renamed state variable -- and the test carried on passing because it
+    was exercising its own copy of the old code. A test that duplicates the implementation
+    tests the duplicate.
+    """
+    senses = sim.senses
+    n_joints = len(sim.body.joint_s)
+    dt = senses._load_dt
+    zero = np.zeros(sim.conn.n)
+    for attr in ("_load_m_band", "_load_k_band", "_load_m_adapt", "_load_k_adapt",
+                 "_load_q", "_load_a2", "_load_b2", "_load_q2", "_load_a22", "_load_b22"):
+        setattr(senses, attr, zero.copy())
+    senses._load_local_prev = None
+    phi = np.radians(phi_deg)
+    for i in range(int(cycles / f / dt)):
+        t = i * dt
+        moment = np.full(n_joints, amp * np.sin(2 * np.pi * f * t))
+        kappa = np.full(n_joints, amp * np.sin(2 * np.pi * f * t - phi))
+        senses._update_load(kappa, moment, 1.0, 0.0)
+    m = senses._load_cells
+    den = np.sqrt(senses._load_a22[m] * senses._load_b22[m])
+    live = den > 1e-12
+    return abs(float(np.mean(senses._load_q2[m][live] / den[live])))
+
+
 def test_the_detector_reads_phase_and_not_amplitude():
     """Scaling both of its inputs must not move it. This is what keeps it off the confound.
 
@@ -120,53 +139,57 @@ def test_the_detector_reads_phase_and_not_amplitude():
     by about what the travelling index moves across these media, so a signal built from them
     reads "this animal is swimming badly" as readily as "this animal is in water". The
     quadrature detector divides by the product of the two magnitudes precisely so amplitude
-    cancels. Driven with synthetic signals whose phase is fixed and whose amplitude is
-    multiplied by 40, the output has to stay put.
+    cancels. Driven at a fixed phase with the amplitude multiplied by 40, it has to stay put.
     """
     sim = _sim(load_detect_gain=1.0)
-    senses = sim.senses
-    n = sim.conn.n
-    m = senses._load_cells
-    assert m.sum() > 0, "no cell holds both an output and a local field"
+    assert sim.senses._load_cells.sum() > 0, "no cell holds both an output and a local field"
 
-    def drive(amp, phi, cycles=40.0, f=0.7):
-        """Feed the detector two sinusoids at a known phase and read what it settles to."""
-        senses._load_act_adapt = np.zeros(n)
-        senses._load_local_prev = None
-        senses._load_q = senses._load_amp = 0.0
-        dt = senses._load_dt
-        steps = int(cycles / f / dt)
-        for i in range(steps):
-            t = i * dt
-            act = np.zeros(n)
-            act[m] = amp * np.sin(2 * np.pi * f * t)
-            local = np.zeros(n)
-            local[m] = amp * np.sin(2 * np.pi * f * t - phi)
-            # Bypass the curvature path and inject `local` directly, so the only thing under
-            # test is the detector arithmetic rather than the receptive fields.
-            if senses._load_local_prev is None:
-                senses._load_local_prev = local.copy()
-                senses._load_act_adapt += (act - senses._load_act_adapt) * senses._load_rate
-                continue
-            d_local = (local - senses._load_local_prev) / dt
-            senses._load_local_prev = local.copy()
-            senses._load_act_adapt += (act - senses._load_act_adapt) * senses._load_rate
-            act_ac = act - senses._load_act_adapt
-            senses._load_q += (float(np.mean(act_ac[m] * d_local[m]))
-                               - senses._load_q) * senses._load_rate
-            senses._load_amp += (float(np.mean(np.abs(act_ac[m]) * np.abs(d_local[m])))
-                                 - senses._load_amp) * senses._load_rate
-        return abs(senses._load_q) / max(senses._load_amp, 1e-12)
-
-    phi = np.radians(12.0)                      # about the measured agar lag
-    small, large = drive(0.05, phi), drive(2.0, phi)
+    small, large = _drive(sim, 0.05, 12.0), _drive(sim, 2.0, 12.0)
     assert large == pytest.approx(small, rel=0.02), (
         "a 40x amplitude change moved the detector %.4f -> %.4f; it is reading amplitude"
         % (small, large))
 
     # And it does respond to phase, or the invariance above is the invariance of a constant.
-    assert drive(0.05, np.radians(40.0)) > small * 2.0, (
+    assert _drive(sim, 0.05, 40.0) > small * 2.0, (
         "the detector did not respond to a phase change, so amplitude-invariance is vacuous")
+
+
+def test_the_detector_recovers_a_known_phase():
+    """The quantity it reports has to be sin(phase), not merely monotone in it.
+
+    `SensoryParams.load_half` and `load_hill` are set from measured lags of 11.9 and 0.33
+    degrees, so the map from detector to reach is calibrated in those units. If the detector
+    returned some other monotone function of phase every one of those numbers would be
+    meaningless while the mechanism still appeared to work.
+    """
+    sim = _sim(load_detect_gain=1.0)
+    for deg in (5.0, 12.0, 30.0):
+        got = _drive(sim, 0.5, deg)
+        assert got == pytest.approx(np.sin(np.radians(deg)), rel=0.06), (
+            "at %.0f deg the detector read %.4f, expected sin = %.4f"
+            % (deg, got, np.sin(np.radians(deg))))
+
+
+def test_the_small_angle_floor_is_where_it_is_believed_to_be():
+    """The detector over-reads tiny phases, and the size of that is load-bearing.
+
+    The averages carry a residual ripple at twice the undulation frequency, and two cascaded
+    stages at `load_tau` cut it to about 0.3% rather than to nothing. Against a true phase of
+    11.9 degrees that is invisible; against the buffer end's 0.33 degrees it is not, and it
+    reads about 1.6x high. That inflates the thin end of the detector and therefore *narrows*
+    the separation the mechanism runs on -- it cannot manufacture one. Pinned because the
+    honest version of every span this mechanism produces is "and the thin end is
+    conservative": if this floor ever grows, the spans quietly shrink and nothing else would
+    say so.
+    """
+    sim = _sim(load_detect_gain=1.0)
+    got = _drive(sim, 0.5, 0.33)
+    true = np.sin(np.radians(0.33))
+    assert 1.0 < got / true < 2.5, (
+        "small-angle floor moved: 0.33 deg read %.4f against sin = %.4f (%.2fx)"
+        % (got, true, got / true))
+    # And it must stay small in absolute terms, because that is what keeps agar clean.
+    assert abs(got - true) < 0.01, "the floor is now large enough to reach the agar end"
 
 
 def test_the_blend_weights_never_leave_the_simplex():
