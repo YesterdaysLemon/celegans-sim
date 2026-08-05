@@ -34,10 +34,20 @@ media rather than the two ends moved the diagnosis:
   cascade   0.644 Hz     0.833 Hz      0.833 Hz
 ```
 
-**The model's modulation saturates by K = 9.** All of it happens between K = 40 and K = 9 --
-1.29x -- and from K = 9 to K = 1.58 there is nothing: 0.99x and 1.00x. The animal does not
-saturate, which is how it reaches 1.76 Hz. So this is not a uniformly weak response wanting a
-bigger gain; it is a response that **stops existing exactly where swimming begins**.
+**The model's modulation appears to saturate by K = 9.** All of it happens between K = 40 and
+K = 9 — 1.29x — and from K = 9 to K = 1.58 the table shows 0.99x and 1.00x.
+
+> **Qualified after the fact, and the qualification matters.** That last step is *one FFT
+> bin*. `tools/diagnose_loop.py` took the dominant frequency as a bare `argmax` with no
+> interpolation until this was found, so every frequency published here is a multiple of
+> 1/30 Hz or a three-seed mean of them — and the `sd = 0.000` columns are the quantiser, not
+> reproducibility. The estimator interpolates now and resolves a known tone to better than
+> 0.5 mHz. What survives regardless is the size of the gap, 1.29x against 5.87x; whether the
+> last leg is flat or weakly alive matters much less than that.
+
+The animal does not saturate, which is how it reaches 1.76 Hz. So this is not a uniformly
+weak response wanting a bigger gain; it is a response that has largely **stopped by the time
+swimming begins**.
 
 And frequency was never the only half. **Wavelength is flat and nobody was watching it**: the
 animal goes 0.65 L to 1.54 L, a factor of 2.37, while this model goes 0.83 to 0.91 -- 1.10x,
@@ -2833,6 +2843,23 @@ table's five rows fix themselves at once.
 
 ## Things that will bite whoever picks this up
 
+- **Know the resolution of the number you are comparing.** `tools/diagnose_loop.py` took the
+  dominant frequency as a bare FFT `argmax`, so its resolution was `1/MEASURE` — 0.0333 Hz at
+  a 30 s window — and **every frequency this project published before 2026-08-05 is an integer
+  multiple of 1/30 Hz, or a three-seed mean of them.** Two ways that misleads. Seeds landing
+  in one bin print `sd = 0.000`, which reads as perfect agreement and is the quantiser
+  refusing to resolve them. And a conclusion can rest on a single bin without looking like it:
+  "modulation saturates from K = 9 to K = 1.58" was 0.8444 → 0.8333, one bin in one seed. The
+  peak is interpolated now, but the habit is the lesson — before comparing two measurements,
+  ask what the smallest difference the instrument can express is.
+- **`bare_world` was not gradient-free, and its docstring said it was.** `World.temperature`
+  is an unconditional 17→25 °C ramp across the plate that no world construction disabled;
+  `Senses` samples it at the nose every step and drives AFD from it. The tracking error is
+  `tau * v * grad`, so it **scales with the animal's own speed** — 0.37 pA in buffer against
+  2.10 pA on agar, next to 2.2 pA of noise. That is a confound pointed directly at every
+  medium comparison in `tools/`, and it sat behind a docstring asserting the opposite. Fixed
+  by flattening the ramp to `cultivation_temp`. The general form: a helper that promises a
+  controlled condition is worth checking against the code that implements the condition.
 - **A payload array may not be the shape you assume, and reading past it is silent.**
   `g_leak` and `E_leak` are network-wide scalars of shape `[1]`, not per-neuron arrays.
   Indexing an eight-byte array by neuron walks straight into whichever array the exporter

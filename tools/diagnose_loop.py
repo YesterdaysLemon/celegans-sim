@@ -19,8 +19,34 @@ from worm.world import World
 
 
 def bare_world(p):
-    """An empty dish: no food, no gradients, nothing to react to but the body itself."""
-    return World(p.world, np.random.default_rng(0))
+    """An empty dish: no food, no gradients, nothing to react to but the body itself.
+
+    The thermal ramp has to be flattened explicitly, and the docstring above was false
+    without it. `World.temperature` is unconditional -- 17 to 25 degC across the plate,
+    0.0889 degC/mm -- so an "empty" dish still presents a gradient, `Senses` samples it at
+    the nose every step, and AFD receives `thermo_gain` times the deviation from a baseline
+    adapting at `thermo_tau_adapt = 12 s`.
+
+    That makes it a confound aimed exactly at the comparisons these tools exist to make,
+    because the steady-state tracking error is `tau * v * grad` and therefore scales with the
+    animal's own speed:
+
+        buffer, 0.038 mm/s  ->  0.37 pA
+        agar,   0.219 mm/s  ->  2.10 pA
+        a fast arm, 0.5     ->  4.80 pA
+
+    against `noise_sigma = 2.2 pA`. So an agar arm and a buffer arm differ by roughly the
+    noise amplitude in tonic sensory drive before the medium is considered at all, and a
+    faster configuration is rewarded or punished for being faster. Every medium sweep in
+    tools/ ran against this until it was found.
+
+    Setting both ends of the ramp to the cultivation temperature makes the field genuinely
+    flat, which is what a bare dish was always supposed to mean. Nothing else about the world
+    changes, so trials before and after differ only by the removal of this term.
+    """
+    world_p = replace(p.world, temp_cold=p.sensory.cultivation_temp,
+                      temp_warm=p.sensory.cultivation_temp)
+    return World(world_p, np.random.default_rng(0))
 
 
 def analyse(sim: Simulation, seconds: float, warmup: float = 4.0) -> dict:
@@ -115,6 +141,24 @@ def travelling_index(kappa: np.ndarray) -> float:
 
 
 def _dominant(x: np.ndarray, fs: float):
+    """Dominant frequency and its share of spectral power, interpolated off the bin grid.
+
+    The bare `argmax` this used to return was quantised to the FFT's bin width, `1/seconds`
+    -- 0.0333 Hz for a 30 s window. That is not a rounding detail, it is most of the
+    resolution these sweeps care about: **every frequency this project has published is an
+    integer multiple of 1/30 Hz, or a three-seed mean of them.** Two consequences, and the
+    second is worse than the first.
+
+    Seeds landing in the same bin printed `sd = 0.000`, which reads as perfect reproducibility
+    and is the quantiser refusing to resolve them. And a one-bin difference, 4% at 0.83 Hz,
+    is the entire evidence some conclusions rested on -- "gait modulation saturates by K = 9"
+    was `0.8444 -> 0.8333`, one bin in one of three seeds.
+
+    So the peak is refined by the standard three-point parabolic fit on the log magnitude,
+    which for a Hanning-windowed tone recovers the true frequency to well under a tenth of a
+    bin. `_BIN_HZ` is exported alongside so a caller can print the resolution it is working
+    at rather than implying more than it has.
+    """
     if len(x) < 16:
         return 0.0, 0.0
     win = np.hanning(len(x))
@@ -123,8 +167,22 @@ def _dominant(x: np.ndarray, fs: float):
     band = (fr > 0.08) & (fr < 5.0)
     if not np.any(band):
         return 0.0, 0.0
-    k = np.argmax(spec[band])
-    return float(fr[band][k]), float(spec[band][k] / (spec.sum() + 1e-12))
+    idx = np.flatnonzero(band)
+    k = idx[np.argmax(spec[band])]
+    power = float(spec[k] / (spec.sum() + 1e-12))
+
+    # Parabolic interpolation on log magnitude. Guarded at the array ends and against a
+    # flat or degenerate triple, where the correction is undefined and the bin centre is
+    # the honest answer.
+    if 0 < k < len(spec) - 1:
+        a, b, c = (np.log(spec[k - 1] + 1e-300), np.log(spec[k] + 1e-300),
+                   np.log(spec[k + 1] + 1e-300))
+        denom = a - 2.0 * b + c
+        if denom < -1e-12:                      # a genuine peak, not a trough or a plateau
+            delta = 0.5 * (a - c) / denom
+            if abs(delta) <= 1.0:               # a larger shift means the peak is elsewhere
+                return float(fr[k] + delta * (fr[1] - fr[0])), power
+    return float(fr[k]), power
 
 
 def main(argv) -> int:

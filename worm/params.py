@@ -826,11 +826,26 @@ class MediumParams:
         shipped   0.656 Hz     0.844 Hz      0.833 Hz
         cascade   0.644 Hz     0.833 Hz      0.833 Hz
 
-    **It saturates by K = 9.** Every bit of the response happens between K = 40 and K = 9 --
-    1.29x -- and from K = 9 to K = 1.58 there is nothing at all: 0.99x and 1.00x. The animal
-    does not saturate; it keeps accelerating the whole way down, which is how it reaches
-    1.76 Hz. So the shortfall is not a uniformly weak response that wants a bigger gain. It
-    is a response that stops existing exactly where swimming begins.
+    **It appears to saturate by K = 9** -- every bit of the response happens between K = 40
+    and K = 9, 1.29x, and from K = 9 to K = 1.58 the table shows 0.99x and 1.00x.
+
+    > **That last step is one FFT bin and must not be leaned on.** Until this was found,
+    > `tools/diagnose_loop.py` took the dominant frequency as a bare `argmax` with no
+    > interpolation, so every frequency this project has published is an integer multiple of
+    > `1/MEASURE` -- 0.0333 Hz at a 30 s window -- or a three-seed mean of them. The viscous
+    > -> buffer step is 0.8444 -> 0.8333, which is one bin in one of three seeds, and the
+    > `sd = 0.000` beside it is the quantiser refusing to resolve the seeds rather than the
+    > seeds agreeing. A 4% residual response continuing down to K = 1.58 is not
+    > distinguishable from none by that measurement.
+    >
+    > The estimator now interpolates the peak parabolically and recovers a known tone to
+    > better than 0.5 mHz, so a re-run would settle it. **What survives regardless** is the
+    > shape of the shortfall: 1.29x total against the animal's 5.87x. Whether the last leg is
+    > exactly flat or weakly alive changes the mechanism story much less than that gap does.
+
+    The animal does not saturate; it keeps accelerating the whole way down, which is how it
+    reaches 1.76 Hz. So the shortfall is not a uniformly weak response that wants a bigger
+    gain. It is a response that has largely stopped by the time swimming begins.
 
     And the frequency was never the only half of it. **Wavelength is flat**, and it is the
     variable that was not being watched: the animal goes 0.65 L to 1.54 L, a factor of 2.37,
