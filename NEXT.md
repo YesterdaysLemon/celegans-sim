@@ -72,20 +72,82 @@ What that leaves is structural, and it means **no amount of tuning fixes this**:
 > fixed proprioceptive reach, has nothing to scale it either. **The animal saturates because
 > the model gave it exactly one way to feel the medium, and it runs out.**
 
-Reaching 5.87x therefore needs **a second load-dependent element**, not a bigger gain on an
-existing one. **Muscle force-velocity is the candidate and the next real project**: real muscle
-produces less force the faster it shortens, which in a light medium is exactly a load-dependent
-change in the muscle's contribution to the loop, and it is the standard biomechanical answer to
-why a swimmer and a crawler are the same animal. `MuscleParams` has no velocity term to widen,
-so this is a new term in `Muscles.step`, a conformance run, and a re-fit of the gait — its own
-change, not a rider on something else.
+> **Retracted the same day it was written, by `tools/lag_span.py`.** The diagnosis above
+> predicts that shrinking the fixed lag exposes the body's load-dependent contribution and
+> widens the span. Cutting the head budget fourfold, 0.500 s to 0.125 s:
+>
+> ```
+>   head lag   agar Hz   buffer Hz   span
+>   0.500       0.644      0.833     1.29x
+>   0.250       0.967      1.300     1.34x
+>   0.125       1.356      1.900     1.40x
+> ```
+>
+> Frequency really is set by total lag — a fourfold cut roughly doubles it in both media, so
+> that half stands. But the span barely moves, and it could not behave that way if the media
+> differed by an additive lag. Fitting the additive model to those points puts the buffer-end
+> body lag near 0.8 s, larger than the head reflex's whole budget, which a body with almost no
+> drag on it cannot be doing. **"The body's drag response is the one load-dependent term" was
+> the wrong reading of the saturation**, and what produces even the 1.3x that exists is not
+> identified. Two hypotheses eliminated, none confirmed.
 
-Two things to do before starting it, both cheap and both protecting the result. Freeze the
-baseline with `tools/scorecard.py` and `tools/ethogram.py`, because a force-velocity term
-changes the shared gait and can move every behavioural assay at once. And decide up front what
-would falsify it: if the span does not widen once the muscle can feel its own shortening rate,
-then the load-dependence has to come from proprioception instead, and that is a different
-change with a different failure mode.
+**What survives the retraction, and is worth more than it was:**
+
+- **Wavelength never modulates at all** — span 1.06x, 1.01x, 1.03x at the three lag budgets,
+  against the animal's **2.37x**. It is flat at every lag, in every medium, under every
+  configuration tried so far. The frequency story has moved twice; this one has not moved at
+  all, and nothing has yet been aimed at it. Wavelength is set by a fixed proprioceptive reach
+  with nothing scaling it, and that is now the cleanest unexplained thing in the model.
+- **The shipped lag budget is near-optimal for the wave.** Cutting it degrades everything
+  else — travelling index 0.880 → 0.753 on agar and 0.761 → 0.434 in buffer, buffer net speed
+  0.039 → 0.016 mm/s, wavelength collapsing 0.86 → 0.48 L. A shorter loop is a faster, worse
+  animal. The cascade should keep its 0.50 s.
+
+**Force-velocity was measured too, and it is not the mechanism either.**
+`MuscleParams.fv_vmax` exists, off by default; `tools/force_velocity.py`, both media, three
+seeds, no failures:
+
+```
+  vmax   agar Hz   buffer Hz   span    wavelength span
+  off     0.656      0.833     1.27x       1.10x
+  1000    0.622      0.767     1.23x       1.10x
+  700     0.600      0.733     1.22x       1.16x
+  500     0.600      0.700     1.17x       1.17x
+```
+
+The span does not widen; it **narrows**, monotonically. That is the failure the sweep's own
+header predicted before the run: the derating acts on shortening rate, shortening rate is a
+property of the gait rather than of the medium, this gait is similar at both ends, so it
+applies about equally at both and cancels out of the ratio — while adding lag, which narrows
+it. Not adopted: it is more faithful muscle than none and it costs the crawl, which is where
+the model is calibrated.
+
+**Three mechanisms tested, three failures**, and it is worth having them in one place so
+nobody re-runs them:
+
+| tried | result | do not re-run as |
+|---|---|---|
+| cascade's frequency-dependent phase | 1.27x vs 1.29x | a stage count or a lag budget |
+| cutting the fixed lag 4x | 1.29x → 1.40x | a smaller head reflex |
+| muscle force-velocity | 1.27x → 1.17x | a stronger derating; it is also unstable there |
+
+**So proprioception is next, and the wavelength column is why.** Across every configuration
+above — three lag budgets, four force-velocity strengths, two head-reflex architectures, four
+internal-damping values — the wavelength span has been 1.01x to 1.17x against the animal's
+**2.37x**. Frequency has moved for all sorts of reasons today. Wavelength has essentially
+never moved, and **nothing has ever been aimed at it**. It is set by `proprio_reach`, a fixed
+fraction of the body, with nothing scaling it by load; the one arm that nudged it at all was
+force-velocity, which touches the muscle rather than the reach.
+
+That makes the next experiment cheap and well-posed before it is expensive: sweep
+`proprio_reach` across both media and see whether the wavelength *can* be moved at all, and
+whether moving it drags the frequency span with it. If reach turns out to set wavelength
+without touching the span, then frequency and wavelength are independent failures and need
+separate mechanisms — which would itself be worth knowing before anyone builds either.
+
+Before adopting anything that touches the shared gait, freeze the baseline with
+`tools/scorecard.py` and `tools/ethogram.py` on identical seeds — it can move every
+behavioural assay at once.
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves

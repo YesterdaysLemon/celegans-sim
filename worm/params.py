@@ -586,6 +586,89 @@ class MuscleParams:
     # at the same 100 ms.
     tau_calcium: float = 0.060      # s   membrane potential -> intracellular calcium
     tau_tension: float = 0.035      # s   calcium -> active tension
+
+    # -- force-velocity, off by default ---------------------------------------------------
+    #
+    # Muscle here produces a tension that depends on calcium and on nothing else. Real muscle
+    # produces less force the faster it is shortening and more while being stretched -- Hill
+    # (1938), and the single most-cited property of the tissue after its length-tension curve.
+    # This model has no term for it, and `MediumParams` records why that became interesting:
+    #
+    #   the loop's frequency is set by its total lag, every element of which is a fixed
+    #   constant except the body's drag response, and by K = 9 that one has become small
+    #   against the rest. So the frequency saturates and gait modulation stops at 1.29x
+    #   where the animal manages 5.87x.
+    #
+    # Force-velocity is a *second* load-dependent element and therefore the obvious candidate.
+    # It is stated here as a candidate rather than as a fix, because there is a real argument
+    # against it that the measurement has to settle: the shortening rate depends on the gait,
+    # and the gait is currently similar in both media -- kappa_rms 4.45 on agar and 4.39 in
+    # buffer at 0.66 and 0.83 Hz -- so the derating may simply apply about equally at both
+    # ends and cancel out of the span. If it does, the load-dependence has to come from
+    # proprioception instead, and that is a different change.
+    #
+    # `fv_vmax` is the characteristic shortening rate, in the units of d(kappa)/dt that the
+    # joints actually see: 1/(mm*s). **Zero disables the whole term**, which is the shipped
+    # state and is bit-identical to having no force-velocity code at all.
+    #
+    # For scale, and this is worth stating carefully because getting it wrong wasted a sweep:
+    # the concentric factor is (1 - x)/(1 + fv_curvature*x) with x = v/vmax, which at
+    # fv_curvature = 4 is 0.46 at x = 0.19 and 0.01 at x = 0.95. It bites near x ~ 0.05, not
+    # near x ~ 1. An animal at kappa_rms 4.4 and 0.7 Hz sweeps about 19 /(mm*s), so vmax of
+    # 1000 is a 9% derating, 500 is 17%, and anything at 100 or below is not a force-velocity
+    # curve, it is a switch.
+    #
+    # MEASURED, AND IT IS NOT THE GAIT-MODULATION MECHANISM. tools/force_velocity.py, both
+    # media, three seeds, no failures:
+    #
+    #   vmax   agar Hz   buffer Hz   span    wavelength span
+    #   off     0.656      0.833     1.27x       1.10x
+    #   1000    0.622      0.767     1.23x       1.10x
+    #   700     0.600      0.733     1.22x       1.16x
+    #   500     0.600      0.700     1.17x       1.17x
+    #
+    # The span does not widen; it narrows, monotonically, 1.27x to 1.17x. That is the failure
+    # the sweep's own header predicted: the derating acts on shortening rate, shortening rate
+    # is a property of the gait rather than of the medium, this model's gait is similar at
+    # both ends, so the derating applies about equally at both and cancels out of the ratio --
+    # while adding lag, which narrows it. The animal spans 5.87x.
+    #
+    # Two things in that table are worth keeping anyway. It makes the animal *better* in
+    # buffer -- travelling index +0.657 to +0.682, net speed 0.0380 to 0.0413 mm/s -- and
+    # worse on agar, +0.846 to +0.769 and 0.295 to 0.218 mm/s, with kappa_rms falling 4.45 to
+    # 2.75. And the **wavelength span moves for the first time**, 1.10x to 1.17x. Trivial
+    # against the animal's 2.37x, but nothing else tried has moved it at all.
+    #
+    # Not adopted. It is more faithful muscle than none and it costs the crawl, which is where
+    # this model is calibrated; adopting it would mean re-fitting the gait to buy a property
+    # that has just been measured not to arrive.
+    fv_vmax: float = 0.0            # 1/(mm*s), 0 = off
+
+    # Hill's curvature constant, the `a/F0` of the classic hyperbola. 4 is the usual value
+    # for vertebrate skeletal muscle; the concentric branch is (1 - x)/(1 + fv_curvature*x)
+    # with x = v/vmax, which is 1 at rest and 0 at vmax.
+    fv_curvature: float = 4.0
+
+    # How much more force the muscle makes while being lengthened, as a fraction above F0.
+    # Real muscle plateaus around 1.4-1.8 F0; 0.5 puts the plateau at 1.5. This limb matters
+    # here because half of every undulation is a muscle being stretched by its antagonist.
+    fv_eccentric: float = 0.5
+
+    # Time constant of the low-pass on the shortening rate, and it is required rather than
+    # decorative.
+    #
+    # The first implementation fed back the raw finite difference of joint curvature, one
+    # step apart. That quantity is not the gait's shortening velocity; it is dominated by the
+    # body's fastest bending modes, which relax in about 6e-6 s in buffer against a 0.5 ms
+    # step -- eighty times faster than the integrator resolves. Feeding it back explicitly
+    # diverged in buffer at *every* strength tried, including a 9% derating: path speeds of
+    # 150 to 300 mm/s against a 5 mm/s guard, at every seed.
+    #
+    # So this is not a fudge factor for a stability problem, it is the statement that a
+    # muscle responds to how fast the animal is bending and not to how fast the discretisation
+    # is ringing. 20 ms sits between `tau_tension` (35 ms) and the step, which is the band
+    # where a real shortening velocity lives.
+    fv_tau: float = 0.020           # s   low-pass on d(kappa)/dt before the Hill factor
     # Body-wall muscle has its own reversal potentials, and they are not the neuronal ones.
     # It rests at -25.0 +- 1.0 mV (Gao & Zhen 2011 PNAS), sits between E_ACh ~ +20 mV and
     # E_Cl ~ -30 mV, and its capacitance is an order of magnitude larger than a neuron's.
@@ -786,13 +869,42 @@ class MediumParams:
     fixed proprioceptive reach -- has nothing to scale it either. The animal saturates
     because the model gave it exactly one way to feel the medium and it runs out.
 
-    Reaching the animal's 5.87x therefore needs **a second load-dependent element**, not a
-    bigger gain on an existing one. Muscle force-velocity is the physiological candidate and
-    the obvious first thing to try: real muscle produces less force the faster it shortens,
-    which in a light medium is precisely a load-dependent change in the muscle's contribution
-    to the loop. It is also real work -- `MuscleParams` has no velocity term to widen -- so it
-    deserves its own change and its own conformance run rather than being folded into
-    something else.
+    RETRACTION. The paragraph above is half right and its conclusion does not follow, and
+    the refuting measurement is `tools/lag_span.py`. Cutting the head reflex's lag budget by
+    four -- 0.500 s to 0.125 s, four stages throughout, no transport delay -- gives:
+
+        head lag   agar Hz   buffer Hz   span
+        0.500       0.644      0.833     1.29x
+        0.250       0.967      1.300     1.34x
+        0.125       1.356      1.900     1.40x
+
+    The first claim survives: frequency really is set by the loop's total lag, and cutting it
+    fourfold roughly doubles the frequency in both media. **The second does not.** If the
+    media differed by an *additive* lag -- a large one on agar where the body resists, a
+    negligible one in buffer where it does not -- then shrinking the fixed part would expose
+    that difference and the span would open up sharply. It barely moves: 1.29x to 1.40x
+    across a fourfold cut. Fitting the additive model to those two points puts the buffer-end
+    body lag at about 0.8 s, larger than the head reflex's entire budget, which is not a
+    thing a body with almost no drag on it can be doing.
+
+    So the medium's 1.3x is **not** an additive lag difference, and "the body's drag response
+    is the one load-dependent term" was the wrong reading of the saturation. What produces the
+    1.3x that does exist is not identified, and neither is what would produce the animal's
+    5.87x; two hypotheses have been eliminated rather than one confirmed.
+
+    Two facts worth carrying forward from that sweep, both independent of the retraction:
+
+      * **wavelength never modulates at all.** Its span is 1.06x, 1.01x and 1.03x at the three
+        lag budgets, against the animal's 2.37x. Whatever is missing is missing at every lag,
+        and the wavelength is set by a fixed proprioceptive reach with nothing scaling it;
+      * **the shipped lag budget is near-optimal for the wave.** Cutting it degrades
+        everything else -- travelling index 0.880 to 0.753 on agar and 0.761 to 0.434 in
+        buffer, buffer net speed 0.039 to 0.016 mm/s, wavelength collapsing 0.86 to 0.48 L.
+        A shorter loop is a faster, worse animal, so the cascade should keep its 0.50 s.
+
+    Muscle force-velocity remains worth measuring -- it is a genuinely load-dependent element
+    and `MuscleParams` now has one, off by default -- but it is a candidate on its own merits
+    now rather than the conclusion of an argument, because the argument has been withdrawn.
     """
 
     name: str = "agar"
