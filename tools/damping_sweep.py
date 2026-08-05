@@ -167,10 +167,21 @@ def main():
             print("  Buffer moved %.2fx and agar %.2fx -- neither. Internal damping is" % (b, a))
             print("  exonerated and it was the cheap suspect. The limit is neural or in the")
             print("  muscle; force-velocity is the next place to look, and it is real work.")
-        else:
+        elif b > 1.15:
             print("  Buffer %.2fx, agar %.2fx. The term is doing more than it is documented" % (b, a))
             print("  to do, and not only at the swimming end. Every gait number in this")
             print("  repository was measured with it in place; re-read before trusting them.")
+        else:
+            # b <= 1.15 < ... < a. This branch used to print the sentence above, which is
+            # the wrong way round for it: the term is moving the CRAWL and leaving the swim
+            # alone, which is the one arrangement that cannot help gait modulation at all.
+            # Worth separating because it would have been reported as the good news.
+            print("  Buffer %.2fx, agar %.2fx -- and that is the wrong way round." % (b, a))
+            print("  Removing internal damping moves the crawl and leaves the swim where it")
+            print("  was, so the term is not what pins the swimming end and taking it out")
+            print("  would NARROW the span rather than widen it. It also means agar, where")
+            print("  this model is calibrated, was tuned around a term whose own docstring")
+            print("  calls it negligible there. Re-read the gait numbers before trusting them.")
 
         # Frequency alone is not the claim. Say what the wave did, because a faster animal
         # that has stopped holding a wave is not a swimming animal.

@@ -1422,6 +1422,84 @@ class SensoryParams:
     # lands the speed and misses the wavelength by a quarter. 0.16 is the middle, and puts
     # all four gait numbers within 15% of the animal at once, which no configuration in
     # this project has managed before.
+    #
+    # AND SWEPT ONCE MORE AGAINST THE MEDIUM, which is a different question and the one
+    # gait modulation turns on. `tools/reach_span.py`, four reaches x two media x three
+    # seeds, 24 trials, no failures, on the instrumentation after both measurement defects
+    # were fixed (see `tools/diagnose_loop.py`):
+    #
+    #   reach  medium | freq Hz         wavelen   TWI    k_rms  net mm/s  n/p
+    #    0.10  agar   |  0.662 +-0.003    0.60   +0.756   3.82   0.2281   0.91
+    #    0.16  agar   |  0.688 +-0.012    0.83   +0.849   4.46   0.2948   0.80  <- shipped
+    #    0.24  agar   |  0.508 +-0.229    1.29   +0.755   4.60   0.3031   0.83
+    #    0.32  agar   |  0.679 +-0.031    1.05   +0.786   4.31   0.3572   0.82
+    #    0.10  buffer |  0.669 +-0.261    1.23   +0.414   4.32   0.0150   0.41
+    #    0.16  buffer |  0.835 +-0.023    0.91   +0.657   4.39   0.0380   0.70  <- shipped
+    #    0.24  buffer |  0.856 +-0.001    1.30   +0.808   4.54   0.0545   0.64
+    #    0.32  buffer |  0.637 +-0.295    1.55   +0.479   4.73   0.0307   0.37
+    #
+    # **Reach moves the wavelength by about 1.7x in both media** -- 0.60 -> 1.05 L on agar
+    # and 0.90 -> 1.52 L in buffer, averaged as wavenumber and inverted. So the mechanism is
+    # not saturated at the swimming end. The wavelength is **FIXED, not STUCK**: it has a
+    # working range and no input from the medium, which is a wire that was never run rather
+    # than a mechanism that does not work. That is the half of the answer that holds.
+    #
+    # That 0.90 is the one place the two ways of averaging disagree, and the disagreement is
+    # a flag rather than a discrepancy. The table's column is an arithmetic mean and reads
+    # 1.23 for the same cell, because wavelength is `2*pi/|slope|` and diverges as a wave
+    # flattens towards standing. Buffer at reach 0.10 is exactly that animal -- TWI +0.414,
+    # net-to-path 0.41 -- so one near-standing seed drags the arithmetic mean up while the
+    # wavenumber mean stays finite. Quote the wavenumber figure for that cell, and read a gap
+    # between the two as "some seed here is barely holding a wave".
+    #
+    # **The tool's own verdict is not entitled to the other half, and claimed it anyway.**
+    # It calls the span flat when the trend across reaches is under `max(0.20, 2*sd)`, and
+    # here that is a trend of 0.58 against a threshold of 0.88 -- flat because the seed
+    # scatter is enormous, not because the trend is small. The per-reach spans are
+    # 2.05 +-1.21, 1.09 +-0.06, 1.15 +-0.35 and 1.47 +-0.15, a 59% relative spread at the
+    # low end. Whether the span responds to reach is **unresolved at three seeds**, not
+    # answered, and no conclusion should be hung on it.
+    #
+    # THE COLUMN WORTH READING IS NOT THE SPAN, IT IS TWO CELLS OF THE TABLE.
+    #
+    #   the animal crawls at 0.65 L  <-  agar,   reach 0.10  ->  0.60 L
+    #   the animal swims  at 1.54 L  <-  buffer, reach 0.24  ->  1.30 L
+    #
+    # Both of the animal's wavelengths are essentially already reachable by this model, at
+    # reaches it already supports: the crawl on the nose, the swim 16% short. Nothing is
+    # saturated and nothing is missing from the mechanism. **What is missing is the
+    # selection** -- anything at all that tells the reach which medium the animal is in.
+    #
+    # Those two cells are not a cherry-pick out of the noise; they are the two *tightest*
+    # cells in the table, frequency sd 0.003 and 0.001 Hz against 0.229 and 0.295 elsewhere.
+    # And buffer at 0.24 is a better animal than the shipped 0.16 in buffer on the columns
+    # this is about -- TWI +0.808 against +0.657, net 0.0545 against 0.0380 mm/s, wavelength
+    # 1.30 against 0.91 -- so this is not a wavelength bought by wrecking the gait. It is not
+    # better on *every* column, and the exception is worth stating rather than rounding off:
+    # net-to-path goes 0.70 -> 0.64. It covers 43% more ground per second along a slightly
+    # less direct path. That is a trade, and which way it should go is an ethogram question
+    # rather than a gait one. Reach 0.32 in buffer reaches the animal's 1.54 L almost exactly
+    # and *is* bought by wrecking the gait: TWI +0.479, net-to-path 0.37, and a net speed
+    # below the shipped value. 0.24 is the honest target, not 0.32.
+    #
+    # A reach running 0.10 on agar and 0.24 in buffer implies a wavelength span near **2.2x
+    # against the animal's 2.37x**, from a knob that already exists. This is a prediction
+    # written down before the run and not a result: the figures above are per-cell means off
+    # an unpaired grid, so the span has to be measured per-seed-paired before it is claimed.
+    #
+    # It is also cheap to build. The blend seam is already in `Senses.step` -- two banks of
+    # receptive fields, mixed by `Modulators.wavelength_shortening`, dead code today because
+    # `ModulatorParams.dopamine_wavelength` is 0.0. It only shortens, towards
+    # `proprio_reach_food`, so lengthening in buffer needs a third bank and a signed blend.
+    # `_receptive_fields` normalises every row to unit sum, so a bank at any reach carries
+    # the same total weight and `g_scale_prop` does not have to be recalibrated for it.
+    #
+    # One more thing in that table, unasked for and worth keeping: **the shipped 0.16 is the
+    # reproducible one.** Frequency sd is 0.012 and 0.023 Hz there against 0.229, 0.261 and
+    # 0.295 at reaches away from it. The gait is fragile off the value it was fitted at,
+    # which is the bistability NEXT.md has warned about standing, now visible in a sweep
+    # that was not looking for it. Anything that moves the reach at runtime has to carry
+    # that, and the 0.10/0.24 pair being the two tight cells is what makes it survivable.
     proprio_reach: float = 0.16      # fraction of body length sampled anteriorly
 
     # The reach the animal falls back to on food, for the basal slowing response.

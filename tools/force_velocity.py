@@ -174,21 +174,33 @@ def main():
     print("  The animal spans %.2fx in frequency and %.2fx in wavelength."
           % (ANIMAL["buffer"][0] / ANIMAL["agar"][0],
              ANIMAL["buffer"][1] / ANIMAL["agar"][1]))
-    spans = []
+    spans = {}
     for v in VMAXES:
         a, b = agg.get((v, "agar")), agg.get((v, "buffer"))
         if not a or not b:
             continue
         fa, fb = mean(a, "freq"), mean(b, "freq")
         wa, wb = mean(a, "wavelength"), mean(b, "wavelength")
-        spans.append((v, fb / max(fa, 1e-9)))
+        spans[v] = fb / max(fa, 1e-9)
         print("  vmax %-5s %.3f -> %.3f Hz, span %.2fx  |  wavelength %.2f -> %.2f L, %.2fx"
               % ("off" if v == 0.0 else "%.0f" % v, fa, fb, fb / max(fa, 1e-9),
                  wa, wb, wb / max(wa, 1e-9)))
 
-    if len(spans) >= 2:
-        base = spans[0][1]
-        best_v, best = max(spans[1:], key=lambda s: s[1]) if len(spans) > 1 else (None, base)
+    # The baseline is the arm with the term switched OFF, looked up by value. It used to be
+    # `spans[0]`, the first arm that happened to complete -- which is the vmax = 0 row only
+    # while that row completes. A diverged or timed-out off-arm silently promoted vmax = 1000
+    # to "(off)" and every span below was then quoted against a baseline that already had
+    # force-velocity in it, under a label saying it did not. Divergence is not hypothetical
+    # here: this sweep's own header records buffer blowing up at every value it first tried.
+    on_arms = sorted((v for v in spans if v != 0.0), reverse=True)
+    if 0.0 not in spans:
+        print("\n  NO BASELINE. The vmax = 0 arm did not complete in both media, so there is")
+        print("  nothing to measure a span against and no verdict is printed. The rows above")
+        print("  stand on their own; the comparison this file exists to make does not.")
+    elif on_arms:
+        base = spans[0.0]
+        best_v = max(on_arms, key=lambda v: spans[v])
+        best = spans[best_v]
         print("\n  VERDICT")
         if best - base > 0.20:
             print("  The span widens from %.2fx (off) to %.2fx at vmax %.0f. Force-velocity"
@@ -204,15 +216,21 @@ def main():
             print("  faithful muscle, not the gait-modulation mechanism. Proprioception next.")
         else:
             print("  The span narrows, %.2fx to %.2fx. The term is acting as added fixed lag"
-                  % (base, min(s for _, s in spans[1:])))
+                  % (base, min(spans[v] for v in on_arms)))
             print("  rather than as load-dependence, which is the failure mode the diagnosis")
             print("  predicts for anything that does not actually vary with load. A clean")
             print("  confirmation of the diagnosis by a route nobody wanted.")
 
+        # Lower vmax is stronger derating, so the last of the reverse-sorted arms is the
+        # strongest one that completed -- which is not `VMAXES[-1]` when the strong end
+        # diverged, and the strong end of this parameter is precisely where it does.
+        strongest = on_arms[-1]
         print("\n  And what it cost the gait, because a span is worthless if the animal")
-        print("  stopped swimming to get it:")
+        print("  stopped swimming to get it (off against vmax %.0f, the strongest arm that"
+              % strongest)
+        print("  completed in both media):")
         for med in MEDIA:
-            off, on = agg.get((0.0, med)), agg.get((VMAXES[-1], med))
+            off, on = agg.get((0.0, med)), agg.get((strongest, med))
             if off and on:
                 print("    %-8s TWI %+.3f -> %+.3f, net %.4f -> %.4f mm/s, kappa_rms %.2f -> %.2f"
                       % (med, mean(off, "twi"), mean(on, "twi"), mean(off, "speed"),

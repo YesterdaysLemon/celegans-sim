@@ -28,6 +28,14 @@ retires the largest fitted number in the model and takes `headHist` with it -- 2
 **1b. And the gait-modulation search has a new and much sharper target.** Measuring all three
 media rather than the two ends moved the diagnosis:
 
+> **If you are picking this up and want the destination rather than the route, skip to
+> "`proprio_reach` swept against the medium" at the end of this item.** Four mechanisms were
+> tested and four failed; the fifth thing tried was not a mechanism but a measurement, and it
+> found that **both of the animal's wavelengths are essentially already reachable by this
+> model** — 0.60 L on agar at reach 0.10 and 1.30 L in buffer at reach 0.24, against the
+> animal's 0.65 and 1.54. What is missing is not range. It is the selection. Everything
+> between here and there is why that is the surprising answer.
+
 ```
   arm      agar K=40   viscous K=9   buffer K=1.58
   shipped   0.656 Hz     0.844 Hz      0.833 Hz
@@ -108,6 +116,10 @@ What that leaves is structural, and it means **no amount of tuning fixes this**:
   configuration tried so far. The frequency story has moved twice; this one has not moved at
   all, and nothing has yet been aimed at it. Wavelength is set by a fixed proprioceptive reach
   with nothing scaling it, and that is now the cleanest unexplained thing in the model.
+  *Half-superseded at the end of this item, and the correction is the flat kind rather than
+  the interesting kind: the wavelength was flat in every configuration above because every one
+  of them held the reach fixed. Aimed at directly, it moves 1.7× in both media. "Wavelength
+  never modulates" was a statement about what had been varied, not about the model.*
 - **The shipped lag budget is near-optimal for the wave.** Cutting it degrades everything
   else — travelling index 0.880 → 0.753 on agar and 0.761 → 0.434 in buffer, buffer net speed
   0.039 → 0.016 mm/s, wavelength collapsing 0.86 → 0.48 L. A shorter loop is a faster, worse
@@ -132,14 +144,30 @@ applies about equally at both and cancels out of the ratio — while adding lag,
 it. Not adopted: it is more faithful muscle than none and it costs the crawl, which is where
 the model is calibrated.
 
-**Three mechanisms tested, three failures**, and it is worth having them in one place so
+> **"Monotonically" is over-read, and the sweep at the end of this item is what shows it.**
+> Every span in this table — and in the cascade, damping and lag tables above — is a ratio of
+> two *pooled* means with **no error bar on it at all**. `tools/reach_span.py` was the first
+> to compute spans per seed and average those, and the typical seed sd it found is **±0.44**.
+> Against that, 1.27 → 1.23 → 1.22 → 1.17 is one plausible draw out of many; the ordering is
+> not evidence. What survives is the size, not the shape: none of these arms comes within a
+> factor of four of the animal's 5.87×, and a 0.44 error bar cannot rescue that. **Every
+> "mechanism failed" conclusion above is safe. Every claim about the direction or the
+> ordering of the small differences between them is not**, and the four tools that produced
+> them should be moved onto per-seed pairing before any of those numbers is quoted again.
+
+**Four mechanisms tested, four failures**, and it is worth having them in one place so
 nobody re-runs them:
 
 | tried | result | do not re-run as |
 |---|---|---|
 | cascade's frequency-dependent phase | 1.27x vs 1.29x | a stage count or a lag budget |
+| body internal damping, down to zero | 1.02x agar, 1.04x buffer | a smaller `internal_damping` |
 | cutting the fixed lag 4x | 1.29x → 1.40x | a smaller head reflex |
 | muscle force-velocity | 1.27x → 1.17x | a stronger derating; it is also unstable there |
+
+All four are frequency mechanisms, and that is the pattern rather than a coincidence: the
+frequency is what every one of them was aimed at, because the frequency is what had been
+moving. The thing that finally gave was the column nobody had touched.
 
 **So proprioception is next, and the wavelength column is why.** Across every configuration
 above — three lag budgets, four force-velocity strengths, two head-reflex architectures, four
@@ -149,15 +177,105 @@ never moved, and **nothing has ever been aimed at it**. It is set by `proprio_re
 fraction of the body, with nothing scaling it by load; the one arm that nudged it at all was
 force-velocity, which touches the muscle rather than the reach.
 
-That makes the next experiment cheap and well-posed before it is expensive: sweep
-`proprio_reach` across both media and see whether the wavelength *can* be moved at all, and
-whether moving it drags the frequency span with it. If reach turns out to set wavelength
-without touching the span, then frequency and wavelength are independent failures and need
-separate mechanisms — which would itself be worth knowing before anyone builds either.
+That experiment has now run, and it is the first thing in this search to come back with
+somewhere to go.
+
+### `proprio_reach` swept against the medium: the range is already there, the selection is not
+
+`tools/reach_span.py`, four reaches × two media × three seeds, 24 trials, no failures, on the
+instrumentation after both measurement defects were fixed. Full table in
+`SensoryParams.proprio_reach`; the two rows that matter:
+
+```
+  reach  medium | freq Hz         wavelen   TWI    k_rms  net mm/s  n/p
+   0.10  agar   |  0.662 +-0.003    0.60   +0.756   3.82   0.2281   0.91
+   0.24  buffer |  0.856 +-0.001    1.30   +0.808   4.54   0.0545   0.64
+```
+
+**Both of the animal's wavelengths are essentially already reachable.** It crawls at 0.65 L
+and swims at 1.54 L; this model gives 0.60 L on agar at reach 0.10 — on the nose — and 1.30 L
+in buffer at reach 0.24, which is 16% short. (Reach 0.32 in buffer gives 1.55 L, but see
+below: that one is bought by wrecking the gait, so 1.30 is what is reachable and creditable at
+the same time.) Nothing is saturated. Nothing is missing from the mechanism. **What is missing
+is the selection** — anything at all that tells the reach which medium the animal is in.
+
+Three things make those two cells worth building on rather than a lucky pick out of the noise:
+
+- they are the two **tightest** cells in the whole table, frequency sd 0.003 and 0.001 Hz
+  against 0.229, 0.261 and 0.295 elsewhere;
+- buffer at 0.24 is a **better animal** than the shipped 0.16 in buffer on the columns that
+  matter here — TWI +0.808 against +0.657, net speed 0.0545 against 0.0380 mm/s, wavelength
+  1.30 against 0.91 — so the wavelength is not being bought by wrecking the gait. It is not
+  better on *every* column: net-to-path goes 0.70 → 0.64. It covers 43% more ground per second
+  along a slightly less direct path, which is a trade and not a free win, and the direction of
+  that trade should be checked against the ethogram before adoption. (Reach 0.32 in buffer
+  hits 1.55 L, almost exactly the animal's 1.54, and *is* bought by wrecking the gait: TWI
+  +0.479, n/p 0.37, net speed below the shipped value. 0.24 is the honest target, not 0.32.)
+- reach moves the wavelength ~1.7× in **both** media — 0.60 → 1.05 L on agar, 0.90 → 1.52 L in
+  buffer — so the mechanism is not saturated at the swimming end. **The wavelength is FIXED,
+  not STUCK**: it has a working range and no input from the medium. That is a wire that was
+  never run, which is the cheapest of the four outcomes this sweep was written to distinguish.
+
+The implied span, reach 0.10 on agar to 0.24 in buffer, is about **2.2× against the animal's
+2.37×**. That is a prediction and not a result — the cells above are per-cell means off an
+unpaired grid — and it has to be measured per-seed-paired before it is claimed.
+
+> **And the sweep's own verdict overstated how it got there, which is worth more than the
+> verdict.** It printed "the span does not respond to the medium". It is not entitled to
+> that. The flatness test is `trend ≤ max(0.20, 2·sd)`, and it fired on **trend 0.58 against
+> a threshold of 0.88** — flat because the error bars are huge, not because the trend is
+> small. The per-reach spans are 2.05 ±1.21, 1.09 ±0.06, 1.15 ±0.35, 1.47 ±0.15: 59%
+> relative spread at the low end. Whether the span responds to reach is **unresolved at three
+> seeds**. What survives is the within-medium half, which divides no noisy numbers. The
+> threshold was right and has not been retuned; the tool now prints `trend` against
+> `threshold` and says outright when the scatter rather than the floor set it, because a
+> verdict that cannot be checked from its own output is how the last one got believed.
+
+**The build is small, and the seam exists.** `Senses.step` already blends two banks of
+receptive fields through `Modulators.wavelength_shortening` — dead code today, because
+`ModulatorParams.dopamine_wavelength` is 0.0. It only shortens, towards `proprio_reach_food`,
+so lengthening in buffer needs a third bank and a signed blend. `_receptive_fields` normalises
+every row to unit sum, so a bank at any reach carries the same total weight and `g_scale_prop`
+needs no recalibration.
+
+**What it must not be is a medium sensor.** The animal has no such thing, and neither should
+this. The load signal has to be something the nervous system could actually have — which is
+the standing problem, because **there is no force, velocity, tension or effort afferent
+anywhere in this model.** The nervous system only ever senses geometry. That is the same
+finding from the other side: the medium reaches the circuit only through realised body shape,
+so the honest version of load-dependent reach reads realised curvature — amplitude, or the
+lag between commanded and achieved bend — rather than a drag coefficient.
+
+**And a warning that came out of this sweep unasked for.** The shipped 0.16 is the
+reproducible one: frequency sd 0.012 and 0.023 Hz there against 0.229, 0.261 and 0.295 at
+reaches away from it. The gait is fragile off the value it was fitted at — this file's
+standing bistability warning, now visible in a sweep that was not looking for it. Anything
+that moves the reach at runtime has to carry that, and the 0.10/0.24 pair being the two tight
+cells is what makes it survivable.
 
 Before adopting anything that touches the shared gait, freeze the baseline with
 `tools/scorecard.py` and `tools/ethogram.py` on identical seeds — it can move every
 behavioural assay at once.
+
+**1c. Move the other five sweep tools onto per-seed pairing, before quoting their spans
+again.** `tools/head_cascade.py`, `tools/head_medium.py`, `tools/damping_sweep.py`,
+`tools/force_velocity.py` and `tools/lag_span.py` all divide two pooled means and print the
+result with no error bar. `tools/reach_span.py` does it per seed and averages the ratios,
+which is a dozen lines and gives the number a spread — and the spread turned out to be **±0.44
+on a quantity whose interesting differences are 0.02 to 0.10**. The seeds were always paired,
+same seed both media; pooling first threw that away, let the two ends come from different seed
+subsets, and put a survivorship bias in the numerator whenever a buffer arm diverged and its
+agar partner did not. Cheap to fix, expensive to re-run, and until it is done the honest form
+of every span above is "about 1.3, we cannot say to what precision".
+
+Two smaller defects of the same family are already fixed, both watched failing first:
+`force_velocity.py` took `spans[0]` as the force-velocity-off baseline, which is the off arm
+only while the off arm completes — a diverged one silently promoted `vmax = 1000` to the label
+"(off)", and this sweep's own header records buffer diverging at every value it first tried.
+It now looks the baseline up by value and refuses to print a verdict without it.
+`damping_sweep.py` had one verdict branch covering two opposite outcomes, so "damping moves
+the crawl and not the swim" — the one arrangement that would make removing it *narrow* the
+span — printed the text written for "damping moves both".
 
 **2. Export the raw muscle `G`, and finish the exporter rework.** The graph is already in the
 payload as CSR, so weights need no format change; `computeRestingPotentials` already solves

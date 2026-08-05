@@ -44,6 +44,39 @@ Reach is swept above and below the shipped 0.16. The 0.10 end is the documented 
 basal-slowing fallback -- and going far above 0.16 is uncharted, which is the point: nobody
 has asked what a long reach does in water.
 
+IT RAN. THE ANSWER IS THE FIRST OUTCOME, AND THIS FILE'S VERDICT OVERSTATES HOW IT GOT THERE.
+
+Full table in `SensoryParams.proprio_reach`. Reach moves the wavelength about 1.7x in both
+media -- 0.60 -> 1.05 L on agar, 0.90 -> 1.52 L in buffer -- so the mechanism has a working
+range at the swimming end and the wavelength is **FIXED rather than STUCK**. That part is a
+within-medium comparison between the two extreme reaches, and it holds.
+
+The span half does not. `near_flat` fires when the trend across reaches is under
+`max(0.20, 2*sd)`, and it fired on `trend 0.58` against a threshold of `0.88`: **flat because
+the error bars are huge, not because the trend is small.** The per-reach spans are 2.05 +-1.21,
+1.09 +-0.06, 1.15 +-0.35, 1.47 +-0.15 -- 59% relative spread at the low end. A criterion that
+scales its threshold with the scatter is the right shape, and it is exactly why this printed
+a confident sentence about medium-blindness off a measurement with no power to see it. The
+correct reading is **unresolved at three seeds**.
+
+The threshold is not what was wrong and has not been retuned. What was wrong is that the
+branch behind it spent its power on the wrong sentence: it earned "the mechanism has a working
+range in both media" and printed "the span does not respond to the medium" as well. It now
+claims only the first, prints `trend` against `threshold` so the reader can see which of the
+two carried the call, and says outright when the threshold came from the scatter rather than
+from the floor. A verdict that cannot be checked from its own output is how the last one got
+believed.
+
+AND THE RESULT WORTH HAVING WAS NOT THE ONE THIS FILE WAS BUILT TO GET.
+
+    the animal crawls at 0.65 L  <-  agar,   reach 0.10  ->  0.60 L
+    the animal swims  at 1.54 L  <-  buffer, reach 0.24  ->  1.30 L
+
+Both of the animal's wavelengths are already reachable, at reaches this model already
+supports, in the two *tightest* cells of the table (frequency sd 0.003 and 0.001 Hz). What is
+missing is not range and not a mechanism -- it is **the selection**. See
+`SensoryParams.proprio_reach` for what that implies and what it would cost to build.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/reach_span.py
 """
 
@@ -216,16 +249,29 @@ def main():
         # measurement actually has rather than against a number chosen in advance.
         w_sd = float(np.mean([w_spans[r][1] for r in rcs]))
         trend = abs(w_hi - w_lo)
+        thresh = max(0.20, 2.0 * w_sd)
         print("\n  VERDICT")
         print("  wavelength span %.2f -> %.2f across the reach sweep, typical seed sd %.2f"
               % (w_lo, w_hi, w_sd))
+        # Printed because the first run of this file called the span flat on trend 0.58
+        # against a threshold of 0.88 and said so in the language of a finding. A criterion
+        # that widens with the scatter is right, but when it is the *scatter* that carried
+        # the call rather than the trend, the reader has to be able to see that without
+        # rereading the source. If these two numbers are close, the answer is "this sweep
+        # cannot tell", whichever branch below prints.
+        print("  trend %.2f against threshold %.2f  (= max(0.20, 2*sd))" % (trend, thresh))
+        if thresh > 0.20 + 1e-12:
+            print("  The threshold is set by the seed scatter rather than by the floor, so")
+            print("  whatever the branch below says, the honest reading of the SPAN is that")
+            print("  this sweep cannot resolve it. The per-medium lines above can be read;")
+            print("  they are within-medium and do not divide two noisy numbers.")
 
         # STUCK vs FIXED turns on whether reach moves the wavelength *in buffer*. Agar is
         # not used as a conjunct: SensoryParams.proprio_reach already records 0.62 L at
         # reach 0.10 and 0.85 L at 0.16, so "reach works on agar" is satisfied by data
         # already in the repository and would carry no information here.
         works_buffer = moved["buffer"] > 1.25
-        near_flat = trend <= max(0.20, 2.0 * w_sd)
+        near_flat = trend <= thresh
         if not works_buffer:
             print("  Reach barely moves the wavelength in buffer (%.2fx) though it moves it"
                   % moved["buffer"])
@@ -233,12 +279,14 @@ def main():
             print("  the wavelength is STUCK there, which is a modelling failure to hunt")
             print("  rather than a wire to run.")
         elif near_flat:
-            print("  Reach moves the wavelength in buffer (%.2fx) and on agar (%.2fx), and"
+            print("  Reach moves the wavelength in buffer (%.2fx) and on agar (%.2fx), so the"
                   % (moved["buffer"], moved["agar"]))
-            print("  the span does not respond to it. The wavelength is FIXED, not stuck --")
-            print("  the mechanism works and simply has no input from the medium. Frequency")
-            print("  and wavelength are independent failures, and the wavelength half is a")
-            print("  wire that was never run. Making proprio_reach load-dependent is the change.")
+            print("  mechanism has a working range at both ends and the wavelength is FIXED")
+            print("  rather than STUCK -- a wire that was never run, not a mechanism that does")
+            print("  not work. That much is a within-medium comparison and it stands.")
+            print("  No claim is made here that the span itself is flat: the trend did not")
+            print("  clear the scatter, which is not the same as being absent. Making")
+            print("  proprio_reach load-dependent is the change either way.")
         elif w_hi > w_lo:
             print("  The wavelength span GROWS with reach, and by more than the seed scatter.")
             print("  There is latent medium-dependence in the proprioceptive path that a")
