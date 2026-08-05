@@ -25,7 +25,8 @@ from .world import World
 class Senses:
     def __init__(self, conn: Connectome, p: SensoryParams, world_p: WorldParams,
                  body_n_links: int, proprio_reach: float, dt: float,
-                 g_rest: np.ndarray | None = None, rng: np.random.Generator | None = None):
+                 g_rest: np.ndarray | None = None, rng: np.random.Generator | None = None,
+                 muscle_p=None):
         self.conn = conn
         self.p = p
         self.dt = dt
@@ -77,6 +78,24 @@ class Senses:
                                           p.proprio_reach_food, +1)
         self.W_a_food = _receptive_fields(conn, self.da, self.va, joint_s,
                                           p.proprio_reach_food, -1)
+        # A third pair at the long swimming reach, for `load_detect_gain`. The blend now runs
+        # in both directions from the shipped 0.16 -- shorter towards the on-food reach, longer
+        # towards this one -- where before it could only shorten. Costs nothing in calibration:
+        # `_receptive_fields` normalises every row to unit sum, so a bank at any reach carries
+        # the same total weight and `g_scale_prop` does not have to follow it.
+        self.W_b_swim = _receptive_fields(conn, self.db, self.vb, joint_s,
+                                          p.proprio_reach_swim, +1)
+        self.W_a_swim = _receptive_fields(conn, self.da, self.va, joint_s,
+                                          p.proprio_reach_swim, -1)
+        # And a pair at zero reach -- each cell reading the curvature at its own output
+        # position rather than through its shifted field. This is what the load detector
+        # compares against its own output, and it is deliberately not the drive's own input:
+        # a reach-shifted field carries the travelling wave's spatial phase, roughly 69
+        # degrees at the shipped reach and wavelength against a mechanical lag of 12, and that
+        # phase moves with the very wavelength the detector exists to set. Reading locally is
+        # what stops this being a loop closed on itself.
+        self.W_b_local = _receptive_fields(conn, self.db, self.vb, joint_s, 0.0, +1)
+        self.W_a_local = _receptive_fields(conn, self.da, self.va, joint_s, 0.0, -1)
 
         # The head oscillator. Dorsal and ventral head motor neurons, wired as a
         # resistance reflex against the curvature of the head itself.
@@ -190,6 +209,56 @@ class Senses:
         self._head_hist = np.zeros((self._head_delay_n + 1, body_n_links - 1))
         self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
+
+        # --- load detector ---------------------------------------------------------------
+        # `SensoryParams.load_detect_gain` carries the whole argument; this is the state it
+        # needs. All of it stays zero and untouched while the gain is 0, which is what makes
+        # the disabled path bit-identical rather than merely close.
+        self._load_dt = dt
+        self._load_rate = -np.expm1(-dt / p.load_tau)
+        self._load_act_adapt = np.zeros(conn.n)
+        # The corollary discharge, and the reason it has to exist.
+        #
+        # A cell's output is not the moment its muscle applies: `calcium -> tension` is two
+        # first-order lags between them, and those lags are **medium-independent**. Compared
+        # raw, the detector measures the sum, and the sum is mostly muscle -- 23 degrees of
+        # muscle against 11.9 of body on agar, and 27.9 against 0.33 in buffer. Measured that
+        # way it reads 0.648 / 0.537 / 0.546 across the three media: correct arithmetic on the
+        # wrong quantity, and a 1.2x separation where the body alone gives 35x.
+        #
+        # So what the cell compares against its stretch receptor is a copy of its own output
+        # passed through the same kinetics as its own neuromuscular junction. That is the
+        # ordinary form of an efference copy -- a corollary discharge carrying a forward model
+        # of the effector -- and here the forward model is exact by construction, because it
+        # reuses the muscle's own two time constants rather than fitting its own. Subtracting
+        # a lag the animal itself installed is what leaves the body's lag visible.
+        #
+        # Falls back to the raw output if no muscle parameters are supplied, which keeps
+        # `Senses` constructible on its own; every caller in the model passes them.
+        self._load_eff = np.zeros(conn.n)
+        self._load_eff2 = np.zeros(conn.n)
+        self._load_eff_rate = (
+            (-np.expm1(-dt / muscle_p.tau_calcium), -np.expm1(-dt / muscle_p.tau_tension))
+            if muscle_p is not None else None)
+        self._load_local_prev = None      # None until the first step supplies a curvature
+        # Per cell, because the normalisation has to be per cell: `sin(phi)` comes out of
+        # `<a*b> / (rms(a) * rms(b))`, and pooling the three averages across cells first mixes
+        # units that sit at different phases of the travelling wave. Three running means and
+        # one square root, held for each cell that has both an output and a local field.
+        self._load_q = np.zeros(conn.n)   # <act * d(local)/dt>
+        self._load_a2 = np.zeros(conn.n)  # <act^2>
+        self._load_b2 = np.zeros(conn.n)  # <(d(local)/dt)^2>
+        # Which cells hold both halves of the comparison: a proprioceptive field and an
+        # output. Anything else has no input to compare its output against and would
+        # contribute a ratio of two zeros to the average.
+        self._load_cells = (np.abs(self.W_b_local).sum(axis=1)
+                            + np.abs(self.W_a_local).sum(axis=1)) > 0
+        # The swimming fraction the drive actually uses, held across the step boundary. The
+        # blend needs it before `raw` exists and the detector needs `raw` to update it, so it
+        # is one step old by construction -- the same unit delay this model uses everywhere
+        # else it has a cycle to break.
+        self._load_swim = 0.0
+
         # Every one-minus-a-decay below is `-expm1(-x)` rather than `1 - exp(-x)`, and the
         # reason is reproducibility rather than accuracy.
         #
@@ -230,6 +299,75 @@ class Senses:
         self._touch_rate = -np.expm1(-dt / p.touch_tau)
 
         self.readout = {}
+
+    def _update_load(self, k: np.ndarray, activation: np.ndarray,
+                     gate_fwd: float, gate_bwd: float) -> None:
+        """Advance the quadrature phase detector and the swimming fraction it sets.
+
+        `SensoryParams.load_detect_gain` carries the argument for why this quantity is the
+        one worth reading. What happens here is the arithmetic.
+
+        Each cell holds its own output and the curvature at its own output position. For
+        `act = B sin(wt)` and a sensed bend `local = A sin(wt - phi)`, the product of `act`
+        with `d(local)/dt` averages over a cycle to `(A B w / 2) sin(phi)` -- the quadrature
+        term, and therefore the phase lag. Dividing by the average of `|act| * |d(local)/dt|`
+        leaves about `sin(phi)` with **both amplitudes cancelled**, which is the property that
+        matters: the amplitude-carrying candidates were rejected in `tools/load_signal.py` for
+        tracking the gait's own decline rather than the medium, and a detector that quietly
+        re-imported amplitude would inherit exactly that fault.
+
+        Averaged over the proprioceptive cells rather than used per cell. That is a modelling
+        simplification of the same kind as the lumped head reflex, and the same caveat
+        applies: the biologically honest version is per cell, each setting its own reach, and
+        it is a refinement rather than a different mechanism. One scalar is what can be
+        measured and defended first.
+        """
+        # The corollary discharge: the cell's own output through its own effector's kinetics,
+        # so that what the comparison sees is the moment its muscle is applying rather than
+        # the command it sent 95 ms earlier. See `_load_eff_rate` for why this is not optional.
+        act = activation
+        if self._load_eff_rate is not None:
+            r1, r2 = self._load_eff_rate
+            self._load_eff += (act - self._load_eff) * r1
+            self._load_eff2 += (self._load_eff - self._load_eff2) * r2
+            act = self._load_eff2
+        self._load_act_adapt += (act - self._load_act_adapt) * self._load_rate
+        act_ac = act - self._load_act_adapt
+
+        local = (self.W_b_local @ k) * gate_fwd + (self.W_a_local @ k) * gate_bwd
+        if self._load_local_prev is None:
+            # No previous sample means no derivative. Seed and leave the detector where it
+            # is, rather than manufacturing a large spurious rate out of the first step.
+            self._load_local_prev = local.copy()
+            return
+        d_local = (local - self._load_local_prev) / self._load_dt
+        self._load_local_prev = local.copy()
+
+        self._load_q += (act_ac * d_local - self._load_q) * self._load_rate
+        self._load_a2 += (act_ac * act_ac - self._load_a2) * self._load_rate
+        self._load_b2 += (d_local * d_local - self._load_b2) * self._load_rate
+
+        m = self._load_cells
+        denom = np.sqrt(self._load_a2[m] * self._load_b2[m])
+        live = denom > 1e-12
+        if not np.any(live):
+            # While the animal is settling both variances are near zero and the ratio is
+            # meaningless. Hold at "crawling" until there is something to divide by: starting
+            # from the shipped gait is the safe default for a term that moves the wavelength.
+            self._load_swim = 0.0
+            return
+        # Signed per cell, then averaged, then made positive -- in that order, and the order
+        # is the point. Taking the magnitude per cell first would rectify noise: at the
+        # swimming end the true phase is a third of a degree, so each cell's estimate is
+        # mostly scatter about zero, and averaging absolute values would turn that scatter
+        # into a confident positive reading indistinguishable from a real lag. Averaging
+        # signed values lets it cancel, which is what keeps the buffer end near zero.
+        det = abs(float(np.mean(self._load_q[m][live] / denom[live]))) * self.p.load_detect_gain
+        # Saturating rather than thresholded, because gait modulation is continuous in the
+        # animal. At load_half = 0.02 the measured sin(phi) of 0.206, 0.015 and 0.006 give
+        # 0.09, 0.56 and 0.78 -- graded across the whole continuum, not switching at one end.
+        half = max(self.p.load_half, 1e-12)
+        self._load_swim = half / (half + det)
 
     def sense(self, world: World, nodes: np.ndarray, contact: np.ndarray,
               curvature: np.ndarray, activation: np.ndarray,
@@ -426,14 +564,43 @@ class Senses:
         # Adapt out the static component before the receptor saturates on it, so the whole
         # dynamic range is spent on the part of the bend that is actually changing.
         short = mods.wavelength_shortening() if mods is not None else 0.0
-        if short > 1e-6:
+        # The load-dependent half of the same blend, running the other way. `swim` is last
+        # step's detector output: 0 leaves the reach at the shipped value, 1 takes it to
+        # `proprio_reach_swim`. Below 0.5 it shortens towards the on-food bank instead, so one
+        # signal covers both directions from 0.16 without a fourth set of fields. The two
+        # sources of shortening add and are clipped together, because a blend whose weights
+        # sum past 1 is not a blend.
+        crawl = swim = 0.0
+        if p.load_detect_gain > 0.0:
+            if self._load_swim >= 0.5:
+                swim = min(1.0, (self._load_swim - 0.5) * 2.0)
+            else:
+                crawl = min(1.0, (0.5 - self._load_swim) * 2.0)
+        crawl = min(1.0, crawl + short)
+        swim = min(swim, max(0.0, 1.0 - crawl))
+        wb, wa = self.W_b @ k, self.W_a @ k
+        # Each bank is mixed in only when it carries weight. Written this way so that a
+        # disabled term contributes nothing at all rather than contributing `0.0 * matmul`:
+        # the arithmetic is the same for finite values, but skipping it keeps the off path
+        # exactly the expression it was before this code existed -- which is what makes
+        # `tests/test_load_reach.py`'s bit-identity claim a statement about the code and not
+        # about IEEE rounding -- and avoids two matrix products per step for a term that is
+        # off by default.
+        if crawl > 1e-6 or swim > 1e-6:
             # Basal slowing: shorten the wave rather than weaken the drive, because the
             # frequency is mechanics-set and will not move. See ModulatorParams.
-            wb = (1.0 - short) * (self.W_b @ k) + short * (self.W_b_food @ k)
-            wa = (1.0 - short) * (self.W_a @ k) + short * (self.W_a_food @ k)
-        else:
-            wb, wa = self.W_b @ k, self.W_a @ k
+            base = 1.0 - crawl - swim
+            wb = base * wb
+            wa = base * wa
+            if crawl > 1e-6:
+                wb = wb + crawl * (self.W_b_food @ k)
+                wa = wa + crawl * (self.W_a_food @ k)
+            if swim > 1e-6:
+                wb = wb + swim * (self.W_b_swim @ k)
+                wa = wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
+        if p.load_detect_gain > 0.0:
+            self._update_load(k, activation, gate_fwd, gate_bwd)
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
         if wave_gain < 1.0:

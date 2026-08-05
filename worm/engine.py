@@ -76,7 +76,7 @@ class Simulation:
         self.senses = Senses(self.conn, self.p.sensory, self.p.world,
                              self.p.body.n_links, self.p.sensory.proprio_reach,
                              self.p.neural.dt, g_rest=self.nervous.g_rest,
-                             rng=self.rng)
+                             rng=self.rng, muscle_p=self.p.muscle)
         self.modulators = Modulators(self.conn, self.p.modulator, self.p.neural.dt,
                                      g_rest=self.nervous.g_rest)
         self.pharynx = Pharynx(self.conn, self.p.pharynx, self.p.neural.dt)

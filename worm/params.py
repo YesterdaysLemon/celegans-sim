@@ -1561,6 +1561,81 @@ class SensoryParams:
     # set by ModulatorParams.dopamine_wavelength and by how much dopamine it has.
     proprio_reach_food: float = 0.10
 
+    # The long reach, for swimming. `tools/reach_span.py` measured 1.30 L in buffer here
+    # against the animal's 1.54, on a gait better than the shipped one at that end -- TWI
+    # +0.808 against +0.657, net 0.0545 against 0.0380 mm/s. Paired with 0.10 on agar it
+    # implies a wavelength span near 2.2x against the animal's 2.37x, which is the whole
+    # point of `load_detect_gain` below. 0.32 reaches the animal's 1.54 L almost exactly and
+    # is not used: it buys that by wrecking the wave (TWI +0.479, net-to-path 0.37).
+    proprio_reach_swim: float = 0.24
+
+    # ------------------------------------------------------------------ load-dependent reach
+    # The switch that lets the animal choose its own reach, and therefore its own wavelength,
+    # from how the medium feels. Off by default: at 0.0 the blend below is skipped entirely
+    # and the model is bit-identical to one without this code.
+    #
+    # WHY THERE IS ANYTHING TO SWITCH ON, WHICH IS THE PART THAT WAS NOT OBVIOUS.
+    #
+    # `tools/load_signal.py` asked whether anything in this animal's own geometry knows which
+    # medium it is in, because the answer could have been no -- this nervous system senses
+    # curvature and nothing else, with no force, velocity, tension or effort afferent
+    # anywhere, so if no geometric quantity separates the media then a load-dependent reach is
+    # not badly built, it is unbuildable. Three media, three seeds, seven candidates:
+    #
+    #   signal                          agar    viscous   buffer   buffer/agar  leg2  vs gait
+    #   bending amplitude               4.588    3.791    3.739       0.816      7%    0.8x
+    #   bend per unit commanded moment 14.445   12.388   12.273       0.850      6%    0.7x
+    #   moment -> curvature lag, ms      47.9      2.9      1.1       0.022     26%   15.3x
+    #   travelling index                0.849    0.724    0.657       0.774
+    #
+    # **The moment-to-curvature lag is the signal**, and the column that decides it is `leg2`
+    # -- the share of a quantity's movement happening below K = 9 -- rather than the ratio.
+    # Every other quantity here puts 6 to 7% of its movement there, which is the shape of
+    # every frequency table in NEXT.md. The lag puts 26% there, and is the first quantity
+    # measured in this project that does not saturate by K = 9. Amplitude and compliance
+    # separate the two ends and were rejected: both saturate, and both move by about what the
+    # travelling index moves, so they are as likely to be reading "this animal is swimming
+    # badly" as "this animal is in water".
+    #
+    # HOW A CELL READS A LAG, GIVEN THAT IT CANNOT CROSS-CORRELATE.
+    #
+    # It multiplies its own output by the *rate* of its own proprioceptive input and averages.
+    # For `act = B sin(wt)` and a sensed bend `raw = A sin(wt - phi)`, the product with
+    # `d(raw)/dt` averages to `(A B w / 2) sin(phi)` -- the quadrature term, proportional to
+    # the phase lag. Divided by the average of `|act| * |d(raw)/dt|` it is about `sin(phi)`
+    # and, crucially, **independent of both amplitudes**, which is what keeps it from
+    # collapsing back into the amplitude signal that was just rejected as a gait confound.
+    #
+    # The in-phase product does not work and it is worth saying why, because it is the one
+    # anybody would try first. At these frequencies 47.9 ms is only 11.9 degrees, and `cos` is
+    # flat near zero: `cos` gives buffer/agar 1.02 where `sin` gives 0.028.
+    #
+    # Both inputs are already inside the same cell. B-type motor neurons *are* the stretch
+    # receptors in this animal (Wen et al. 2012), so the cell commanding the bend is the cell
+    # reading it, and no new pathway is needed. The detector reads curvature at the cell's own
+    # output position rather than through its reach-shifted field, and that is not a detail:
+    # the shifted field carries the wave's own spatial phase, about 69 degrees at the shipped
+    # reach and wavelength, which is six times the mechanical lag and moves with the very
+    # wavelength the detector is meant to set. Reading locally is what keeps this from being
+    # a loop closed on itself.
+    load_detect_gain: float = 0.0    # 0 disables the whole path
+
+    # Smoothing on the detector. The product is a per-step quantity and its cycle average is
+    # the signal, so this has to be long against the undulation period (about 1.4 s) and short
+    # against the time an animal takes to cross into different stuff. It also sets how fast
+    # the reach can move, and the reach is the wavelength, so a short value here would let the
+    # gait chase its own noise.
+    load_tau: float = 2.0            # s
+
+    # The detector value at which the animal is half-way between its crawling and swimming
+    # reaches. Measured `sin(phi)` is 0.206 on agar, 0.015 in viscous and 0.006 in buffer, and
+    # the map is the saturating `load_half / (load_half + max(det, 0))` -- a hyperbola rather
+    # than a threshold, because gait modulation is continuous in the animal. At 0.02 those
+    # three give 0.09, 0.56 and 0.78 of the way to the swimming reach, which is graded across
+    # the whole continuum rather than switching at one end. **This number is a first estimate
+    # from the measured lags and has not been fitted to any behaviour.**
+    load_half: float = 0.02
+
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel
     # left responding to absolute value rather than to change.
