@@ -217,29 +217,37 @@ class Senses:
         self._load_dt = dt
         self._load_rate = -np.expm1(-dt / p.load_tau)
         self._load_act_adapt = np.zeros(conn.n)
-        # The corollary discharge, and the reason it has to exist.
+        # THE EFFERENCE COPY IS THE MOMENT ITSELF, AND THAT IS AN ASSUMPTION, NOT A SHORTCUT.
         #
-        # A cell's output is not the moment its muscle applies: `calcium -> tension` is two
-        # first-order lags between them, and those lags are **medium-independent**. Compared
-        # raw, the detector measures the sum, and the sum is mostly muscle -- 23 degrees of
-        # muscle against 11.9 of body on agar, and 27.9 against 0.33 in buffer. Measured that
-        # way it reads 0.648 / 0.537 / 0.546 across the three media: correct arithmetic on the
-        # wrong quantity, and a 1.2x separation where the body alone gives 35x.
+        # The detector needs the phase between what a cell's muscle is pulling with and what
+        # its body then did. The cell's *output* is the wrong reference and measurably so,
+        # because several lags sit between the two -- synaptic release, the muscle membrane,
+        # calcium, tension. Measured per cell against the joint at its own output position:
         #
-        # So what the cell compares against its stretch receptor is a copy of its own output
-        # passed through the same kinetics as its own neuromuscular junction. That is the
-        # ordinary form of an efference copy -- a corollary discharge carrying a forward model
-        # of the effector -- and here the forward model is exact by construction, because it
-        # reuses the muscle's own two time constants rather than fitting its own. Subtracting
-        # a lag the animal itself installed is what leaves the body's lag visible.
+        #   medium    output -> moment    moment -> curvature
+        #   agar          -35.8 deg            -10.1 deg
+        #   viscous       -41.7                 -0.7
+        #   buffer        -43.0                 -0.7
         #
-        # Falls back to the raw output if no muscle parameters are supplied, which keeps
-        # `Senses` constructible on its own; every caller in the model passes them.
-        self._load_eff = np.zeros(conn.n)
-        self._load_eff2 = np.zeros(conn.n)
-        self._load_eff_rate = (
-            (-np.expm1(-dt / muscle_p.tau_calcium), -np.expm1(-dt / muscle_p.tau_tension))
-            if muscle_p is not None else None)
+        # The right-hand column is the signal. The left-hand one is four times its size, and
+        # it is **not constant**: it moves 7 degrees across these media, because it is a lag
+        # and the undulation frequency changes. So the offending term cannot be subtracted by
+        # a fixed filter. A three-lag forward model fitted to it leaves about 2 degrees of
+        # residual, which is fine on agar and is **six times the entire buffer signal** --
+        # measured, it turned a 35x separation into 4x. An approximate internal model does not
+        # work here, and the reason is arithmetic rather than tuning.
+        #
+        # So the cell is given the moment its own muscle is applying. That is an efference
+        # copy rather than a new afferent -- nothing is being sensed that was not already
+        # commanded -- but it amounts to assuming a **perfect internal model of the effector**,
+        # and that assumption is doing real work rather than none. It is defensible in one
+        # specific way and should not be defended more broadly than that: the plant here is
+        # fixed. Muscle kinetics do not change with the medium; only the load on the body
+        # does. An animal that has learned its own muscles once would not need to relearn them
+        # in water. How much model error the mechanism tolerates is a separate and answerable
+        # question -- degrade the copy and watch the separation fall -- and it is not answered
+        # here.
+        self._load_moment_prev = None
         self._load_local_prev = None      # None until the first step supplies a curvature
         # Per cell, because the normalisation has to be per cell: `sin(phi)` comes out of
         # `<a*b> / (rms(a) * rms(b))`, and pooling the three averages across cells first mixes
@@ -300,7 +308,7 @@ class Senses:
 
         self.readout = {}
 
-    def _update_load(self, k: np.ndarray, activation: np.ndarray,
+    def _update_load(self, k: np.ndarray, moment: np.ndarray,
                      gate_fwd: float, gate_bwd: float) -> None:
         """Advance the quadrature phase detector and the swimming fraction it sets.
 
@@ -322,15 +330,12 @@ class Senses:
         it is a refinement rather than a different mechanism. One scalar is what can be
         measured and defended first.
         """
-        # The corollary discharge: the cell's own output through its own effector's kinetics,
-        # so that what the comparison sees is the moment its muscle is applying rather than
-        # the command it sent 95 ms earlier. See `_load_eff_rate` for why this is not optional.
-        act = activation
-        if self._load_eff_rate is not None:
-            r1, r2 = self._load_eff_rate
-            self._load_eff += (act - self._load_eff) * r1
-            self._load_eff2 += (self._load_eff - self._load_eff2) * r2
-            act = self._load_eff2
+        # Both sides go through the *same* zero-reach map, so each cell gets the moment at its
+        # own output position and the curvature at its own output position. The map carries a
+        # sign -- negative for dorsal cells, positive for ventral -- and it is applied to both,
+        # so the sign cancels out of the phase comparison and does not have to be reasoned
+        # about separately for the two sheets.
+        act = (self.W_b_local @ moment) * gate_fwd + (self.W_a_local @ moment) * gate_bwd
         self._load_act_adapt += (act - self._load_act_adapt) * self._load_rate
         act_ac = act - self._load_act_adapt
 
@@ -371,7 +376,7 @@ class Senses:
 
     def sense(self, world: World, nodes: np.ndarray, contact: np.ndarray,
               curvature: np.ndarray, activation: np.ndarray,
-              mods=None) -> np.ndarray:
+              mods=None, joint_moment: np.ndarray | None = None) -> np.ndarray:
         """Build the (N,) external current vector for this step."""
         p = self.p
         n = self.conn.n
@@ -599,8 +604,8 @@ class Senses:
                 wb = wb + swim * (self.W_b_swim @ k)
                 wa = wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
-        if p.load_detect_gain > 0.0:
-            self._update_load(k, activation, gate_fwd, gate_bwd)
+        if p.load_detect_gain > 0.0 and joint_moment is not None:
+            self._update_load(k, joint_moment, gate_fwd, gate_bwd)
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
         if wave_gain < 1.0:

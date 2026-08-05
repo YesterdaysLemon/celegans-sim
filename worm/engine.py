@@ -152,8 +152,13 @@ class Simulation:
         # that within a step the wireless layer is one step behind the wired one -- the
         # same consistent unit delay used everywhere else in this model.
         self.modulators.step(activation, alive=self.nervous.alive)
+        # The joint moment goes in as the load detector's efference copy -- last step's, since
+        # the muscles have not been stepped yet, which is the same unit delay this model uses
+        # everywhere it has a cycle to break. See Senses._update_load.
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
-                                  self.modulators)
+                                  self.modulators,
+                                  joint_moment=self.muscles.joint_moment()
+                                  if self.p.sensory.load_detect_gain > 0.0 else None)
 
         self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
         self.muscles.step(self.nervous.s)
