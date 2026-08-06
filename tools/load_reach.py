@@ -61,6 +61,55 @@ Frequency is reported beside it. Nothing in this project has moved the frequency
 1.4x and this mechanism does not target it, so a frequency result either way is information
 rather than the point.
 
+IT RAN, AND THE SPAN OPENS.
+
+```
+  arm  medium   K      n | reach | freq Hz         wavelen  TWI     net mm/s  n/p
+  off  agar     40.00  3 | 0.160 |  0.668 +-0.005    0.82  +0.839  0.3248  0.88
+  off  viscous   9.00  3 | 0.160 |  0.842 +-0.012    0.88  +0.718  0.2355  0.87
+  off  buffer    1.58  3 | 0.160 |  0.862 +-0.013    0.87  +0.617  0.0387  0.71
+  on   agar     40.00  3 | 0.123 |  0.659 +-0.003    0.73  +0.852  0.3012  0.94
+  on   viscous   9.00  3 | 0.197 |  0.845 +-0.029    1.18  +0.715  0.1884  0.57
+  on   buffer    1.58  3 | 0.235 |  0.844 +-0.030    1.28  +0.717  0.0560  0.68
+
+  wavelength span 1.06 +-0.04x off -> 1.76 +-0.04x on   (the animal: 2.37x)
+  frequency  span 1.29 +-0.01x off -> 1.28 +-0.05x on
+```
+
+**5% of the animal's wavelength modulation to 55%**, by more than ten times the seed scatter,
+and the wave survives it. Every previous configuration in this project sat between 1.01x and
+1.17x. The reach column is the mechanism visible directly: 0.160 in every medium with the term
+off, and 0.123 / 0.197 / 0.235 with it on -- the animal choosing, and choosing differently in
+each medium, from a signal it computes about its own body.
+
+The swimming end is where it pays, and it pays on every column at once: wavelength 0.87 ->
+1.28 L against the animal's 1.54, travelling index +0.617 -> +0.717, **net speed up 45%**,
+0.0387 -> 0.0560 mm/s. Buffer has been this model's worst medium for a long time and this is
+the first change to improve it without costing the crawl. Agar is close to neutral -- travelling
+index slightly up, net-to-path 0.88 -> 0.94, net speed down 7% -- which is the trade
+`SensoryParams.proprio_reach` predicted for a shorter reach and it is a mild one.
+
+**And the frequency span does not move at all: 1.29x to 1.28x.** This mechanism does not touch
+it and did not accidentally touch it. Frequency and wavelength really are independent failures
+in this model, which `reach_span.py` argued and this now demonstrates from the other side.
+
+THE COST IS IN THE MIDDLE, AND IT IS NOT SMALL.
+
+Viscous loses a fifth of its net speed and a third of its path efficiency: net-to-path 0.87 ->
+0.57, net 0.2355 -> 0.1884 mm/s, at a wavelength of 1.18 L. The animal at K = 9 is committing
+almost fully to swimming -- reach 0.197 of a possible 0.24 -- and it is too early.
+
+The cause is in the detector rather than in the map. Its readings are 0.154 / 0.013 / 0.008,
+so agar to viscous is a factor of 12 and viscous to buffer only 1.6. The raw lag it is built
+on does not saturate that way -- `tools/load_signal.py` measured 26% of the lag's movement
+happening below K = 9 -- so **the compression is something the closed-loop measurement adds**,
+and the small-angle floor in `tests/test_load_reach.py` is the first suspect: it reads a
+0.33 degree phase about 1.6x high, which lifts the thin end and squeezes exactly this leg.
+
+That is the next thing to fix and it is bounded work. It also means the 1.76x here is a
+**floor rather than a ceiling**: the floor inflates the swimming end of the detector, so a
+sharper one moves the answer towards the animal rather than away from it.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/load_reach.py
 """
 

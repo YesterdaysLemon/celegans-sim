@@ -1618,6 +1618,48 @@ class SensoryParams:
     # reach and wavelength, which is six times the mechanical lag and moves with the very
     # wavelength the detector is meant to set. Reading locally is what keeps this from being
     # a loop closed on itself.
+    # MEASURED, AND IT IS THE FIRST GAIT MODULATION IN THIS MODEL THE ANIMAL PRODUCES ITSELF.
+    # `tools/load_reach.py`, both arms x three media x three seeds, paired:
+    #
+    #   arm  medium   K      | reach | freq Hz         wavelen  TWI     net mm/s  n/p
+    #   off  agar     40.00  | 0.160 |  0.668 +-0.005    0.82  +0.839  0.3248  0.88
+    #   off  viscous   9.00  | 0.160 |  0.842 +-0.012    0.88  +0.718  0.2355  0.87
+    #   off  buffer    1.58  | 0.160 |  0.862 +-0.013    0.87  +0.617  0.0387  0.71
+    #   on   agar     40.00  | 0.123 |  0.659 +-0.003    0.73  +0.852  0.3012  0.94
+    #   on   viscous   9.00  | 0.197 |  0.845 +-0.029    1.18  +0.715  0.1884  0.57
+    #   on   buffer    1.58  | 0.235 |  0.844 +-0.030    1.28  +0.717  0.0560  0.68
+    #
+    #   wavelength span 1.06 +-0.04x -> 1.76 +-0.04x   (the animal: 2.37x)
+    #   frequency  span 1.29 +-0.01x -> 1.28 +-0.05x
+    #
+    # **5% of the animal's wavelength modulation to 55%**, by more than ten times the seed
+    # scatter. Every configuration this project has tried sat between 1.01x and 1.17x. The
+    # reach column is the mechanism visible directly: 0.160 everywhere with the term off, and
+    # 0.123 / 0.197 / 0.235 with it on -- the animal choosing, differently in each medium,
+    # from a signal it computes about its own body.
+    #
+    # The swimming end pays on every column at once: wavelength 0.87 -> 1.28 L against the
+    # animal's 1.54, TWI +0.617 -> +0.717, **net speed up 45%**. Buffer has been this model's
+    # worst medium for a long time and this is the first change to improve it without costing
+    # the crawl. Agar is near neutral: TWI slightly up, net-to-path 0.88 -> 0.94, net speed
+    # down 7%, which is the mild version of the trade `proprio_reach` already predicted.
+    #
+    # And the **frequency span does not move**, 1.29x to 1.28x. This does not target it and
+    # did not accidentally touch it, which is `reach_span.py`'s independence claim confirmed
+    # from the other side.
+    #
+    # THE COST IS IN THE MIDDLE AND IT IS NOT SMALL. Viscous loses a fifth of its net speed
+    # and a third of its path efficiency -- net-to-path 0.87 -> 0.57 -- because at K = 9 the
+    # animal commits almost fully to swimming, reach 0.197 of a possible 0.24, and that is too
+    # early. The cause is the detector rather than the map: it reads 0.154 / 0.013 / 0.008, so
+    # agar to viscous is 12x and viscous to buffer only 1.6x, while the raw lag it is built on
+    # puts 26% of its movement below K = 9. The compression is something the closed loop adds,
+    # and the small-angle floor is the first suspect -- it reads 0.33 degrees about 1.6x high,
+    # which lifts the thin end and squeezes exactly this leg. That also means **1.76x is a
+    # floor rather than a ceiling**: a sharper detector moves it towards the animal.
+    #
+    # Still 0.0. Nothing is adopted until `tools/scorecard.py` and `tools/ethogram.py` have
+    # run against the frozen baseline on identical seeds, and it is not ported to the runtime.
     load_detect_gain: float = 0.0    # 0 disables the whole path
 
     # Smoothing on the detector. The product is a per-step quantity and its cycle average is

@@ -41,6 +41,10 @@ media rather than the two ends moved the diagnosis:
 >    that does not saturate by K = 9** — 26% of its movement is below that point, where
 >    everything else manages 6–7%. A neuron can read it as a quadrature phase detector, and
 >    this model already holds both of its inputs in the same cell.
+> 3. **It is built, and the span opens: 1.06× → 1.76× against the animal's 2.37×** — from 5%
+>    of the animal's wavelength modulation to 55%, at ten times the seed scatter, with the
+>    swimming end improving on every column measured (net speed **up 45%**). Off by default
+>    and not yet adopted; the gate is scorecard and ethogram against the frozen baseline.
 >
 > Everything between here and there is why those are the surprising answers.
 
@@ -326,10 +330,61 @@ detector reads 1.0001 and is blind over exactly the half of the continuum that n
 is arithmetic off the measured lag rather than a measurement, and it is written down here
 before being built.
 
-**So the next build is well posed**: a quadrature phase detector on each B-type cell's own
-output against its own proprioceptive input, low-passed, driving a signed blend between
-receptive-field banks at reach 0.10 and 0.24. Then `tools/scorecard.py` and `tools/ethogram.py`
-against the frozen baseline before anything is adopted.
+### It was built, and the span opens: 1.06× → 1.76× against the animal's 2.37×
+
+`SensoryParams.load_detect_gain`. A quadrature phase detector on each cell's own commanded
+moment against the curvature at its own body position, driving a signed blend between
+receptive-field banks at reach 0.10, 0.16 and 0.24. Off by default; the disabled path is
+bit-identical, pinned against a run with the new banks deleted outright.
+
+`tools/load_reach.py`, both arms × three media × three seeds, paired by seed:
+
+```
+  arm  medium   K      | reach | freq Hz         wavelen  TWI     net mm/s  n/p
+  off  agar     40.00  | 0.160 |  0.668 +-0.005    0.82  +0.839  0.3248  0.88
+  off  viscous   9.00  | 0.160 |  0.842 +-0.012    0.88  +0.718  0.2355  0.87
+  off  buffer    1.58  | 0.160 |  0.862 +-0.013    0.87  +0.617  0.0387  0.71
+  on   agar     40.00  | 0.123 |  0.659 +-0.003    0.73  +0.852  0.3012  0.94
+  on   viscous   9.00  | 0.197 |  0.845 +-0.029    1.18  +0.715  0.1884  0.57
+  on   buffer    1.58  | 0.235 |  0.844 +-0.030    1.28  +0.717  0.0560  0.68
+
+  wavelength span 1.06 +-0.04x -> 1.76 +-0.04x   (the animal: 2.37x)
+  frequency  span 1.29 +-0.01x -> 1.28 +-0.05x
+```
+
+**From 5% of the animal's wavelength modulation to 55%**, by more than ten times the seed
+scatter. Every configuration in this file above sat between 1.01× and 1.17×. The `reach`
+column is the mechanism visible directly — 0.160 in every medium with the term off, and
+0.123 / 0.197 / 0.235 with it on. The animal is choosing, and choosing differently in each
+medium, from a signal it computes about its own body.
+
+**The swimming end pays on every column at once**: wavelength 0.87 → 1.28 L against the
+animal's 1.54, travelling index +0.617 → +0.717, **net speed up 45%**. Buffer has been this
+model's worst medium for a long time, and this is the first change to improve it without
+costing the crawl. Agar is near neutral — net-to-path 0.88 → 0.94, net speed down 7% — the
+mild version of the trade `proprio_reach` already predicted for a shorter reach.
+
+**And the frequency span does not move**, 1.29× → 1.28×. This mechanism does not target it and
+did not accidentally touch it, which confirms from the other side the independence
+`reach_span.py` argued: frequency and wavelength are separate failures needing separate
+mechanisms, and one of them is now half solved.
+
+> **The cost is in the middle and it is not small.** Viscous loses a fifth of its net speed and
+> a third of its path efficiency — net-to-path 0.87 → 0.57 — because at K = 9 the animal
+> commits almost fully to swimming, reach 0.197 of a possible 0.24, and that is too early.
+>
+> The cause is the detector rather than the map. It reads 0.154 / 0.013 / 0.008, so agar to
+> viscous is 12× and viscous to buffer only 1.6×, while the raw lag it is built on puts **26%**
+> of its movement below K = 9. So the compression is something the *closed loop* adds, and the
+> small-angle floor is the first suspect: it reads a 0.33° phase about 1.6× high, which lifts
+> the thin end and squeezes exactly this leg. Bounded work, and it means **1.76× is a floor
+> rather than a ceiling** — a sharper detector moves the answer towards the animal.
+
+**Before adoption**, and none of it is optional: `tools/scorecard.py` and `tools/ethogram.py`
+against the frozen baseline on identical seeds with the trajectory guards reported, then the
+port to `wasm/assembly/index.ts`. The term changes the shared gait, so it can move every
+behavioural assay at once — and the viscous regression above is exactly the shape of thing
+those assays exist to catch.
 
 **And a warning that came out of this sweep unasked for.** The shipped 0.16 is the
 reproducible one: frequency sd 0.012 and 0.023 Hz there against 0.229, 0.261 and 0.295 at
