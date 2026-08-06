@@ -100,7 +100,7 @@ embedded membrane time constants span 0.1 ms to 6 ms across the connectome, so t
 (ASEL/ASER), and the AWA model that Liu et al. (2018) fitted to real recordings uses
 `g_leak = 0.25 nS`, `E_leak = -65 mV`, `C = 1.5 pF`. With the published values the entire
 network rests near −4 mV, some 55 mV depolarised from every recording ever made. We use the
-measured electrophysiology. The network here rests between −62 and −12 mV, median −40 mV.
+measured electrophysiology. The network here rests between −62 and −12 mV, median −39 mV.
 
 **AVL and DVB are excitatory.** Every standard model marks all 26 GABAergic neurons
 inhibitory because they stain for GABA. AVL and DVB release GABA onto EXP-1, a GABA-gated
@@ -227,16 +227,17 @@ now pays for its own amplitude.
 measurements on live animals; the model column is the mean and spread over five seeds from
 a single run of `tools/scorecard.py`, so every row describes the same animal. It has not
 always: this table once quoted a crawling speed from day two beside a frequency from day
-nine.
+nine. The two resting-potential rows carry no spread because they have none — rest is a
+deterministic solve, measured once, before the animal moves.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
 | Curvature, r.m.s. | **4.53 ± 0.05 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
 | Curvature, peak | **13.2 ± 1.2 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
-| Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
-| Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
-| Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
+| Muscle resting potential | **−22.0 mV** *(3 mV depolarised)* | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
+| Resting potentials | **−62 to −12 mV**, median −39 | −75 to −25 mV | several, see `params.py` |
+| Swimming efficiency U/c | **0.051 ± 0.002** *(inefficient)* | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
 | Crawling speed (net) | **0.309 ± 0.051 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
@@ -245,8 +246,39 @@ nine.
 | Undulation frequency, agar | **0.66 ± 0.01 Hz** | 0.30 ± 0.02 Hz *(see below)* | Fang-Yen et al. 2010 |
 | Wavelength, agar | **0.86 ± 0.02 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
-Curvature, wave direction and the membrane potentials land on the measured values. The
-gait's *timing* does not: see below.
+Curvature, wave direction and the neurons' resting potentials land on the measured values.
+The gait's *timing* does not: see below.
+
+Three rows above — the two potentials and swimming efficiency — were written on day one
+and then sat through every re-measurement of the table around them, because no tool
+produced them and so nothing ever contradicted them. They are measured now. Swimming
+efficiency is the plainest casualty: **0.051 ± 0.002** from the buffer trials against a
+measured 0.08, where the row read 0.076 and looked like a hit. The other two were hiding
+something more interesting than a wrong number.
+
+The muscle rests at −22.0 mV in every one of the 95 cells — two clear of the measured
+band, three off its centre — and that is not a fit that came out close. It is exactly
+`v_half`. The per-cell balance solves each cell to `rest_tension = 0.50`, tension is a
+sigmoid centred on `v_half`, so the muscle resting potential *is* `v_half` by
+construction, and how near Gao & Zhen it lands is a coincidence of two independently
+chosen numbers. This row used to read −31 to −24 mV, which bracketed the measurement and
+hid both facts.
+
+And *resting* is load-bearing in the neuron row's name, because the crawling animal is
+nowhere near its rest. The head motor pool — RMDD/RMDV, SMD, SMB, RIV, SAA — swings very
+nearly clamp to clamp every cycle: RMDVL alone holds both the population maximum and the
+population minimum on a single 40 s run, and across five seeds some neuron is on the
++45 mV clamp for **76%** of the window and on the −80 mV clamp for **86%**. Nothing in a
+network of graded, sodium-channel-free neurons should be at +45 mV, so `v_clamp` is not
+the inert numerical backstop it reads as — it is in the loop. `NEXT.md`'s H2 already names
+the cause (proprioception is injected as a current rather than as a conductance, so
+nothing limits the drive); this is the number that says how much of the gait it decides.
+
+It went unquantified because nothing was looking. `test_membrane_potentials_stay_physiological`
+asks what *fraction of the 302* are on the lower clamp and wants it under 10%, which is a
+test for the population collapsing and is silent about two head neurons pinned there all
+cycle; it does not look at the upper clamp at all. And the scorecard row that would have
+shown it was reading rest off a moving animal.
 
 The mechanics are verified independently of the biology: the assembled drag metric matches
 direct Gauss-Legendre quadrature of the integral it stands for to 2×10⁻¹⁶ relative, it is
