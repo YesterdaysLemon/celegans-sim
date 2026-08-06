@@ -83,8 +83,16 @@ function serve() {
 
 /* --- the checks ------------------------------------------------------------------ */
 
+// Width and height are CSS pixels; `dpr` is the display density, which changes none of
+// them. It is here because the viewer draws into backing stores scaled by devicePixelRatio
+// and hit-tests against layouts that are not, and a mistake about which of the two a
+// coordinate is in is invisible at dpr 1 -- the factor is 1, so the wrong conversion and
+// the right one agree. Every developer monitor that is not a laptop screen is dpr 1, and
+// so is a default headless Chrome, which is how a hit test that only worked on the top-left
+// quadrant of the panel shipped and survived this file.
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
+  { name: 'hidpi',   width: 1440, height: 900, dpr: 2 },
   { name: 'tablet',  width: 768,  height: 1024 },
   { name: 'mobile',  width: 390,  height: 844 },
 ];
@@ -118,7 +126,8 @@ const browser = await puppeteer.launch({
 try {
   for (const vp of VIEWPORTS) {
     const page = await browser.newPage();
-    await page.setViewport({ width: vp.width, height: vp.height });
+    await page.setViewport({
+      width: vp.width, height: vp.height, deviceScaleFactor: vp.dpr || 1 });
 
     const errors = [], failed = [];
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -233,6 +242,136 @@ try {
       });
       check(vp.name, panel.a === 'true' && panel.b === 'false' && panel.c === 'true',
             `aria-expanded went ${panel.a} -> ${panel.b} -> ${panel.c}`);
+
+      /* Pointing at a neuron finds that neuron, at any display density.
+       *
+       * `neuronAt` converted the pointer by the ratio of the canvas's backing store to its
+       * CSS box, but the layout it compares against is built in CSS pixels -- fitCanvas
+       * scales the backing store by devicePixelRatio and puts the same factor into the
+       * context transform, so it hands buildLayout the CSS size. The conversion was
+       * therefore a multiplication by devicePixelRatio against coordinates that never had
+       * it: a no-op at dpr 1, and a factor of two out on a HiDPI display, which is most
+       * laptops. All 302 cells stayed reachable -- crammed into the top-left quadrant --
+       * so nothing was missing, it was in the wrong place, and clicks in ablate mode
+       * killed a neuron other than the one under the cursor.
+       *
+       * The claim is that the answer does not depend on the display. Which is exactly
+       * right for a panel laid out in CSS pixels, and it is the only formulation of "the
+       * hit test is correct" that does not need a second copy of the grid in this file:
+       * probe the same fractions of the same panel at dpr 2 and dpr 1 and the two runs
+       * must agree cell for cell. Coverage will not do it -- a uniform scale error moves
+       * every cell without losing any, so sweeping still finds all 302.
+       *
+       * Only the CSS box has to hold still across the switch, and it does: dpr changes no
+       * layout. It is asserted rather than assumed, because a probe comparison between two
+       * differently-sized panels would be measuring the wrong disagreement.
+       *
+       * Driven through the real mousemove listener and read back from S.hover, which is
+       * the viewer's actual cursor -- the one the highlight, the tooltip and Enter share.
+       *
+       * The same probe carries `neuronCentre`, the inverse of the hit test and the only
+       * thing that knows where to put a tooltip for a cell reached by the arrow keys. It
+       * held the *reciprocal* of the same mistake, which is why nothing caught it: fed
+       * into neuronAt the two errors cancelled and the round trip came out right, so only
+       * the tooltip's position on screen was wrong. Nothing else here reaches it -- it is
+       * called from a keyboard path whose only visible effect is a tooltip the viewport
+       * clamp can move -- but panels.js is a module the page has already imported, and
+       * importing it again is the same instance and the same layout the panel is drawn
+       * from. Density-independence is the claim for it too, so it rides the comparison.
+       */
+      const probeHover = () => page.evaluate(async () => {
+        const S = window.__sim;
+        const nc = document.getElementById('c-neurons');
+        const { neuronCentre } = await import('/viewer/panels.js');
+        // The collapse check above closed and reopened this very panel, and both the
+        // layout and the backing store are resized in the render loop, not on the event.
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const r = nc.getBoundingClientRect();
+        const out = { dpr: window.devicePixelRatio, w: Math.round(r.width),
+                      h: Math.round(r.height), sig: [], centres: [] };
+        if (r.width < 4 || r.height < 4) return out;          // collapsed; nothing to hit
+        // Fractions of the panel rather than pixel steps, so the probe is the same set of
+        // points whatever the panel measures and two runs are comparable term by term.
+        const COLS = 41, ROWS = 21;
+        for (let b = 0; b < ROWS; b++) {
+          for (let a = 0; a < COLS; a++) {
+            nc.dispatchEvent(new MouseEvent('mousemove', {
+              clientX: r.left + r.width * (a / (COLS - 1)),
+              clientY: r.top + r.height * (b / (ROWS - 1)), bubbles: true }));
+            out.sig.push(S.hover == null ? -1 : S.hover);
+          }
+        }
+        // Relative to the panel, because the claim is about where in it a cell sits. And
+        // pointing at the place it names has to come back to the cell it named, which is
+        // the one way the two functions can be checked against each other rather than
+        // against a copy of the grid -- but only one way, since it passes when both are
+        // wrong by reciprocal factors, which is exactly how they were.
+        out.roundTrip = 0;
+        for (let i = 0; i < S.meta.neurons.length; i += 37) {
+          const at = neuronCentre(nc, i);
+          out.centres.push(at ? [Math.round(at.clientX - r.left),
+                                 Math.round(at.clientY - r.top)] : null);
+          if (!at) continue;
+          nc.dispatchEvent(new MouseEvent('mousemove', {
+            clientX: at.clientX, clientY: at.clientY, bubbles: true }));
+          if (S.hover !== i) out.roundTrip++;
+        }
+        nc.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+        return out;
+      });
+
+      const hover = await probeHover();
+      check(vp.name, hover.w >= 4 && hover.h >= 4,
+            `the neuron panel measured ${hover.w}x${hover.h} -- it never reopened`);
+      /* Much of the panel answers at all. A floor, not a measurement: it is here so the
+       * comparison below is between two live hit tests rather than two silent ones, and
+       * so an error that is the *same* at both densities is not invisible to both checks.
+       *
+       * 0.4 is placed by what the two states look like, not by what a healthy panel
+       * scores. A uniform scale error of k confines every answer to 1/k^2 of the panel --
+       * a quarter of it at dpr 2, and 0.19 was measured -- while a panel whose hit test
+       * agrees with its drawing answers wherever there is a cell, which was 0.64 at the
+       * widest, shortest panel here and 0.79 at the rest. Anything between separates them;
+       * the rest of the gap is grid packing, which is not what this is asking about.
+       */
+      const answered = hover.sig.filter((i) => i >= 0).length;
+      check(vp.name, hover.sig.length > 0 && answered > hover.sig.length * 0.4,
+            `only ${answered} of ${hover.sig.length} points across the neuron panel `
+            + 'named a neuron: most of the panel is not hit-testing at all');
+      check(vp.name, hover.roundTrip === 0,
+            `${hover.roundTrip} of ${hover.centres.length} neurons did not answer at the `
+            + 'position neuronCentre puts them: the tooltip a keyboard cursor raises is '
+            + 'not over the cell it describes');
+      // neuronCentre answers from the module's own `layout`, so a second instance of the
+      // module -- a moved file, an import specifier that no longer resolves to the one the
+      // page loaded -- would return null for every cell, and both of the checks that use
+      // it would pass by asking nothing. That has to fail rather than go quiet.
+      check(vp.name, hover.centres.length > 0 && hover.centres.every((c) => c),
+            `${hover.centres.filter((c) => !c).length} of ${hover.centres.length} neurons `
+            + 'have no position at all: the panels.js this imported is not the one the '
+            + 'page is drawing from, and the two checks above are inspecting nothing');
+
+      if (vp.dpr) {
+        await page.setViewport({ width: vp.width, height: vp.height, deviceScaleFactor: 1 });
+        const lo = await probeHover();
+        await page.setViewport({
+          width: vp.width, height: vp.height, deviceScaleFactor: vp.dpr });
+        check(vp.name, lo.w === hover.w && lo.h === hover.h,
+              `the panel changed size with the density (${hover.w}x${hover.h} at dpr `
+              + `${hover.dpr}, ${lo.w}x${lo.h} at dpr ${lo.dpr}) -- nothing below is `
+              + 'comparing what it means to');
+        const moved = hover.centres.reduce(
+          (k, c, j) => k + (String(c) === String(lo.centres[j]) ? 0 : 1), 0);
+        check(vp.name, moved === 0,
+              `${moved} of ${hover.centres.length} neurons sit somewhere else in the panel `
+              + `at dpr ${hover.dpr} than at dpr ${lo.dpr} (${hover.centres[1]} vs `
+              + `${lo.centres[1]}): neuronCentre is anchoring tooltips in the wrong units`);
+        const differ = hover.sig.reduce((k, v, j) => k + (v === lo.sig[j] ? 0 : 1), 0);
+        check(vp.name, differ === 0,
+              `${differ} of ${hover.sig.length} points across the neuron panel named a `
+              + `different neuron at dpr ${hover.dpr} than at dpr ${lo.dpr}: the hit test `
+              + 'is reading the pointer in backing-store pixels against a CSS-pixel layout');
+      }
 
       /* Ablation, with two animals on the plate.
        *
@@ -549,7 +688,7 @@ try {
         'dragging the scrubber to the end did not return the viewer to live');
     }
 
-    console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}  ` +
+    console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}@${vp.dpr || 1}x  ` +
                 `${errors.length} console errors, ${failed.length} failed requests, ` +
                 `${layers.shown}/${layers.total} layers, ${overflow}px overflow`);
     await page.close();
