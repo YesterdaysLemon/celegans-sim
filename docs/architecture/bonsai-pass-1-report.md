@@ -52,19 +52,24 @@ else, because a second 180 kB document would move the context problem rather tha
 
 | | Before | After |
 |---|---|---|
-| Size | 181,216 B | **8,607 B** (−95.3%) |
-| Lines | 2,934 | 156 |
+| Size | 181,216 B | **5,608 B** (−96.9%) |
+| Lines | 2,934 | 105 |
 
 **Archival destination:** `docs/research-log/next-history-through-2026-08-04.md`, named for
 the last commit that modified it (`987129c`, 2026-08-04).
 
-**Proof of preservation.** Moved with `git mv`, so the archive is a tracked rename:
+**Proof of preservation.** Moved with `git mv`, so the archive is a tracked rename — and the
+strongest available form of the claim is not a content hash but the Git object identity:
 
 ```
-sha256(NEXT.md @ 0f7c25b)  = 78077ac31a7160b68cc103da0bd9f5c56b90aad9701b8e2c1713ac5bb8aa845e
-sha256(archive @ HEAD)     = 78077ac31a7160b68cc103da0bd9f5c56b90aad9701b8e2c1713ac5bb8aa845e
-git log --follow           → 30 commits, the full history of NEXT.md
+git rev-parse 0f7c25b:NEXT.md                                   = 12da57c83f0b80a0b7907fd75536325ab044bea8
+git rev-parse HEAD:docs/research-log/next-history-through-…md    = 12da57c83f0b80a0b7907fd75536325ab044bea8
+sha256 of both                                                  = 78077ac3…845e
+git log --follow                                                → 30 commits, the full history of NEXT.md
 ```
+
+The same blob object, not merely equal bytes: Git stored no second copy, so there was no
+re-encoding step in which anything could have changed.
 
 Byte-for-byte. Not a heading, not a retraction, not a stale line was edited in transit —
 including two statements that are stale *now* (a *Third tier* still asking for a viewer
@@ -74,13 +79,27 @@ they are the evidence for why an append-only roadmap stops being one, and
 
 **How live tasks were selected.** From the archive's own *Start here* section, cross-checked
 against the current repository, and kept only where the item is still open. Three
-reference-worm items, three Digital Life items, three infrastructure items. The four
-already-eliminated gait-modulation mechanisms are carried forward as a *do not re-run* table
-— that is history, but it is history whose entire purpose is to prevent future work, which
-makes it a roadmap entry rather than a narrative.
+reference-worm items, three Digital Life items. The four already-eliminated gait-modulation
+mechanisms are carried forward as a *do not re-run* table — that is history, but it is
+history whose entire purpose is to prevent future work, which makes it a roadmap entry rather
+than a narrative.
 
 Nothing was invented. Items whose priority the repository cannot settle went to **Blocked, or
 needs an owner decision** rather than being guessed at (§13).
+
+**What was taken back out during review.** The first cut of this pass still had a roadmap
+doing three jobs. Removed, each because it belongs somewhere that already holds it:
+
+| Removed from `NEXT.md` | Because it lives in |
+|---|---|
+| *Recently completed* — five items | Every one was already recorded elsewhere; checked individually before removal (the scrubber in `README.md`, the rest in `wasm/README.md`, `worm/world.py` and the archive). A roadmap that lists finished work is a changelog. |
+| CI status, `CI_ENABLED`, the `npm run check` commands | `README.md` §*Running the checks yourself* — verbatim, and it was already there when the duplicate was written |
+| "a check is not real until you have watched it fail" | `docs/project-architecture.md` §7, invariant 9 |
+| The runtime-parity guardrail as a standing item | `docs/runtime-parity.md`; the cascade item links to it at the point where it actually blocks work |
+| Per-metric result narration (travelling indices, net speeds) | `docs/research-log/`. One decisive number per item is enough to decide with; the rest is evidence, not intent. |
+
+A closing table now says where each of those went, so the roadmap answers "what next" and
+routes everything else in one line rather than absorbing it.
 
 **Unresolved owner-priority questions**, now visible in `NEXT.md`:
 
@@ -97,9 +116,21 @@ the unguarded-prose hole moved to the entry it now applies to. Both checks pass.
 
 ---
 
-## D. Runtime parity map
+## D. Runtime parity map, and model-path lifecycle
 
-Recorded in `docs/runtime-parity.md`, with three routes a parameter can take to the runtime.
+Recorded in `docs/runtime-parity.md`, which is built around **two independent axes** —
+because the first cut of this pass ran them together and got answers that looked like status
+and were really two different facts glued into one label:
+
+| Axis | Question | Settled by |
+|---|---|---|
+| Runtime support | Does `wasm/assembly/index.ts` implement this? | reading the source |
+| Scientific lifecycle | Is the path any good? | measurement, or nothing |
+
+The case that proves they are independent is `omega_reflex_suppression`: **fully implemented
+in the runtime and scientifically refuted.** `params.py` records "it was tried, and it does
+nothing", every interval overlapping every other, and keeps it — implemented, exported,
+running in the browser, permanently at 0.0 — because the refutation is the useful part.
 
 **Correction to a previous reading of this repository.** An earlier fresh-agent audit
 reported that `gate_latched`, `head_distributed`, `head_delay` and `omega_reflex_suppression`
@@ -107,13 +138,19 @@ were Python-only. **They are not.** All four are exported as compile-time consta
 `wasm/assembly/index.ts` implements *both* branches of each. The runtime is less frozen than
 it looks, and "the runtime cannot do X" is an expensive thing to believe falsely.
 
+Lifecycle labels: `REFERENCE_SHIPPED`, `REFERENCE_CANDIDATE`, `HISTORICAL_SUPERSEDED`,
+`HISTORICAL_NEGATIVE`, `DIGITAL_LIFE_CANDIDATE`, `UNCERTAIN`. A path may carry two when the
+two tracks ask different questions of it, and `UNCERTAIN` is used where the repository does
+not settle the matter — `neural.v_th_from_rest` is the current example: the solve is argued
+for, and no measurement of the model with it off is recorded anywhere.
+
 **Python-only, verified by AST sweep plus grep of the exporter and both runtime files:**
 
 | Family | Parameters | Default | Status |
 |---|---|---|---|
-| Head-reflex cascade | `sensory.head_stages`, `sensory.head_stage_tau` | `1`, `0.0` (off) | `REFERENCE_EXPERIMENTAL` — live adoption candidate |
-| Muscle force-velocity | `muscle.fv_vmax` (+ `fv_curvature`, `fv_eccentric`, `fv_tau`) | `0.0` (off) | `HISTORICAL_EXPERIMENT` / `DIGITAL_LIFE_CANDIDATE` — measured, not adopted |
-| Omega wave suppression | `sensory.omega_wave_suppression` | `0.0` (off) | `REFERENCE_EXPERIMENTAL` |
+| Head-reflex cascade | `sensory.head_stages`, `sensory.head_stage_tau` | `1`, `0.0` (off) | `REFERENCE_CANDIDATE` — live, but as a *simplification*; the mechanism argument was refuted |
+| Muscle force-velocity | `muscle.fv_vmax` (+ `fv_curvature`, `fv_eccentric`, `fv_tau`) | `0.0` (off) | `HISTORICAL_NEGATIVE` (reference gait — it *narrows* the span) **and** `DIGITAL_LIFE_CANDIDATE` |
+| Omega wave suppression | `sensory.omega_wave_suppression` | `0.0` (off) | `HISTORICAL_NEGATIVE` — turn shallower, >120° fraction to zero; do not retry as another gain or target set |
 
 The cascade pair is the subtle one: both are read in `Senses.__init__`, which looks like
 construction-time, but what they build is a *step-time branch* (`_head_chain`) rather than an
@@ -161,7 +198,8 @@ line, not a guess.
 | `CORE_INFRASTRUCTURE` | 15 | `export_model.py`, `conform.py`, `build_dataset.py`, `audit.py`, `check_all.mjs`, `manifest.py` |
 | `MEASUREMENT_LIBRARY` | 4 | `diagnose_loop.py` (42 importers), `assays.py` (32), `stats.py` (6), `coherence.py` (3) |
 | `MAINTAINED_INSTRUMENT` | 24 | `kymo.py`, `scorecard.py`, `compare.py`, `ethogram.py`, … |
-| `ACTIVE_EXPERIMENT` | 5 | `head_cascade.py`, `head_medium.py`, `lag_span.py`, `force_velocity.py`, `damping_sweep.py` |
+| `ACTIVE_EXPERIMENT` | **1** | `head_cascade.py` — the only one whose question is still open |
+| `ANSWERED_PROBE` | 4 | `head_medium.py`, `lag_span.py`, `force_velocity.py`, `damping_sweep.py` — sacrifice branches, all four negative |
 | `UNCERTAIN` | **25** | no importers, no references, untouched since the first days |
 
 The 25 are labelled uncertain rather than dead. No importers is evidence, not proof; several
@@ -179,7 +217,13 @@ one, silently, with nothing to fail.
 
 ## F. Scientific documentation corrections
 
-**One.** `tests/test_behaviour.py::test_medium_changes_the_gait`.
+Three. One in the pre-existing repository, and two in this pass's own first cut — recorded
+here rather than quietly fixed, since a pass about not rewriting history should not begin by
+rewriting its own.
+
+### F.1 — a stale claim in a test docstring *(pre-existing)*
+
+`tests/test_behaviour.py::test_medium_changes_the_gait`.
 
 Its docstring said the model *"gets it backwards: ~1.25 Hz on agar and ~0.55 Hz in buffer"*.
 `README.md`'s limitations section says the opposite — *"gait modulation points the right way
@@ -205,6 +249,50 @@ commit, its own seed count and its own argument. The docstring now records that,
 observation that the margin above 1.2 is thin at some seeds.
 
 A targeted search found no other instance of the same claim outside the archive.
+
+### F.2 — `omega_wave_suppression` was mislabelled by this pass
+
+The first cut called it `REFERENCE_EXPERIMENTAL`, which reads as "untried, and available".
+`worm/params.py` says otherwise, and had all along: tested at 1.0 on 2026-07-30, six paired
+animals per condition, 200 s each. It makes the turn **shallower**, not deeper — median
+reorientation 37.75 → 15.62 deg off food (paired difference −22.1, 95% CI −34.4 to −12.4) and
+42.63 → 29.05 on food (−13.6, CI −22.3 to −9.6) — and **the fraction of turns over 120 deg
+fell to zero in both conditions**. The recorded conclusion is "leave this off", and the
+surrounding turn analysis names the form not to retry it in: *not* another target set and
+*not* another gain, because what the turn lacks is dynamic range in the motor units.
+
+Now `HISTORICAL_NEGATIVE`, with the do-not-retry form attached. No measurement changed; the
+label was wrong, not the science.
+
+### F.3 — four answered probes were called active experiments
+
+`head_medium.py`, `lag_span.py`, `force_velocity.py` and `damping_sweep.py` were labelled
+`ACTIVE_EXPERIMENT` on the strength of a recent commit date. Each had in fact *finished*: it
+ran, answered its question in the negative, and closed it. They are the four rows of
+`NEXT.md`'s do-not-re-run table — being the reason work is closed is the opposite of being
+open work.
+
+**Recency is evidence that a file mattered recently, not that its question is open.** They are
+now `ANSWERED_PROBE` — sacrifice branches, kept executable because the answers are
+load-bearing. `head_cascade.py` remains the sole `ACTIVE_EXPERIMENT`, and its own entry now
+distinguishes the two claims about it: the mechanism argument it was built for was refuted by
+`head_medium.py`, and it survives as a simplification, which is weaker and still open.
+
+`force_velocity.py` carries the double label the two tracks earn it: `HISTORICAL_NEGATIVE`
+for the reference-gait question it answered, `DIGITAL_LIFE_CANDIDATE` for the Track B question
+nobody has asked.
+
+### F.4 — biological provenance language *(pass's own wording)*
+
+`docs/project-architecture.md` described Track A as having "real sensory modalities and
+proprioceptive loops". That phrase blurs three epistemic classes at once. What is
+reconstructed is **which cells carry which modality, and with what sign** — ASEL/ASER as an
+ON/OFF pair, AWC as an OFF cell, AFD warm, URX/AQR/PQR for oxygen. The transduction that turns
+a concentration into a current is *modelled*, and every gain in front of it is *tuned*.
+
+Track A is now a per-component table with reconstructed / modelled / tuned as separate
+columns, so no row can claim more than it has, plus one line stating that nothing in the
+reference worm is evolved.
 
 ---
 
@@ -361,8 +449,27 @@ document the claim lives in). The three tool-library edits are purely additive d
 | `pytest tests/test_runtime_parity.py` | 6 pass, and watched to fail on a flipped default |
 | `pytest tests/test_behaviour.py::test_medium_changes_the_gait` | pass |
 | `pytest tests/` minus `test_behaviour`/`test_audit` | **201 passed, 0 failed** (47 min) |
-| Link check across all 9 markdown documents | 0 broken |
+| Link check across all 10 markdown documents | 0 broken |
 | Every symbol/path asserted in the new docs | all resolve |
+
+**Re-validated after the review round** (the classification corrections in §F.2–F.4, which
+touched five documents and one comment in `tools/export_model.py`):
+
+| Check | Result |
+|---|---|
+| Trajectory fingerprint | `a9d09d63…d307f2` — **still identical** |
+| `pytest test_runtime_parity + test_ci_policy + test_local_checks` | 56 pass |
+| Guard watched to fail again, on `omega_wave_suppression = 1.0` | fires; `params.py` restored clean |
+| `pytest test_export_model + test_genome + test_model_artifacts + test_export_precision + test_stats` | 42 pass |
+| `node wasm/memory.mjs`, `node tools/check_web.mjs` | PASS, acyclic |
+| Archive blob identity | unchanged, `12da57c8…` |
+| Files changed under `worm/`, `data/`, `wasm/assembly/`, `web/`, `docker/`, `.github/` | **0** |
+
+The 201-test result above was **not** re-run after the review round. It stands for everything
+that cannot see the working tree, which is all of it except `test_ci_policy.py` and
+`test_local_checks.py` — and those two were re-run against the final tree (in the 56 above).
+`tools/export_model.py`'s only change is an additive comment, and nothing in `worm/` imports
+it, which is why the fingerprint is the binding evidence rather than the test count.
 
 One caveat on that 201-test run, stated because a check whose conditions were not what they
 look like is exactly what `tools/audit.py` exists to find: it was launched while this report
