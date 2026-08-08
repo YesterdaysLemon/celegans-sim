@@ -28,12 +28,12 @@ status, and the mixture is the point of the project — so each says which:
 
 | Component | Reconstructed / identified | Modelled | Tuned |
 |---|---|---|---|
-| **Nervous system** `worm/nervous.py` | the 302 cells and their names; gap and chemical contact counts, from electron micrographs | graded non-spiking dynamics (Wicks/Kunert form); the self-consistent `V_th` solve | `g_gap`, `g_syn` per contact; synaptic timescale |
+| **Nervous system** `worm/nervous.py` | the 302 cells and their names; gap and chemical contact counts, from electron micrographs | graded non-spiking dynamics (Wicks/Kunert form); the self-consistent `V_th` solve | the synaptic timescale, deliberately departed from Kunert's. (`g_gap`/`g_syn` are *adopted* from Kunert et al. 2014, not fitted here and not evolvable — the five classes in §5 have no slot for "taken from another model".) |
 | **Neuromuscular map** `worm/muscle.py` | which neurons contact which of the 95 muscle cells | the three-stage excitation–contraction cascade | `peak_moment`; the per-cell balance that corrects for sectioning completeness and 2-D quadrant merging |
 | **Sensory pathways** `worm/senses.py` | **cell identity and polarity only** — ASEL/ASER as an ON/OFF pair, AWC as an OFF cell, AFD warm, URX/AQR/PQR for oxygen, ALM/AVM and PLM for touch | adapting differential transduction; the proprioceptive receptive-field construction | every gain and adaptation time constant |
 | **Proprioceptive loops** `worm/senses.py` | that B-type cells read curvature anterior to the muscles they drive (Wen et al.); that head motor neurons are themselves proprioceptive (Yeon et al.) | reach, sign and filter as implemented here | `proprio_gain`, `proprio_reach`, `head_proprio_gain`, `head_tau`, `head_delay` |
 | **Command layer** `worm/senses.py` | AVB/PVC and AVA/AVD/AVE class membership | the Schmitt-trigger direction gate; the omega-turn transient | gate bias, hysteresis, cord drive, omega current |
-| **Mechanics** `worm/body.py` | — | inextensible active elastica; resistive force theory at zero Reynolds | — (bending modulus and drag are **measured**) |
+| **Mechanics** `worm/body.py` | — | inextensible active elastica; resistive force theory at zero Reynolds | — (bending modulus is **measured**, Fang-Yen et al. 2010. Drag is mixed: the agar tangential value is a direct force measurement and the anisotropy is measured, but the buffer pair comes from Lighthill slender-body theory — computed, not measured.) |
 | **Environment** `worm/world.py` | — | steady-state diffusion fields, `D∇²c = λc` | lawn geometry, gradient scales |
 | **The loop** `worm/engine.py` | — | **behaviour emerges from the sensorimotor loop; nothing in the middle is scripted** | — |
 
@@ -48,7 +48,8 @@ The founding constraint, stated at the top of `tools/optimise.py` and in the REA
 *Evolved animals are not C. elegans*: **the connectome is anatomy, not parameters.**
 Reconstructed contact counts *are* the synaptic weights. Fitting them would throw away the
 reason the model is built on a connectome at all. Measured constants — capacitance,
-reversal potentials, bending modulus, drag — are treated as facts.
+reversal potentials, bending modulus — are treated as facts, and where a "measured" constant
+is really theory (the buffer drag pair) `worm/params.py` says so.
 
 **Nothing in the reference worm is evolved.** That is the whole of the boundary in one line,
 and §5 is the full table of the five epistemic classes.
@@ -77,7 +78,7 @@ silently destroys the value of Track A. Four mechanisms currently hold it:
 
 | Mechanism | Where | What it stops |
 |---|---|---|
-| Genome allow-list — 15 bounded scalars, no measured constant among them | `worm/genome.py::BOUNDS`, pinned to `tools/export_model.py::GENES` by `tests/test_genome.py` | A lineage mutating anatomy or a measured constant |
+| Genome allow-list — 15 allow-listed scalars, no measured constant among them (envelopes live in `worm/genome.py`; `wasm/evolve.mjs` carries its own, looser clamps) | `worm/genome.py::BOUNDS`, pinned to `tools/export_model.py::GENES` by `tests/test_genome.py` | A lineage mutating anatomy or a measured constant |
 | Fitness that refuses unit-conversion exploits | `wasm/evolve.mjs` (`EVO_FITNESS=energy` default) | Selection paying for `volume_per_pump`-style defects (#37) |
 | A measure that prints its own limitation | `wasm/eggs-fitness.test.mjs` | `EVO_FITNESS=eggs` being quoted as if it measured the egg-laying circuit |
 | Conformance and the assay suite guard the *unevolved baseline only* | `tools/conform.py` + `wasm/conform.mjs`; `tests/` | An evolved genome inheriting the baseline's credibility |
@@ -221,8 +222,10 @@ The current classification of every switch is in
 - `tools/parity.py` — the noisy paths, compared statistically, because the two draw from
   different generators and always will.
 
-Neither has any purchase on a path the runtime does not implement. That is the whole reason
-`runtime-parity.md` exists.
+Conformance has more purchase on a Python-only path than an earlier draft of this document
+claimed — flipping `head_stages` or `fv_vmax` fails it outright. What escapes it is a path
+that is *inert across every conformance case*; `runtime-parity.md` has the measurements and
+the one path that is currently in that position.
 
 ---
 
@@ -233,10 +236,10 @@ safety property.
 
 | Class | Example | Where it is recorded | May evolution touch it? |
 |---|---|---|---|
-| **Measured** | `C_m = 1.5 pF`, `EI = 9.5e-14 N·m²`, drag coefficients, reversal potentials | `worm/params.py`, with citation | **No** — absent from `BOUNDS` by design |
-| **Reconstructed** | gap/chemical contact counts, soma positions, muscle roster | `data/celegans.json`, with input hashes | **No** — anatomy, baked into the payload |
-| **Modelled** | the graded-neuron equations, resistive force theory, the three-stage EC cascade | `worm/params.py` docstrings, `README.md` | Structure no; some rate constants yes |
-| **Calibrated / tuned** | `proprio_gain`, `head_proprio_gain`, `cord_drive`, gate thresholds | `worm/params.py`, `tools/optimise.py::SPACE` | **Yes** — this is what `BOUNDS` is |
+| **Measured** | `C_m = 1.5 pF`, `EI = 9.5e-14 N·m²`, reversal potentials, agar drag (the buffer drag pair is slender-body theory — see `worm/params.py`) | `worm/params.py`, with citation | **No** — absent from `BOUNDS` by design |
+| **Reconstructed** | gap/chemical contact counts, muscle roster, soma positions (23 of 302 carry `pos_approx` in `data/celegans.json`) | `data/celegans.json`, with input hashes | **No** — anatomy, baked into the payload |
+| **Modelled** | the graded-neuron equations, resistive force theory, the three-stage EC cascade | `worm/params.py` docstrings, `README.md` | Structure no; and no rate constant today — not one of the 15 `BOUNDS` keys has units of s or 1/s |
+| **Calibrated / tuned** | `proprio_gain`, `head_proprio_gain`, `cord_drive`, gate thresholds | `worm/params.py`, `tools/optimise.py::SPACE` | **Partly.** `BOUNDS` is an allow-listed *subset*. `tools/optimise.py::SPACE` is a different, larger list, and four of its seven members — `proprio_reach`, `peak_moment`, `head_tau`, `head_reach` — are tuned but deliberately **not** evolvable |
 | **Evolved** | anything out of `wasm/evolve.mjs` | never in `worm/params.py` | n/a — it is the output |
 
 A correction to a *measured* value needs a citation. A change to a *tuned* value needs a

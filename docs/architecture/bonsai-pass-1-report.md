@@ -14,7 +14,7 @@ and one narrow prose correction backed by remeasurement.
 ## A. Baseline
 
 The repository at `0f7c25b`: 141 commits over eight days (2026-07-29 → 2026-08-05),
-~18 commits/day. Roughly 6.7k lines under `worm/`, 12.7k under `tools/`, 6.5k under `wasm/`,
+~18 commits/day. Roughly 6.7k lines under `worm/`, 13.8k under `tools/` (`.py` + `.mjs`), 6.5k under `wasm/`,
 4.6k under `tests/`, 3.5k under `web/` — and **282 kB of markdown**.
 
 Three information bottlenecks, all measured rather than asserted:
@@ -43,7 +43,7 @@ themselves as printers; ~25 tools had no importer, no reference and no documenta
 | **Shared substrate** | `docs/project-architecture.md` §3 — described as it exists today, with an explicit instruction not to generalise it before a second consumer disagrees |
 | **Reading order for a fresh maintainer** | `README.md` (a six-line pointer, near the top) and `docs/project-architecture.md` §8 |
 
-The compass is 15.6 kB. It states teleology and invariants and links out for everything
+The compass is 19.1 kB. It states teleology and invariants and links out for everything
 else, because a second 180 kB document would move the context problem rather than solve it.
 
 ---
@@ -52,8 +52,8 @@ else, because a second 180 kB document would move the context problem rather tha
 
 | | Before | After |
 |---|---|---|
-| Size | 181,216 B | **5,608 B** (−96.9%) |
-| Lines | 2,934 | 105 |
+| Size | 181,216 B | **6,392 B** (−96.5%) |
+| Lines | 2,934 | 114 |
 
 **Archival destination:** `docs/research-log/next-history-through-2026-08-04.md`, named for
 the last commit that modified it (`987129c`, 2026-08-04).
@@ -84,7 +84,7 @@ history whose entire purpose is to prevent future work, which makes it a roadmap
 than a narrative.
 
 Nothing was invented. Items whose priority the repository cannot settle went to **Blocked, or
-needs an owner decision** rather than being guessed at (§13).
+needs an owner decision** rather than being guessed at; see §C's owner-priority list.
 
 **What was taken back out during review.** The first cut of this pass still had a roadmap
 doing three jobs. Removed, each because it belongs somewhere that already holds it:
@@ -140,8 +140,8 @@ it looks, and "the runtime cannot do X" is an expensive thing to believe falsely
 Lifecycle labels: `REFERENCE_SHIPPED`, `REFERENCE_CANDIDATE`, `HISTORICAL_SUPERSEDED`,
 `HISTORICAL_NEGATIVE`, `DIGITAL_LIFE_CANDIDATE`, `UNCERTAIN`. A path may carry two when the
 two tracks ask different questions of it, and `UNCERTAIN` is used where the repository does
-not settle the matter — `neural.v_th_from_rest` is the current example: the solve is argued
-for, and no measurement of the model with it off is recorded anywhere.
+not settle the matter. `neural.v_th_from_rest` was offered as the example and turned out to be
+the wrong one — see §F.6; it is not uncertain, it is unread.
 
 **Python-only, verified by AST sweep plus grep of the exporter and both runtime files:**
 
@@ -216,9 +216,10 @@ one, silently, with nothing to fail.
 
 ## F. Scientific documentation corrections
 
-Five. Two in the pre-existing repository, and three in this pass's own first cut — recorded
-here rather than quietly fixed, since a pass about not rewriting history should not begin by
-rewriting its own.
+Nine. Two in the pre-existing repository, and seven in this pass's own drafts — recorded here
+rather than quietly fixed, since a pass about not rewriting history should not begin by
+rewriting its own. F.6 onwards came out of an independent adversarial audit commissioned
+against the finished branch; four of the seven were found by auditors rather than by me.
 
 ### F.1 — a stale claim in a test docstring *(pre-existing)*
 
@@ -249,7 +250,7 @@ observation that the margin above 1.2 is thin at some seeds.
 
 A targeted search found no other instance of the same claim outside the archive.
 
-### F.1b — a check that could not run on Windows, reported green
+### F.2 — a check that could not run on Windows, reported green
 
 `wasm/memory.mjs` reads `wasm/assembly/index.ts` and scans the `Worm` class body to derive
 each per-animal array's size from the source rather than trusting a second copy of the
@@ -275,7 +276,7 @@ that normalises `\r\n` to `\n`. Nothing downstream cares about `\r` — the cons
 `\s*` and the document checks are substring and `\s`-based — and `wasm/assembly/*.ts` is not
 touched. The repository stores LF; this makes the *reader* indifferent.
 
-### F.2 — `omega_wave_suppression` was mislabelled by this pass
+### F.3 — `omega_wave_suppression` was mislabelled by this pass
 
 The first cut called it `REFERENCE_EXPERIMENTAL`, which reads as "untried, and available".
 `worm/params.py` says otherwise, and had all along: tested at 1.0 on 2026-07-30, six paired
@@ -289,7 +290,7 @@ surrounding turn analysis names the form not to retry it in: *not* another targe
 Now `HISTORICAL_NEGATIVE`, with the do-not-retry form attached. No measurement changed; the
 label was wrong, not the science.
 
-### F.3 — four answered probes were called active experiments
+### F.4 — four answered probes were called active experiments
 
 `head_medium.py`, `lag_span.py`, `force_velocity.py` and `damping_sweep.py` were labelled
 `ACTIVE_EXPERIMENT` on the strength of a recent commit date. Each had in fact *finished*: it
@@ -307,7 +308,7 @@ distinguishes the two claims about it: the mechanism argument it was built for w
 for the reference-gait question it answered, `DIGITAL_LIFE_CANDIDATE` for the Track B question
 nobody has asked.
 
-### F.4 — biological provenance language *(pass's own wording)*
+### F.5 — biological provenance language *(pass's own wording)*
 
 `docs/project-architecture.md` described Track A as having "real sensory modalities and
 proprioceptive loops". That phrase blurs three epistemic classes at once. What is
@@ -318,6 +319,82 @@ a concentration into a current is *modelled*, and every gain in front of it is *
 Track A is now a per-component table with reconstructed / modelled / tuned as separate
 columns, so no row can claim more than it has, plus one line stating that nothing in the
 reference worm is evolved.
+
+### F.6 — the registry's central justification was false for two of its three paths
+
+This pass asserted, in four places, that conformance is blind to a flipped Python-only
+default because "the runtime has no branch to disagree about". **That is wrong, and it was
+measured wrong.** Flip the default, regenerate the reference with `tools/conform.py`, run
+`node wasm/conform.mjs` against the committed `.wasm`:
+
+| flipped | conformance |
+|---|---|
+| baseline | PASS, exit 0 |
+| `sensory.head_stages = 4` | **FAIL**, exit 10 |
+| `muscle.fv_vmax = 1.0` | **FAIL**, exit 10 |
+| `sensory.omega_wave_suppression = 1.0` | **PASS**, exit 0 |
+
+Conformance rebuilds the Python side from `Params()`, so the moment the new configuration
+moves the Python trajectory the comparison diverges. The real gap is narrower and worse: a
+path escapes conformance when it is **inert across every conformance case**.
+`omega_wave_suppression` scales by `abs(omega)` and no conformance case fires an omega turn,
+so the term is multiplied by zero however large the coefficient. `tools/conform.py` already
+records the same shape of miss — it is how the serotonin-gated chloride path reached the
+runtime unported.
+
+The guard is therefore a *second, earlier, better-named* detector for two of the three paths,
+and the **only** detector for the third. Corrected in `docs/runtime-parity.md`,
+`tools/export_model.py`, `tests/test_runtime_parity.py` and `docs/project-architecture.md`;
+the coverage section now also records that the registry pins a *value*, not the behaviour that
+value stands for.
+
+### F.7 — `neural.v_th_from_rest` was called `UNCERTAIN`; the flag is not read at all
+
+`worm/nervous.py` calls `self.V_th = self._resting_potentials(s_half)` unconditionally. There
+is no `if p.v_th_from_rest` anywhere in `worm/` — the only occurrences are the field itself, a
+comment in `worm/modulators.py`, and an exclusion in `tests/test_genome.py`. Setting it
+`False` produces a byte-identical model.
+
+`UNCERTAIN` was the wrong label and the wrong kind of wrong: it says *nobody has measured
+this*, which invites someone to go and measure a configuration that does not exist. The Route-1
+table now records the flag as unread, and `normalise_nmj` — which is genuinely branched at
+`worm/muscle.py` — replaces it as the Route-1 exemplar. **This also removes it from the
+owner-decision list; the repository settles it.**
+
+### F.8 — "every name in the scalar lists is Route 2" over-claimed by three
+
+`MUS_REST_TENSION`, `WORLD_INGESTION_RATE` and `WORLD_RADIUS` are emitted into
+`wasm/assembly/model_gen.ts` and never read by `index.ts`. `rest_tension` is Route 1 — it is
+consumed inside `Muscles._balance` and reaches the animal baked into the exported `G`;
+`ingestion_rate` is dead on both sides and `worm/genome.py` already says so; `world.radius`
+reaches the runtime as `WORLD_EXTENT` instead. Harmless today, but the sentence was written to
+close the question off, which is exactly what makes it worth correcting.
+
+### F.9 — provenance and index corrections found by audit
+
+Smaller, all evidence-backed, all now fixed:
+
+- **Drag is not simply "measured".** `worm/params.py` attributes the buffer pair to Lighthill
+  slender-body theory — computed, not measured. Only the agar tangential value is a direct
+  force measurement.
+- **"Evolution may touch some rate constants" was false.** Not one of the 15 `BOUNDS` keys has
+  units of s or 1/s. In the permissive direction, which is the dangerous one.
+- **`optimise.py::SPACE` is not `BOUNDS`.** Four of its seven members — `proprio_reach`,
+  `peak_moment`, `head_tau`, `head_reach` — are tuned and deliberately *not* evolvable.
+- **The genome's bounds do not travel.** `wasm/evolve.mjs` carries its own, looser clamps; the
+  *allow-list* is what is enforced end to end, not the envelopes.
+- **The damping row was in the wrong units.** In a column of gait-modulation spans it quoted
+  `1.02–1.04×`, which is the per-medium frequency change. The span went 1.27× → 1.30× — it
+  slightly *widened*. The conclusion survives; the number did not belong in that column.
+- **"Nothing has ever been aimed at" the reach/wavelength question** was true only of the
+  medium span; single-medium sweeps exist in `worm/params.py` and `tools/wave_speed.py`.
+- **The `tools/README.md` UNCERTAIN criterion was false for six entries.** Five are cited by
+  path in `worm/params.py` as the provenance for a shipped constant. That makes the archival
+  question **not purely a taste call**, which `NEXT.md` now says.
+- **The `ref` column was unreproducible** from its own stated definition — four readings gave
+  four answers — so it is gone; `imp` remains, with the exact command that produces it.
+- Plus: `export_model.py`'s importer count (this branch added the third), a dangling `§13`,
+  and several self-measurements that went stale as the documents grew.
 
 ---
 
@@ -371,10 +448,10 @@ Estimated *first read before a safe change*, before and after:
 | Task | Before | After |
 |---|---|---|
 | **Viewer change** | `web/README.md` (6.5 kB) — already excellent | `web/README.md`. Unchanged; it was already the best compressor in the repo |
-| **Reference-model change** | `README.md` 64 kB + `NEXT.md` 181 kB + `worm/params.py` 2,387 lines, with no way to know which was current | `docs/project-architecture.md` 15.6 kB + `docs/runtime-parity.md` 9.5 kB + the relevant `params.py` section. **~245 kB → ~25 kB** before touching source |
+| **Reference-model change** | `README.md` 64 kB + `NEXT.md` 181 kB + `worm/params.py` 2,387 lines, with no way to know which was current | `docs/project-architecture.md` 19.1 kB + `docs/runtime-parity.md` 18.5 kB + the relevant `params.py` section. **~245 kB → ~38 kB** before touching source |
 | **Runtime/WASM change** | `wasm/README.md` + grep `index.ts` to discover what exists | `docs/runtime-parity.md` answers "does the runtime implement this?" directly, with the porting procedure |
 | **Digital Life change** | Nothing described the track at all; the boundary lived in the owner's head | `docs/project-architecture.md` §1 and §5 |
-| **"What should I work on?"** | Read 181 kB and infer | `NEXT.md`, 8.6 kB, one sitting |
+| **"What should I work on?"** | Read 181 kB and infer | `NEXT.md`, 6.4 kB, one sitting |
 
 The archive is *larger* to read than the old `NEXT.md` was — but it is now reached
 deliberately, when the question is "has this been tried?", instead of being the only door
@@ -474,10 +551,10 @@ document the claim lives in). The three tool-library edits are purely additive d
 | `pytest tests/test_runtime_parity.py` | 6 pass, and watched to fail on a flipped default |
 | `pytest tests/test_behaviour.py::test_medium_changes_the_gait` | pass |
 | `pytest tests/` minus `test_behaviour`/`test_audit` | **201 passed, 0 failed** (47 min) |
-| Link check across all 10 markdown documents | 0 broken |
+| Link check across all 11 tracked markdown documents | 0 broken |
 | Every symbol/path asserted in the new docs | all resolve |
 
-**Re-validated after the review round** (the classification corrections in §F.2–F.4, which
+**Re-validated after the review round** (the classification corrections in §F.3–F.5, which
 touched five documents and one comment in `tools/export_model.py`):
 
 | Check | Result |

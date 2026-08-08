@@ -27,10 +27,21 @@ question in the negative, and closed it. Being edited recently is evidence that 
 mattered recently; whether its question is still open is a separate fact, and only `NEXT.md`
 and `worm/params.py` settle it.
 
-The evidence columns are `imp` (modules importing it), `ref` (files mentioning its path) and
-`last` (last commit touching it). They were measured, not guessed. A tool cited only in
-`docs/research-log/` is marked `log` — that means it has historical standing, not that it is
-current.
+`imp` is the number of modules importing it, and it is the column that carries the decision
+weight. It is reproducible by exactly one command, stated here so a future reader can check it
+rather than trust it:
+
+```bash
+grep -rlE "from tools\.<name> import|import tools\.<name>\b" --include="*.py" tools tests | grep -v "tools/<name>.py" | wc -l
+```
+
+An earlier version of this index also carried a `ref` column defined as "files mentioning its
+path". That definition did not reproduce its own numbers — four plausible readings of it gave
+four different answers — so it has been removed rather than left as an unverifiable figure in
+a table whose header claims everything in it was measured. Where a reference matters it is now
+named in prose instead.
+
+`last` is the last commit touching the file.
 
 For the *model paths* these tools test, the lifecycle labels are in
 [`docs/runtime-parity.md`](../docs/runtime-parity.md), which also explains why "the runtime
@@ -42,23 +53,23 @@ implements it" and "it works" are independent facts.
 
 Touch these and something else stops building.
 
-| tool | imp | ref | does |
-|---|---|---|---|
-| `export_model.py` | 2 | 18 | Freezes the model into `web/worm.model` + `wasm/assembly/model_gen.ts`. Also owns `GENES` and `RUNTIME_UNSUPPORTED`. |
-| `conform.py` | 0 | 8 | Reference trajectories the WebAssembly port is checked against. Paired with `wasm/conform.mjs`. |
-| `build_dataset.py` | 0 | 5 | Raw anatomy → validated `data/celegans.json`. Assertion-heavy on purpose. |
-| `fetch_raw.py`, `fetch_raw.sh` | 0 | 3 | Download the exact bytes approved in `data/raw_sources.json`, fail-closed on hash. |
-| `raw_sources.py` | 1 | 0 | The pinned source manifest and its verification helpers. |
-| `check_model_artifacts.py` | 1 | 2 | Fails when committed browser artifacts are stale against a fresh export. |
-| `manifest.py` | 0 | 0 | Content-hashes the runtime assets so `immutable` caching is safe. Run by the Docker build. |
-| `audit.py` | 0 | 3 | Breaks things on purpose and reports which check notices. The meta-check. |
-| `parity.py` | 0 | 2 | Python vs WASM, noise **on**, compared statistically. |
-| `check_all.mjs` | 0 | 3 | Runs every gate CI would, in the workflows' order. A skip is never a pass. |
-| `check_web.mjs` | 0 | 6 | Viewer module graph: cycles, unresolved imports, leftovers. |
-| `check_cache_headers.mjs` | 0 | 3 | Every served asset has a deliberate cache policy. |
-| `smoke_web.mjs` | 0 | 5 | The viewer in a real browser, desktop and mobile. |
-| `smoke_server.mjs` | 0 | 4 | The `?server` transport against a live Python model. |
-| `sim_rate.test.mjs` | 0 | 4 | The rate readouts measure what their labels claim. |
+| tool | imp | does |
+|---|---|---|
+| `export_model.py` | 3 | Freezes the model into `web/worm.model` + `wasm/assembly/model_gen.ts`. Also owns `GENES` and `RUNTIME_UNSUPPORTED`. |
+| `conform.py` | 0 | Reference trajectories the WebAssembly port is checked against. Paired with `wasm/conform.mjs`. |
+| `build_dataset.py` | 0 | Raw anatomy → validated `data/celegans.json`. Assertion-heavy on purpose. |
+| `fetch_raw.py`, `fetch_raw.sh` | 0 | Download the exact bytes approved in `data/raw_sources.json`, fail-closed on hash. |
+| `raw_sources.py` | 1 | The pinned source manifest and its verification helpers. |
+| `check_model_artifacts.py` | 1 | Fails when committed browser artifacts are stale against a fresh export. |
+| `manifest.py` | 0 | Content-hashes the runtime assets so `immutable` caching is safe. Run by the Docker build. |
+| `audit.py` | 0 | Breaks things on purpose and reports which check notices. The meta-check. |
+| `parity.py` | 0 | Python vs WASM, noise **on**, compared statistically. |
+| `check_all.mjs` | 0 | Runs every gate CI would, in the workflows' order. A skip is never a pass. |
+| `check_web.mjs` | 0 | Viewer module graph: cycles, unresolved imports, leftovers. |
+| `check_cache_headers.mjs` | 0 | Every served asset has a deliberate cache policy. |
+| `smoke_web.mjs` | 0 | The viewer in a real browser, desktop and mobile. |
+| `smoke_server.mjs` | 0 | The `?server` transport against a live Python model. |
+| `sim_rate.test.mjs` | 0 | The rate readouts measure what their labels claim. |
 
 ## MEASUREMENT_LIBRARY
 
@@ -143,15 +154,22 @@ labels the path `HISTORICAL_NEGATIVE` *and* `DIGITAL_LIFE_CANDIDATE`.
 
 ## UNCERTAIN — probably finished one-shots, not confirmed
 
-No importers, no references outside their own file, and untouched since the earliest days of
-the project. Each answered a specific question during a specific investigation; several are
+No importers, and untouched since the earliest days of the project.
+
+**They are not all unreferenced, and an earlier version of this section said they were.**
+Five are cited by path in `worm/params.py` as the provenance for a shipped constant — that
+is, the model's own parameter file points at them to say *how this number was calibrated* —
+and a sixth is cited from another tool. The "cited in" column below names them. This matters
+beyond bookkeeping: `docs/project-architecture.md` makes "every constant carries its source"
+a load-bearing root, so archiving one of those five would break a provenance reference in
+`params.py`. `NEXT.md` records the disposition question accordingly. Each answered a specific question during a specific investigation; several are
 cited by name in the research log, which is why none has been moved.
 
 **Do not delete these on the strength of this table.** "No importers" is evidence, not proof,
 and a probe is cheap to keep and expensive to reconstruct. Whether they eventually move to
 `tools/experiments/` is an owner decision recorded in `NEXT.md`.
 
-| tool | asked | cited in log |
+| tool | asked | cited in |
 |---|---|---|
 | `adapt_moment.py` | Recover curvature amplitude via muscle strength, with the receptor adapting | |
 | `adaptation.py` | Does adapting the stretch receptor let the wave travel? | |
@@ -159,24 +177,24 @@ and a probe is cheap to keep and expensive to reconstruct. Whether they eventual
 | `common_drive.py` | Is a shared oscillating drive forcing the motor neurons into lockstep? | |
 | `coupling_strength.py` | How much muscle-muscle coupling keeps the tail coherent? | |
 | `efficacy.py` | Is the efficacy gradient attenuating the wave before the tail? | |
-| `gate_calibrate.py` | Place the direction gate and size the cord drive | |
+| `gate_calibrate.py` | Place the direction gate and size the cord drive |  `params.py` |
 | `gate_sweep.py` | Why the animal never reverses, and what letting him costs | |
 | `head_balance.py` | Retest the head reflex now the body reflex works | |
 | `ml_scan.py` | Search Morris-Lecar space for a usable conditional oscillator | |
-| `modulator_sweep.py` | Calibrate the modulator layer against basal slowing | |
+| `modulator_sweep.py` | Calibrate the modulator layer against basal slowing |  `params.py` |
 | `moment_candidate.py` | Test the `peak_moment` candidate, and the ratio caveat | |
 | `muscle_leak.py` | Is the coupling weak, or is the muscle leak too high? | |
 | `noise_test.py` | Is the tail's incoherence just amplified background noise? | |
-| `osc_control.py` | Separate the two changes | log |
+| `osc_control.py` | Separate the two changes | `params.py`, log |
 | `osc_entrain.py` | Oscillator strength against proprioceptive coupling | |
 | `osc_sweep.py` | Conditional-oscillator parameters in the full closed loop | |
 | `phase_profile.py` | Where along the chain does the phase gradient get lost? | |
 | `pool_probe.py` | Does `pooled()` lose jobs when there are more than workers? | |
 | `reflex_gain.py` | Per-segment gain of the proprioceptive reflex | log |
-| `reversal_test.py` | Does the animal reverse now both cords are regenerative? | |
+| `reversal_test.py` | Does the animal reverse now both cords are regenerative? |  `params.py` |
 | `stiffness.py` | Does bending stiffness decide travelling vs standing? | |
-| `tau_sweep.py` | `adapt_tau` at the critically-poised operating point | |
-| `twi_by_region.py` | Is the travelling-wave ceiling the head dragging the average down? | log |
+| `tau_sweep.py` | `adapt_tau` at the critically-poised operating point |  `params.py` |
+| `twi_by_region.py` | Is the travelling-wave ceiling the head dragging the average down? | `tools/reflex_gain.py`, log |
 | `where_it_stands.py` | Localise the standing wave: muscle drive, or body? | |
 
 That is **25 tools**, about a third of this directory, whose status cannot be determined from

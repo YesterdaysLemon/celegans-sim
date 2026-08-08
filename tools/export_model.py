@@ -183,12 +183,23 @@ OPTIONAL_SCALARS = frozenset()
 # sentence "the browser runs the same animal" is true only because the default is still on
 # this side of the branch.
 #
-# The failure it exists to catch has no other detector. Flip one of these defaults and the
-# Python animal changes; the runtime keeps implementing the old path because it never
-# implemented the new one; conformance still passes, because both sides are built from the
-# same `Params()` and the runtime simply has no branch to disagree about. The two animals
-# diverge and every check stays green. That is the one shape of drift this repository's
-# conformance lane structurally cannot see.
+# WHAT THIS CATCHES, STATED CORRECTLY. An earlier version of this comment claimed
+# conformance is blind to a flipped Python-only default because "the runtime has no branch
+# to disagree about". That is wrong, and it was measured wrong: flip `head_stages` to 4 or
+# `fv_vmax` to 1.0, regenerate the reference and run `node wasm/conform.mjs` against the
+# committed .wasm, and conformance FAILS, exit 10, both of them. It reproduces the Python
+# side from `Params()`, so as soon as the new configuration moves the Python trajectory the
+# comparison diverges.
+#
+# The gap is narrower and nastier than "no branch": a path escapes conformance when it is
+# INERT ACROSS EVERY CONFORMANCE CASE. `omega_wave_suppression` scales by `abs(omega)` and
+# no conformance case fires an omega turn, so the term is multiplied by zero however large
+# the coefficient -- flipped to 1.0 it still PASSES. See the note in tools/conform.py about
+# the serotonin-gated chloride path, which reached the runtime unported for exactly this
+# reason.
+#
+# So for `head_stages` and `fv_vmax` this registry is a second detector that fires earlier
+# and names the cause; for `omega_wave_suppression` it is the only one there is.
 #
 # This list is data. Nothing in the export reads it -- an exporter that refused to run
 # would block the very experiments Python exists to host, and the export of an experimental
@@ -203,6 +214,11 @@ RUNTIME_UNSUPPORTED = {
     # branch (`_head_chain`) rather than an array the payload could carry, so re-exporting
     # cannot help. `head_stages = 1` is the single-lag reflex the runtime implements.
     "sensory.head_stages": 1,
+    # Redundant while head_stages == 1: with one stage `_head_chain` is None and
+    # `_head_stage_decay` is never read, so any value of head_stage_tau gives an identical
+    # animal (measured: 0.11 moves nothing over 1200 steps). Kept belt-and-braces, but note
+    # that the assertion's "the runtime implements only 0.0" is imprecise for this one entry
+    # -- with a single stage the runtime is equivalent to every value of it.
     "sensory.head_stage_tau": 0.0,
     # Muscle force-velocity. Measured under tools/force_velocity.py and not adopted: it
     # narrows the gait-modulation span instead of widening it, and it costs the crawl.

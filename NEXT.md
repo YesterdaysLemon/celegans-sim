@@ -10,14 +10,17 @@ tracks below you are in and what must not blur between them.
 ## Reference worm
 
 **1. Sweep `proprio_reach` against wavelength, in both media.** The sharpest unexplained
-thing in the model, and nothing has ever been aimed at it. The animal changes wavelength by
-**2.37×** between crawling and swimming; this model changes it by 1.01–1.17× under every
-configuration tried so far. Wavelength is set by a fixed proprioceptive reach with nothing
-scaling it by load.
+thing in the model. The animal changes wavelength by **2.37×** between crawling and swimming;
+this model changes it by 1.01–1.17× under every configuration tried so far. Wavelength is set
+by a fixed proprioceptive reach with nothing scaling it by load.
 
-Find out whether wavelength can be moved at all, and whether moving it drags the frequency
-span with it. If reach sets wavelength without touching the span, frequency and wavelength are
-*separate* failures needing separate mechanisms — worth knowing before anyone builds either.
+Single-medium sweeps already exist and answer half of it: `worm/params.py` records a
+`tools/wave_speed.py` sweep in which reach moves wavelength 0.49 → 0.64 L with the frequency
+flat to within 1%. **What is unmeasured is whether that survives a change of medium** — every
+existing sweep is one medium. So: does the wavelength *span* move, and does moving it drag the
+frequency span with it? If reach sets wavelength without touching the span, frequency and
+wavelength are *separate* failures needing separate mechanisms — worth knowing before anyone
+builds either.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. The tables are in
@@ -28,7 +31,7 @@ span with it. If reach sets wavelength without touching the span, frequency and 
 > | the cascade's frequency-dependent phase | 1.27× → 1.29× | a stage count or a lag budget |
 > | cutting the fixed head lag fourfold | 1.29× → 1.40× | a smaller head reflex |
 > | muscle force-velocity | 1.27× → 1.17×, worse | a stronger derating; unstable there |
-> | body internal damping, down to zero | 1.02–1.04× | a mechanical-dissipation problem |
+> | body internal damping, down to zero | 1.27× → 1.30× (0.03 Hz) | a mechanical-dissipation problem |
 
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
@@ -68,8 +71,11 @@ linear algebra.
 **2. Make egg production depend on laying having made room for it.** `EVO_FITNESS=eggs` is
 measured to be intake in different units: `laid + held` is conserved across a laying event, so
 egg production is blind to the egg-laying circuit by construction. A real uterus is not a
-bucket that fills regardless. Small model change, and it is what makes the feeding →
-transport → HSN/VC chain load-bearing at any assay length.
+bucket that fills regardless. Small model change — but it lands in `worm/egglaying.py`, which
+is reference-worm physiology that ships in the browser, so §1's invariant in
+[`docs/project-architecture.md`](docs/project-architecture.md) applies: the fitness degeneracy
+is a reason to *look*, and adopting a change needs reference evidence rather than the fitness
+argument.
 
 **3. Re-run the adversarial probe once the genome is bigger.** Priced at twelve seeds, about
 five and a half hours. Not worth spending before (1): the current fifteen genes were chosen so
@@ -85,8 +91,11 @@ the model being clean.
   better but needs a runtime port before it can be a default. No engineering argument settles
   the order.
 - **The 25 uncertain tools.** Classified in [`tools/README.md`](tools/README.md), none moved.
-  Whether finished probes get archived under `tools/experiments/` is a taste call about how
-  much of the record should stay executable.
+  **Not purely a taste call:** five of them are cited by path in `worm/params.py` as the
+  provenance for shipped constants — `gate_calibrate.py`, `modulator_sweep.py`,
+  `osc_control.py`, `reversal_test.py`, `tau_sweep.py` — so moving those breaks a provenance
+  reference in the model's own parameter file. A sixth, `twi_by_region.py`, is cited from
+  `tools/reflex_gain.py`. What remains a taste call is the other nineteen.
 - **Is `tools/optimise.py` still live** now that `wasm/evolve.mjs` exists? They search
   overlapping parameter sets and only one of the two lists is pinned by a test.
 

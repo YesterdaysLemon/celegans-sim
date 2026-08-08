@@ -12,15 +12,25 @@ divergence with no detector:
       -> it measures better, so someone flips the default
       -> the reference animal changes
       -> the runtime keeps implementing the old path, having never implemented the new one
-      -> `tools/conform.py` builds from `Params()` and the runtime has no branch to
-         disagree about, so conformance passes
-      -> the browser and the reference are different animals, and nothing says so
+      -> the browser and the reference are different animals
 
-Conformance cannot see it because conformance compares two implementations of one
-configuration, and here the second implementation does not exist. This file is that
-detector, and it is the whole of it: `tools/export_model.py::RUNTIME_UNSUPPORTED` names each
-path and the value the runtime is equivalent to, and the assertion below is that `Params()`
-still sits there.
+HOW MUCH OF THAT CONFORMANCE ALREADY CATCHES, measured rather than assumed. An earlier
+version of this docstring said conformance was blind to it. It is not: flip `head_stages`
+to 4, or `fv_vmax` to 1.0, regenerate the reference and run `node wasm/conform.mjs` against
+the committed .wasm, and it FAILS, exit 10, in both cases. Conformance rebuilds the Python
+side from `Params()`, so the moment the new configuration moves the Python trajectory the
+comparison against the unchanged runtime diverges.
+
+The gap it does not cover is narrower and worse: a path escapes conformance when it is
+INERT ACROSS EVERY CONFORMANCE CASE. `omega_wave_suppression` scales by `abs(omega)`, no
+conformance case fires an omega turn, and so it PASSES even at 1.0. `tools/conform.py`
+records the same shape of miss letting the serotonin-gated chloride path reach the runtime
+unported.
+
+So this file is a second, earlier, better-named detector for two of the three registered
+paths -- and the only detector for the third. `tools/export_model.py::RUNTIME_UNSUPPORTED`
+names each path and the value the runtime is equivalent to; the assertion below is that
+`Params()` still sits there.
 
 WHAT THIS DOES NOT CONSTRAIN, because a guard that blocked research would be the wrong
 trade: it pins the shipped default only. Every tool, test and sweep that constructs a

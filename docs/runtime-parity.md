@@ -35,10 +35,9 @@ prose here and provenance in `worm/params.py`, which is where the measurements l
 Three routes, and which one a parameter takes determines whether changing it is safe.
 
 **Route 1 — construction-time, baked into the payload.** The parameter is consumed while
-Python builds a `Simulation`, and only its *result* is exported. `v_th_from_rest` and
-`normalise_nmj` are the clearest cases: one decides how `V_th` is solved, the other whether
-the neuromuscular map is balanced, and the runtime receives the solved thresholds and the
-balanced `G` without ever learning that a choice was made.
+Python builds a `Simulation`, and only its *result* is exported. `normalise_nmj` is the
+clearest case: it decides whether the neuromuscular map is balanced, and the runtime
+receives the balanced `G` without ever learning that a choice was made.
 
 *Safe to change, as long as you re-export.* `tools/export_model.py` + `npx asc` regenerate
 the pair, and the `dataset` job in `.github/workflows/python.yml` fails if the committed
@@ -55,9 +54,36 @@ selects.
 `wasm/assembly/model_gen.ts`, and the code path it selects does not exist in
 `wasm/assembly/index.ts` at all. Re-exporting does not help; there is nothing to export *to*.
 
-*Changing one of these away from its shipped value silently forks the model.* Conformance
-still passes, because `tools/conform.py` builds from `Params()` and would be comparing two
-implementations of the new configuration only if the runtime had one.
+*Changing one of these away from its shipped value forks the model.* Whether anything
+notices depends on a second property, and an earlier draft of this file got that wrong.
+
+**Measured, against the committed `web/worm.wasm`** — flip the default, regenerate the
+reference with `tools/conform.py`, run `node wasm/conform.mjs`:
+
+| flipped | conformance |
+|---|---|
+| baseline | PASS, exit 0 |
+| `sensory.head_stages = 4` | **FAIL**, exit 10 |
+| `muscle.fv_vmax = 1.0` | **FAIL**, exit 10 |
+| `sensory.omega_wave_suppression = 1.0` | **PASS**, exit 0 |
+
+So conformance is *not* blind to a Python-only default in general. It reproduces the Python
+side from `Params()`, so the moment the new configuration changes the Python trajectory the
+comparison against the unchanged runtime diverges and the run fails.
+
+**The real gap is narrower and worse.** A path escapes conformance when it is *inert across
+every conformance case* — when the term it controls is multiplied by something that is zero
+throughout the reference trajectories. `omega_wave_suppression` scales by `abs(self.omega)`
+(`worm/senses.py`), and no conformance case ever fires an omega turn, so the whole term is
+multiplied by zero however large the coefficient is.
+
+This repository has been bitten by exactly that before, and says so at `tools/conform.py`:
+"a term multiplied by zero is not being checked — which is exactly how the whole
+serotonin-gated chloride path reached the runtime unported and stayed that way, passing
+every conformance run because absent and zero agree to every decimal place."
+
+For `head_stages` and `fv_vmax` the guard is therefore a *second* detector that fires earlier
+and names the cause. For `omega_wave_suppression` it is the **only** detector.
 
 ---
 
@@ -161,14 +187,28 @@ thing to believe falsely.
 | `sensory.head_distributed` | `True` | `G.HEAD_DISTRIBUTED` | the lumped head reflex | **`HISTORICAL_SUPERSEDED`** — `tools/head_circuit.py`: travelling index +0.68 against +0.58, with less than half the invented delay (0.28 s against 0.60). |
 | `sensory.head_delay` | `0.28 s` | `G.HEAD_DELAY_N` | `head_delay = 0` | **tied to the cascade `REFERENCE_CANDIDATE`** — zero delay is what the cascade is for. `params.py` calls the shipped 0.28 "a fit and not an explanation". |
 | `sensory.omega_reflex_suppression` | `0.0` | `G.SEN_OMEGA_REFLEX_SUPPRESSION` | any value > 0 | **`HISTORICAL_NEGATIVE`** — "it was tried, and it does nothing"; every interval overlaps every other across 60–69 turns per condition. Nearly believed on four seeds until `tools/stats.py` turned it back into noise. Kept because the refutation is the useful part. |
-| `body.substeps` | `1` | `body_substeps` | `substeps > 1` | **`DIAGNOSTIC_CONTROL`** — substepping sixteenfold reproduces `dt = 0.5 ms` exactly. Nobody ever proposed substepping as an improvement; it exists so that "the mechanics are under-integrated" can be ruled out on demand, which is what sent the search to the coupling instead. Kept *because* it changes nothing. |
+| `body.substeps` | `1` | `G.BODY_SUBSTEPS` | `substeps > 1` | **`DIAGNOSTIC_CONTROL`** — substepping sixteenfold reproduces `dt = 0.5 ms` exactly. Nobody ever proposed substepping as an improvement; it exists so that "the mechanics are under-integrated" can be ruled out on demand, which is what sent the search to the coupling instead. Kept *because* it changes nothing. |
 | `neural.v_clamp` | `(-80, 45)` | `G.V_CLAMP_LO/HI` | n/a — a value, not a branch | — |
 
-Every name in `tools/export_model.py`'s `NEURAL_SCALARS`, `MUSCLE_SCALARS`,
+Almost every name in `tools/export_model.py`'s `NEURAL_SCALARS`, `MUSCLE_SCALARS`,
 `SENSORY_SCALARS`, `MODULATOR_SCALARS`, `PHARYNX_SCALARS`, `EGGLAYING_SCALARS` and
 `WORLD_SCALARS` is Route 2 as well. `_export_scalars` raises on a name that does not resolve,
 so that list cannot silently lose an entry — which is how `sen_nose_touch_gain` was lost once,
 and why it cannot be lost again.
+
+**Three of those names are exported and then not read by the runtime**, so "it is in the
+scalar list" is not by itself evidence that the runtime honours it:
+
+| exported constant | what it actually is |
+|---|---|
+| `MUS_REST_TENSION` | Route **1**. `rest_tension` is consumed inside `Muscles._balance` and reaches the animal baked into the exported muscle `G`; `index.ts` never reads the scalar. |
+| `WORLD_INGESTION_RATE` | dead on both sides. `worm/genome.py` already names `world.ingestion_rate` among "known dead parameters". |
+| `WORLD_RADIUS` | redundant. The runtime uses `WORLD_EXTENT`, exported separately from the same `p.radius`. |
+
+Verified by checking each `export const` in `model_gen.ts` for a `G.<name>` reference in
+`index.ts`. Harmless today — `rest_tension` still reaches the animal, the other two are inert
+on both sides — but an audit run from this document alone would otherwise conclude the runtime
+honours three constants it ignores.
 
 ## Route 1 — construction-time, baked
 
@@ -182,7 +222,7 @@ says so rather than restating the shipped status under a heading that promises o
 
 | Parameter | Shipped | Baked into | Shipped value | The alternate, if there is one |
 |---|---|---|---|---|
-| `neural.v_th_from_rest` | `True` | the exported `V_th` array | `REFERENCE_SHIPPED` | `False` → `UNCERTAIN`. The solve is argued for — it removes 302 free parameters — but no measurement of the model with it off is recorded anywhere. |
+| `neural.v_th_from_rest` | `True` | the exported `V_th` array | `REFERENCE_SHIPPED` | **none — the flag is not read.** `worm/nervous.py` calls `self.V_th = self._resting_potentials(s_half)` unconditionally; there is no `if p.v_th_from_rest` anywhere in `worm/`. Setting it `False` produces a byte-identical model, so there is no alternate to classify. An earlier draft of this table called it `UNCERTAIN` — "argued for, never measured with it off" — which reads as *nobody has run it* rather than *it cannot be run*, and would send someone off to measure a configuration that does not exist. |
 | `muscle.normalise_nmj` | `True` | the exported muscle `G` | `REFERENCE_SHIPPED`, **load-bearing** | `False` → `HISTORICAL_SUPERSEDED`. The uncorrected map is what the reconstruction gives you, and `params.py` records the outcome: the heavier ventral innervation holds the worm in a permanent C. |
 | `neural.command_cross_inhibition` | `0.0` | the exported `G_syn`/`GE_syn` CSR | `REFERENCE_SHIPPED` (0.0 = as reconstructed) | `> 0` → `HISTORICAL_NEGATIVE`. `tools/command_sweep.py` records that cross-inhibition never moved the correlation it was proposed to fix. |
 | `neural.glucl_pre`/`glucl_post`/`glucl_strength` | see `params.py` | the exported synapse matrices | `REFERENCE_SHIPPED` | none — a cell list and a strength, not a switch. |
@@ -227,4 +267,12 @@ Stated so the coverage is not overestimated:
   head path from `index.ts` while `head_distributed` stays `True` would pass this test and
   pass conformance. Conformance only exercises the shipped configuration.
 - It says nothing about Route 1 staleness — that is the `dataset` job's business.
+- **It pins a value, not the behaviour that value stands for.** The registry records that
+  `omega_wave_suppression = 0.0` is runtime-equivalent; that equivalence is a property of one
+  line of `worm/senses.py` (`wave_gain = max(0.0, 1.0 - p.omega_wave_suppression * abs(omega))`)
+  and of the target set built beside it. Re-parameterise that line — an offset, a different
+  baseline, a change to `_omega_wave_body` — and the shipped Python animal moves while the
+  registered value is still `0.0`. The guard stays green because it only compares the value,
+  and, uniquely for this path, no conformance case exercises it either. For `head_stages` and
+  `fv_vmax` conformance is a second detector; here there is none.
 - It says nothing about axis 2 at all.
