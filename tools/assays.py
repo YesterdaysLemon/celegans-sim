@@ -25,6 +25,24 @@ papers do, so the numbers are comparable to something:
 
 Run one:   PYTHONPATH=. .venv/bin/python tools/assays.py chemotaxis
 Run all:   PYTHONPATH=. .venv/bin/python tools/assays.py all
+
+THIS IS ALSO INFRASTRUCTURE. It is imported by **32** other modules, which makes it the
+second-largest hub in `tools/` after `diagnose_loop`, and the imported surface is wider
+than the assay list above:
+
+    pooled(...)                       the parallel trial runner every sweep is built on
+    estimate(...), run_trial(...)     one trial, and the statistic off it
+    reversals(...), SAMPLE_DT         shared trajectory conventions
+    ASSAYS, DURATIONS, ORDER,         the assay registry, read by tools/compare.py
+    THROUGHPUT, WORKERS, _dispatch
+    _clean_plate                      private by name; imported by two sweeps regardless
+
+`_dispatch` and `_clean_plate` are load-bearing despite the underscore. Renaming either is
+a cross-module change, not a local one.
+
+The same warning as `diagnose_loop`: an assay's *scoring* is a scientific definition, and
+changing one silently makes new numbers incomparable with every number already recorded in
+`docs/research-log/`. Add an assay rather than redefining one.
 """
 
 from __future__ import annotations

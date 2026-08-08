@@ -258,6 +258,15 @@ NO_CI_NEEDED = {
                                     "invariants rather than implementing any, so there is "
                                     "nothing here for a job to execute.",
     "docs/research-log/README.md": "prose -- index and handling rules for the archive",
+    "docs/runtime-parity.md": "prose. The claim it documents IS gated: "
+                              "tests/test_runtime_parity.py pins the same registry under "
+                              "tests/**, so a default moving out from under this file "
+                              "fails the Python suite even though the file itself "
+                              "schedules nothing.",
+    "tools/README.md": "prose -- the instrument index. The python filter is tools/*.py "
+                       "plus tools/check_all.mjs, deliberately narrow, and widening it to "
+                       "tools/** to catch a markdown file would schedule the model suite "
+                       "on documentation edits.",
     "docs/research-log/next-history-through-2026-08-04.md":
         "prose -- the archived working log, preserved byte-for-byte. The same caveat the "
         "NEXT.md entry used to carry now applies here: wasm/memory.mjs asserts that this "

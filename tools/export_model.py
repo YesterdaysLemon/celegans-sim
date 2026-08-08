@@ -175,6 +175,45 @@ SCALAR_GROUPS = (
 # nowhere, which is the only difference that matters.
 OPTIONAL_SCALARS = frozenset()
 
+# Model paths that exist in Python and NOT in the runtime, with the value the runtime is
+# equivalent to. See docs/runtime-parity.md; the assertion lives in tests/test_runtime_parity.py.
+#
+# Python is deliberately a research superset. A counterfactual that only `worm/` can run is
+# not a defect, and this list is not a bug list -- it is the set of paths for which the
+# sentence "the browser runs the same animal" is true only because the default is still on
+# this side of the branch.
+#
+# The failure it exists to catch has no other detector. Flip one of these defaults and the
+# Python animal changes; the runtime keeps implementing the old path because it never
+# implemented the new one; conformance still passes, because both sides are built from the
+# same `Params()` and the runtime simply has no branch to disagree about. The two animals
+# diverge and every check stays green. That is the one shape of drift this repository's
+# conformance lane structurally cannot see.
+#
+# This list is data. Nothing in the export reads it -- an exporter that refused to run
+# would block the very experiments Python exists to host, and the export of an experimental
+# tree is a legitimate thing to want. The check is on the *shipped* default instead.
+#
+# Removing an entry is the last step of porting a path, not a way to quiet a red test:
+# implement it in wasm/assembly/index.ts, export the constant that selects it, extend
+# tools/conform.py and wasm/conform.mjs to cover both sides, rebuild the pair, then delete
+# the line here in the same commit.
+RUNTIME_UNSUPPORTED = {
+    # The head-reflex cascade. Read in Senses.__init__, but what it builds is a step-time
+    # branch (`_head_chain`) rather than an array the payload could carry, so re-exporting
+    # cannot help. `head_stages = 1` is the single-lag reflex the runtime implements.
+    "sensory.head_stages": 1,
+    "sensory.head_stage_tau": 0.0,
+    # Muscle force-velocity. Measured under tools/force_velocity.py and not adopted: it
+    # narrows the gait-modulation span instead of widening it, and it costs the crawl.
+    # `fv_vmax = 0.0` disables the whole term, including the rate low-pass in engine.py,
+    # which is why the other three fv_* constants need no entry of their own.
+    "muscle.fv_vmax": 0.0,
+    # Omega wave suppression -- stands the body wave down during a turn. Distinct from
+    # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.
+    "sensory.omega_wave_suppression": 0.0,
+}
+
 
 def _export_scalars(b, obj, names, prefix, optional=OPTIONAL_SCALARS):
     """Write `prefix + name` for every name in `names`, read off `obj`.

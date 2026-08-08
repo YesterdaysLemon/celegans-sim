@@ -4,6 +4,28 @@ Prints, for a run of the full model: the voltage swing of every motor-neuron cla
 dorsoventral drive reaching the muscles, and the frequency, wavelength and direction of
 whatever wave the body settles into. Takes keyword overrides for any parameter, so it
 doubles as the tuning harness.
+
+THIS IS INFRASTRUCTURE, NOT A SCRIPT. Read that before changing anything below.
+
+It is imported by **42** other modules under `tools/` and `tests/` -- more than any other
+file in this repository -- and what they import is the measurement kernel rather than the
+command-line front end:
+
+    analyse(sim, seconds)   the gait measurement: twi, dv_corr, freq, wavelength,
+                            direction, kappa_rms/max, per-class voltage swing. The dict it
+                            returns IS the project's definition of "what the gait is
+                            doing", and roughly every sweep in tools/ reads keys off it.
+    bare_world(p)           the empty dish every mechanism experiment starts from.
+    travelling_index(kappa) the standing-vs-travelling decomposition. A standing wave
+                            produces exactly zero net thrust however large its amplitude,
+                            which is why this rather than amplitude is the number watched.
+    _dominant(x, fs)        private by name and imported by tools/parity.py anyway.
+
+So the blast radius of an edit here is the whole scientific tooling layer, and it is
+silent: change what a key means and every historical number measured through it stops being
+comparable with every future one, with nothing to fail. Add keys freely; do not repurpose
+one, and do not change what `analyse` warms up, strides or windows without saying so in the
+commit. `tools/README.md` records the importer count.
 """
 
 from __future__ import annotations
