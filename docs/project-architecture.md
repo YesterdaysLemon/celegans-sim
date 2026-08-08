@@ -302,3 +302,4 @@ A short checklist. If your change touches one of these, say so explicitly in the
 | [`tools/README.md`](../tools/README.md) | Which tool measures this, and is it infrastructure or a one-shot? |
 | [`data/README.md`](../data/README.md) | How is the anatomy sourced and rebuilt? |
 | [`docs/research-log/`](research-log/) | What was already tried, and what did it fail at? |
+| [`docs/architecture/`](architecture/) | Why is the repository shaped the way it is? Records of maintainability passes. |

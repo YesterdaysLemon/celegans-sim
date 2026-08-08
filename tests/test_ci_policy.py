@@ -258,6 +258,9 @@ NO_CI_NEEDED = {
                                     "invariants rather than implementing any, so there is "
                                     "nothing here for a job to execute.",
     "docs/research-log/README.md": "prose -- index and handling rules for the archive",
+    "docs/architecture/bonsai-pass-1-report.md":
+        "prose -- the record of a maintainability pass. Dated and closed; it describes what "
+        "was done rather than asserting anything a job could re-check.",
     "docs/runtime-parity.md": "prose. The claim it documents IS gated: "
                               "tests/test_runtime_parity.py pins the same registry under "
                               "tests/**, so a default moving out from under this file "

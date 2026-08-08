@@ -25,7 +25,7 @@ whether wavelength can be moved at all, and whether moving it drags the frequenc
 it. If reach sets wavelength without touching the span, frequency and wavelength are
 *separate* failures needing separate mechanisms — worth knowing before anyone builds either.
 
-Frequency modulation has already cost three mechanisms. **Do not re-run these:**
+Frequency modulation has already cost four mechanisms. **Do not re-run these:**
 
 | tried | result | do not re-run as |
 |---|---|---|
@@ -119,10 +119,10 @@ seconds.
 ## Blocked, or needs an owner decision
 
 - **Which comes first, the reach sweep or the cascade port?** Both touch the shared gait, so
-  they should not be in flight together. The reach sweep is cheaper and answers a question;
-  the cascade is a simplification with a measured cost of zero. No engineering argument
-  settles the order.
-- **What to do with ~30 one-shot tools.** Classified in [`tools/README.md`](tools/README.md),
+  they should not be in flight together. The reach sweep is cheaper and answers an open
+  question; the cascade already measured better on every axis but needs a runtime port
+  before it can be a default. No engineering argument settles the order.
+- **What to do with the 25 uncertain tools.** Classified in [`tools/README.md`](tools/README.md),
   none moved. Whether the finished probes get archived under `tools/experiments/` is a taste
   call about how much of the record should stay executable.
 - **Whether `tools/optimise.py` is still a live path** now that `wasm/evolve.mjs` exists.
