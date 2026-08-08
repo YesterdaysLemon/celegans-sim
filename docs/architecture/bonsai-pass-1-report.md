@@ -360,9 +360,17 @@ document the claim lives in). The three tool-library edits are purely additive d
 | `pytest tests/test_ci_policy.py tests/test_local_checks.py` | 50 pass |
 | `pytest tests/test_runtime_parity.py` | 6 pass, and watched to fail on a flipped default |
 | `pytest tests/test_behaviour.py::test_medium_changes_the_gait` | pass |
-| `pytest tests/` minus `test_behaviour`/`test_audit` | *(running at the time this line was written; result appended below)* |
+| `pytest tests/` minus `test_behaviour`/`test_audit` | **201 passed, 0 failed** (47 min) |
 | Link check across all 9 markdown documents | 0 broken |
 | Every symbol/path asserted in the new docs | all resolve |
+
+One caveat on that 201-test run, stated because a check whose conditions were not what they
+look like is exactly what `tools/audit.py` exists to find: it was launched while this report
+and the last two commits were still being written, so the working tree moved underneath it.
+Almost every test in it reads only the installed package, but two read the tree itself —
+`test_ci_policy.py` (`git ls-files`, the workflow files) and `test_local_checks.py` (the gate
+list against both workflows). Both were re-run afterwards against the final tree: **50
+passed**. The remaining 199 cannot see the tree and are unaffected.
 
 Not run: the full `tests/test_behaviour.py` (~30 min of simulation) and `tools/audit.py`,
 on the grounds that the trajectory fingerprint is a stronger and cheaper non-interference
