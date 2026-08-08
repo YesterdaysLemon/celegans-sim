@@ -50,13 +50,21 @@ const N_SCRATCH_ARRAYS = 37;
  * fifth place that makes the claim without adding it here is the drift this cannot catch,
  * which is why the runtime source is on the list: any new claim is downstream of that one.
  *
- * One further hole, stated rather than papered over: NEXT.md is prose and sits outside
- * every workflow path filter, so an edit to *it alone* schedules nothing and this check
- * does not run. A drift there is caught by the next commit that touches wasm/ or web/,
- * which is later than it should be and blames the wrong change. See NO_CI_NEEDED in
+ * One further hole, stated rather than papered over: the research log is prose and sits
+ * outside every workflow path filter, so an edit to *it alone* schedules nothing and this
+ * check does not run. A drift there is caught by the next commit that touches wasm/ or
+ * web/, which is later than it should be and blames the wrong change. See NO_CI_NEEDED in
  * tests/test_ci_policy.py for why that trade was taken.
+ *
+ * The first entry used to be NEXT.md, which is where the claim was made while NEXT.md was
+ * also the research log. It is now docs/research-log/next-history-through-2026-08-04.md,
+ * byte-for-byte the same document under a name that says what it is; the claim travelled
+ * with the text and this list follows the claim rather than the filename. The live NEXT.md
+ * is a roadmap and makes no memory claim, so listing it here would assert against a
+ * document that has no business carrying the figure.
  */
-const QUOTES = ['NEXT.md', 'web/local.js', 'wasm/README.md', 'wasm/assembly/index.ts'];
+const QUOTES = ['docs/research-log/next-history-through-2026-08-04.md',
+                'web/local.js', 'wasm/README.md', 'wasm/assembly/index.ts'];
 const FORBIDDEN = /a few kB|a few kb|nearly free/;
 
 const results = [];
