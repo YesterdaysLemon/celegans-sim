@@ -25,18 +25,35 @@ epistemic status.
 A reconstruction. The goal is a convincing simulated roundworm, viewable in a browser,
 built from the real animal downwards:
 
-- real reconstructed neurons — 302 of them, `worm/nervous.py`;
-- real connectome/contact data where it exists — `data/celegans.json`, `worm/dataset.py`;
-- neurons driving real body-wall muscle cells — 95 of them, `worm/muscle.py`;
-- real sensory modalities and proprioceptive loops — `worm/senses.py`;
-- those systems driving a physical body through an environment — `worm/body.py`, `worm/world.py`;
-- **behaviour emerging from the sensorimotor loop rather than being scripted** — `worm/engine.py`.
+built from the real animal downwards. Every line below mixes things of different epistemic
+status, and the mixture is the point of the project — so each says which:
+
+| Component | Reconstructed / identified | Modelled | Tuned |
+|---|---|---|---|
+| **Nervous system** `worm/nervous.py` | the 302 cells and their names; gap and chemical contact counts, from electron micrographs | graded non-spiking dynamics (Wicks/Kunert form); the self-consistent `V_th` solve | `g_gap`, `g_syn` per contact; synaptic timescale |
+| **Neuromuscular map** `worm/muscle.py` | which neurons contact which of the 95 muscle cells | the three-stage excitation–contraction cascade | `peak_moment`; the per-cell balance that corrects for sectioning completeness and 2-D quadrant merging |
+| **Sensory pathways** `worm/senses.py` | **cell identity and polarity only** — ASEL/ASER as an ON/OFF pair, AWC as an OFF cell, AFD warm, URX/AQR/PQR for oxygen, ALM/AVM and PLM for touch | adapting differential transduction; the proprioceptive receptive-field construction | every gain and adaptation time constant |
+| **Proprioceptive loops** `worm/senses.py` | that B-type cells read curvature anterior to the muscles they drive (Wen et al.); that head motor neurons are themselves proprioceptive (Yeon et al.) | reach, sign and filter as implemented here | `proprio_gain`, `proprio_reach`, `head_proprio_gain`, `head_tau`, `head_delay` |
+| **Command layer** `worm/senses.py` | AVB/PVC and AVA/AVD/AVE class membership | the Schmitt-trigger direction gate; the omega-turn transient | gate bias, hysteresis, cord drive, omega current |
+| **Mechanics** `worm/body.py` | — | inextensible active elastica; resistive force theory at zero Reynolds | — (bending modulus and drag are **measured**) |
+| **Environment** `worm/world.py` | — | steady-state diffusion fields, `D∇²c = λc` | lawn geometry, gradient scales |
+| **The loop** `worm/engine.py` | — | **behaviour emerges from the sensorimotor loop; nothing in the middle is scripted** | — |
+
+So "the model has real sensory modalities" is a claim that would blur three of those columns
+at once, and it is not one this document makes. What is real is **which cells carry which
+modality and with what sign**. The transduction that turns a concentration into a current,
+and every gain in front of it, is modelled and tuned — and `worm/params.py` says which is
+which, constant by constant. Where a phrase like "real X" appears in older prose, read it as
+"routed to the cells that actually carry X".
 
 The founding constraint, stated at the top of `tools/optimise.py` and in the README's
 *Evolved animals are not C. elegans*: **the connectome is anatomy, not parameters.**
 Reconstructed contact counts *are* the synaptic weights. Fitting them would throw away the
 reason the model is built on a connectome at all. Measured constants — capacitance,
 reversal potentials, bending modulus, drag — are treated as facts.
+
+**Nothing in the reference worm is evolved.** That is the whole of the boundary in one line,
+and §5 is the full table of the five epistemic classes.
 
 Biological claims belong to this track and to nothing else.
 

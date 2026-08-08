@@ -16,13 +16,25 @@ and several of the ones below are cited by name in `docs/research-log/`.
 | **CORE_INFRASTRUCTURE** | Part of the build, export, data or check pipeline. Breaking it breaks CI or the artifacts. |
 | **MEASUREMENT_LIBRARY** | Imported by many other tools. The blast radius of an edit is the whole tooling layer. |
 | **MAINTAINED_INSTRUMENT** | A measurement you are meant to reach for. Documented in `README.md`, and expected to still work. |
-| **ACTIVE_EXPERIMENT** | Tied to a currently-open question in `NEXT.md`; touched in the last few days of active work. |
+| **ACTIVE_EXPERIMENT** | Its question is **still open** in `NEXT.md`. |
+| **ANSWERED_PROBE** | Asked a sharp question, got an answer, and the answer is load-bearing. A sacrifice branch: it did its job. Kept executable because the result is a do-not-repeat. |
 | **UNCERTAIN** | No importers, no references, untouched since the first days. *Probably* a finished one-shot — but "probably" is the honest word, and none of them has been confirmed dead. |
+
+**Recency is not activity, and this index used to make that mistake.** Four probes were
+labelled `ACTIVE_EXPERIMENT` because they had been touched in the project's last days of
+work. They had been touched because they were *finishing* — each one ran, answered its
+question in the negative, and closed it. Being edited recently is evidence that a file
+mattered recently; whether its question is still open is a separate fact, and only `NEXT.md`
+and `worm/params.py` settle it.
 
 The evidence columns are `imp` (modules importing it), `ref` (files mentioning its path) and
 `last` (last commit touching it). They were measured, not guessed. A tool cited only in
 `docs/research-log/` is marked `log` — that means it has historical standing, not that it is
 current.
+
+For the *model paths* these tools test, the lifecycle labels are in
+[`docs/runtime-parity.md`](../docs/runtime-parity.md), which also explains why "the runtime
+implements it" and "it works" are independent facts.
 
 ---
 
@@ -101,18 +113,33 @@ Documented in `README.md`'s layout table and expected to still work. Reach for t
 
 ## ACTIVE_EXPERIMENT
 
-Tied to open questions. All last touched in the final days of active work.
+One. Its question is open in `NEXT.md`.
 
-| tool | last | question |
+| tool | last | open question |
 |---|---|---|
-| `head_cascade.py` | 2026-08-04 | Can a cascade of head-cell lags buy what the invented delay was buying? |
-| `head_medium.py` | 2026-08-04 | Does the cascade's phase follow the mechanical load? *(Answered: no.)* |
-| `lag_span.py` | 2026-08-04 | Does cutting the fixed lag widen the modulation span? *(Answered: barely.)* |
-| `force_velocity.py` | 2026-08-04 | Does a force-velocity curve widen it? *(Answered: it narrows it.)* |
-| `damping_sweep.py` | 2026-08-04 | Is the buffer-end frequency set by internal damping? *(Answered: no.)* |
+| `head_cascade.py` | 2026-08-04 | Should the cascade be adopted? It matches the shipped frequency with `head_delay = 0` and improves the wave, so it is live **as a simplification** — the mechanism argument it was built for was refuted by `head_medium.py` below. Adoption is blocked on a scorecard/ethogram baseline and a runtime port. |
 
-Four of the five are negative results, and that is the point of listing them: the answers are
-in `NEXT.md`'s do-not-re-run table, and the reasoning is in `docs/research-log/`.
+## ANSWERED_PROBE — sacrifice branches
+
+Each of these asked one sharp question, ran, and answered it. They are not active work and
+their questions are not open; they are kept executable because the answers are load-bearing
+do-not-repeats, and because a probe is cheap to keep and expensive to reconstruct.
+
+| tool | last | question, and the answer |
+|---|---|---|
+| `head_medium.py` | 2026-08-04 | Does the cascade's saturating phase follow the mechanical load where a fixed delay cannot? **No** — 1.27× shipped against 1.29× cascade. This is the measurement that retired the cascade's *reason*, leaving only its merits. |
+| `lag_span.py` | 2026-08-04 | If the fixed lag pins the swimming end, does cutting it widen the span? **Barely** — 1.29× → 1.40× for a fourfold cut, which retracted the diagnosis the same day it was written. The tool fixed its own success criteria before the run; that is why the retraction was clean. |
+| `force_velocity.py` | 2026-08-04 | Does a Hill-type force-velocity curve widen the span? **It narrows it**, monotonically, 1.27× → 1.17×. Its own header predicted this failure mode before the run. |
+| `damping_sweep.py` | 2026-08-04 | Is the buffer-end frequency set by the body's internal damping rather than the medium? **No** — zero internal damping buys 0.03 Hz. An existing assumption checked outside the regime it was made in. |
+
+All four are negative results and all four are in `NEXT.md`'s do-not-re-run table. The
+reasoning is in [`docs/research-log/`](../docs/research-log/); the model-path lifecycle
+labels are in [`docs/runtime-parity.md`](../docs/runtime-parity.md).
+
+`force_velocity.py` is the one with a second life: its verdict is negative **for the
+reference-gait question only**. Whether a lineage that must pay for shortening velocity
+evolves differently is a Track B question nobody has asked, which is why the parity document
+labels the path `HISTORICAL_NEGATIVE` *and* `DIGITAL_LIFE_CANDIDATE`.
 
 ## UNCERTAIN — probably finished one-shots, not confirmed
 

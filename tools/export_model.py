@@ -211,6 +211,14 @@ RUNTIME_UNSUPPORTED = {
     "muscle.fv_vmax": 0.0,
     # Omega wave suppression -- stands the body wave down during a turn. Distinct from
     # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.
+    #
+    # Measured and refuted, not merely untried: it makes the turn shallower, and the
+    # fraction of turns over 120 degrees fell to zero in both food conditions. The
+    # provenance block in SensoryParams has the intervals. So this entry pins a default
+    # that the science also wants left alone -- but the two facts are independent, and
+    # docs/runtime-parity.md keeps them on separate axes: a path can be implemented in the
+    # runtime and refuted (omega_reflex_suppression), or absent and still worth adopting
+    # (the head cascade). This registry only ever speaks to the first axis.
     "sensory.omega_wave_suppression": 0.0,
 }
 
