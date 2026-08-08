@@ -88,8 +88,26 @@ for (const [file, how] of [
 // ------------------------------------------------------------------ the runtime source --
 /* Read the dimensions out of the source rather than hard-coding them a second time: the
  * numbers above are the claim, and the source is the thing the claim is about. */
-const src = fs.readFileSync(at('wasm', 'assembly', 'index.ts'), 'utf8');
-const gen = fs.readFileSync(at('wasm', 'assembly', 'model_gen.ts'), 'utf8');
+/* Line endings are normalised on the way in, and the reason is a real failure rather than
+ * defensive habit. Git for Windows checks out with `core.autocrlf=true` by default, so
+ * index.ts arrives CRLF; the class-body scan below looks for a literal '\n}\n', which
+ * cannot match '\n}\r\n', so classEnd came back -1 and this file exited 2 with
+ * "cannot find class Worm in wasm/assembly/index.ts".
+ *
+ * That message is the interesting part. classStart *did* match -- '\nclass Worm {' finds
+ * the \n of a \r\n quite happily -- so the diagnostic accused the runtime source of having
+ * lost a class it had not lost, on a platform where every check downstream of this one
+ * would then not run. A parser that reports the wrong subject is worse than one that
+ * crashes, and this is the file whose whole point is that a claim nobody reads goes stale.
+ *
+ * Normalising once here keeps every literal-newline pattern below platform-independent.
+ * Nothing downstream cares about \r: the constant regex uses \s*, and the document checks
+ * are substring and \s-based. The .ts files themselves are not touched -- this is a
+ * reader-side fix, and the repository stores LF. */
+const readSource = (...parts) =>
+  fs.readFileSync(at(...parts), 'utf8').replace(/\r\n/g, '\n');
+const src = readSource('wasm', 'assembly', 'index.ts');
+const gen = readSource('wasm', 'assembly', 'model_gen.ts');
 
 const consts = {};
 for (const m of gen.matchAll(/export const (\w+):\s*(?:i32|f64)\s*=\s*([-\d.]+)/g)) {

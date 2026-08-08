@@ -72,6 +72,7 @@ Used below and in `tools/README.md`. Deliberately few, and `UNCERTAIN` is a real
 | `HISTORICAL_SUPERSEDED` | An earlier configuration, measured against and beaten by what shipped. Kept because the comparison is the evidence for the current choice. |
 | `HISTORICAL_NEGATIVE` | Tried and refuted. The refutation is the value. Each one names the form it should **not** be retried in. |
 | `DIGITAL_LIFE_CANDIDATE` | Plausibly useful to Track B, whose fitness question is not the reference-gait question. |
+| `DIAGNOSTIC_CONTROL` | Not a candidate mechanism at all. It exists so that a null result can be produced on demand — the switch is kept *because* turning it on changes nothing, and that is what rules a suspect out. Distinct from `HISTORICAL_NEGATIVE`, where something was proposed and failed; here nothing was ever proposed. |
 | `UNCERTAIN` | The repository does not settle it. Not a guess dressed as a status. |
 
 A path can carry two labels when the two tracks ask different questions of it. Force-velocity
@@ -160,7 +161,7 @@ thing to believe falsely.
 | `sensory.head_distributed` | `True` | `G.HEAD_DISTRIBUTED` | the lumped head reflex | **`HISTORICAL_SUPERSEDED`** — `tools/head_circuit.py`: travelling index +0.68 against +0.58, with less than half the invented delay (0.28 s against 0.60). |
 | `sensory.head_delay` | `0.28 s` | `G.HEAD_DELAY_N` | `head_delay = 0` | **tied to the cascade `REFERENCE_CANDIDATE`** — zero delay is what the cascade is for. `params.py` calls the shipped 0.28 "a fit and not an explanation". |
 | `sensory.omega_reflex_suppression` | `0.0` | `G.SEN_OMEGA_REFLEX_SUPPRESSION` | any value > 0 | **`HISTORICAL_NEGATIVE`** — "it was tried, and it does nothing"; every interval overlaps every other across 60–69 turns per condition. Nearly believed on four seeds until `tools/stats.py` turned it back into noise. Kept because the refutation is the useful part. |
-| `body.substeps` | `1` | `body_substeps` | `substeps > 1` | **diagnostic control** — substepping sixteenfold reproduces `dt = 0.5 ms` exactly. That is what ruled the mechanics out and sent the search to the coupling. Kept *because* it is the control. |
+| `body.substeps` | `1` | `body_substeps` | `substeps > 1` | **`DIAGNOSTIC_CONTROL`** — substepping sixteenfold reproduces `dt = 0.5 ms` exactly. Nobody ever proposed substepping as an improvement; it exists so that "the mechanics are under-integrated" can be ruled out on demand, which is what sent the search to the coupling instead. Kept *because* it changes nothing. |
 | `neural.v_clamp` | `(-80, 45)` | `G.V_CLAMP_LO/HI` | n/a — a value, not a branch | — |
 
 Every name in `tools/export_model.py`'s `NEURAL_SCALARS`, `MUSCLE_SCALARS`,
@@ -174,13 +175,18 @@ and why it cannot be lost again.
 Not enumerated exhaustively; it is most of `Params`. The ones worth naming because they look
 like switches and are not:
 
-| Parameter | Shipped | Baked into | Lifecycle of the alternate |
-|---|---|---|---|
-| `neural.v_th_from_rest` | `True` | the exported `V_th` array | `UNCERTAIN` — the repository argues the solve removes 302 free parameters but records no measurement of the model with it off |
-| `muscle.normalise_nmj` | `True` | the exported muscle `G` | **`REFERENCE_SHIPPED`, and load-bearing** — without it the heavier ventral innervation holds the worm in a permanent C |
-| `neural.command_cross_inhibition` | `0.0` | the exported `G_syn`/`GE_syn` CSR | `HISTORICAL_NEGATIVE` — `tools/command_sweep.py`'s note records that cross-inhibition never moved the decision |
-| `neural.glucl_pre`/`glucl_post`/`glucl_strength` | see `params.py` | the exported synapse matrices | `REFERENCE_SHIPPED` |
-| `sensory.proprio_reach`, `head_reach`, `head_tau`, `head_field` | see `params.py` | `W_b`/`W_a`/`W_head` and the decay constants | `REFERENCE_SHIPPED`; `proprio_reach` is the target of the next open experiment in `NEXT.md` |
+Two columns, because a single "lifecycle" column cannot answer honestly for both binary
+switches and continuous constants: the shipped value always has a status, and only some of
+these have an alternate to classify at all. Where there is no discrete alternate, the cell
+says so rather than restating the shipped status under a heading that promises otherwise.
+
+| Parameter | Shipped | Baked into | Shipped value | The alternate, if there is one |
+|---|---|---|---|---|
+| `neural.v_th_from_rest` | `True` | the exported `V_th` array | `REFERENCE_SHIPPED` | `False` → `UNCERTAIN`. The solve is argued for — it removes 302 free parameters — but no measurement of the model with it off is recorded anywhere. |
+| `muscle.normalise_nmj` | `True` | the exported muscle `G` | `REFERENCE_SHIPPED`, **load-bearing** | `False` → `HISTORICAL_SUPERSEDED`. The uncorrected map is what the reconstruction gives you, and `params.py` records the outcome: the heavier ventral innervation holds the worm in a permanent C. |
+| `neural.command_cross_inhibition` | `0.0` | the exported `G_syn`/`GE_syn` CSR | `REFERENCE_SHIPPED` (0.0 = as reconstructed) | `> 0` → `HISTORICAL_NEGATIVE`. `tools/command_sweep.py` records that cross-inhibition never moved the correlation it was proposed to fix. |
+| `neural.glucl_pre`/`glucl_post`/`glucl_strength` | see `params.py` | the exported synapse matrices | `REFERENCE_SHIPPED` | none — a cell list and a strength, not a switch. |
+| `sensory.proprio_reach`, `head_reach`, `head_tau`, `head_field` | see `params.py` | `W_b`/`W_a`/`W_head` and the decay constants | `REFERENCE_SHIPPED` | none — continuous constants with no discrete alternative. `proprio_reach` is the target of the next open experiment in `NEXT.md`, which will produce a value rather than a branch. |
 
 A change to any of these is a change to `web/worm.model`. Re-export and recompile as a pair;
 never commit one without the other.

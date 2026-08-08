@@ -69,9 +69,8 @@ git log --follow                                                → 30 commits, 
 ```
 
 The same blob object, not merely equal bytes: Git stored no second copy, so there was no
-re-encoding step in which anything could have changed.
-
-Byte-for-byte. Not a heading, not a retraction, not a stale line was edited in transit —
+re-encoding step in which anything could have changed. Not a heading, not a retraction, not a
+stale line was edited in transit —
 including two statements that are stale *now* (a *Third tier* still asking for a viewer
 scrubber that exists, a *Second tier* its own later sections revise). Those stay because
 they are the evidence for why an append-only roadmap stops being one, and
@@ -217,7 +216,7 @@ one, silently, with nothing to fail.
 
 ## F. Scientific documentation corrections
 
-Three. One in the pre-existing repository, and two in this pass's own first cut — recorded
+Five. Two in the pre-existing repository, and three in this pass's own first cut — recorded
 here rather than quietly fixed, since a pass about not rewriting history should not begin by
 rewriting its own.
 
@@ -249,6 +248,32 @@ commit, its own seed count and its own argument. The docstring now records that,
 observation that the margin above 1.2 is thin at some seeds.
 
 A targeted search found no other instance of the same claim outside the archive.
+
+### F.1b — a check that could not run on Windows, reported green
+
+`wasm/memory.mjs` reads `wasm/assembly/index.ts` and scans the `Worm` class body to derive
+each per-animal array's size from the source rather than trusting a second copy of the
+numbers. The scan is two `indexOf` calls: `'\nclass Worm {'` for the start, `'\n}\n'` for the
+end.
+
+Git for Windows checks out with `core.autocrlf=true` by default, so `index.ts` arrives CRLF.
+`'\nclass Worm {'` still matches — it finds the `\n` of a `\r\n` — but `'\n}\n'` cannot match
+`'\n}\r\n'`, so `classEnd` is `-1` and the tool exits 2 with **`cannot find class Worm in
+wasm/assembly/index.ts`**. Reproduced on this PR's head, and the fix verified against a
+genuinely CRLF-converted working tree rather than argued for.
+
+Two things make it worth a numbered entry rather than a silent fix:
+
+- **The diagnostic accused the wrong subject.** It named the runtime source as having lost a
+  class it had not lost, in a file whose entire purpose is to notice when a documented claim
+  goes stale. A parser that reports the wrong subject is worse than one that crashes.
+- **The bug predates this pass, but this pass edits the file and reported it green.** The
+  green was true on Linux and untrue on Windows, and nothing said so.
+
+Fixed reader-side, in `wasm/memory.mjs` only: both `.ts` sources are read through one helper
+that normalises `\r\n` to `\n`. Nothing downstream cares about `\r` — the constant regex uses
+`\s*` and the document checks are substring and `\s`-based — and `wasm/assembly/*.ts` is not
+touched. The repository stores LF; this makes the *reader* indifferent.
 
 ### F.2 — `omega_wave_suppression` was mislabelled by this pass
 
@@ -470,6 +495,43 @@ that cannot see the working tree, which is all of it except `test_ci_policy.py` 
 `test_local_checks.py` — and those two were re-run against the final tree (in the 56 above).
 `tools/export_model.py`'s only change is an additive comment, and nothing in `worm/` imports
 it, which is why the fingerprint is the binding evidence rather than the test count.
+
+**Re-validated again after the polish round**, from cleared bytecode caches and with
+`PYTHONDONTWRITEBYTECODE=1`:
+
+| Check | Result |
+|---|---|
+| `node wasm/memory.mjs` — **CRLF checkout** | **PASS**, exit 0 (was: `cannot find class Worm`, exit 2) |
+| `node wasm/memory.mjs` — LF checkout | PASS, exit 0 |
+| `node tools/check_web.mjs` | acyclic, every import resolves |
+| `pytest test_runtime_parity + test_ci_policy + test_local_checks` | **56 passed** |
+| `pytest test_export_model + test_genome + test_model_artifacts + test_export_precision + test_stats` | **42 passed** |
+| Guard watched to fail | fires on `omega_wave_suppression = 1.0`; restore verified **by loaded value**, not only by `git diff` |
+| Trajectory fingerprint | `a9d09d63…d307f2` — identical |
+| Files changed under `worm/`, `data/`, `wasm/assembly/`, `web/`, `docker/`, `.github/` | **0** |
+
+### A stale-bytecode incident, and what it changes about the claims above
+
+The first attempt at the polish-round re-run reported `1 failed, 55 passed` — the parity guard
+rejecting `omega_wave_suppression`. `worm/params.py` on disk was correct and `git`-clean; the
+interpreter was loading `1.0` from `worm/__pycache__/params.cpython-311.pyc`.
+
+The mechanism is worth recording because the restore *looked* verified. Demonstrating the
+guard means writing a broken default, running pytest, and restoring. `0.0` → `1.0` preserves
+the byte length, and the restore landed inside the same one-second mtime bucket the `.pyc`
+had recorded — and (mtime, size) is exactly the pair CPython uses to decide a `.pyc` is
+current. So the cache was considered valid and the broken compile survived a restore that
+`git diff --quiet` correctly reported as clean.
+
+`__pycache__` is gitignored, so **neither the repository nor this PR was ever affected**. What
+was affected is the evidence: the review round's Python numbers were produced under that
+cache. They have all been re-run above from cleared caches and are unchanged, which is the
+expected outcome — the poisoned constant gates a branch (`wave_gain < 1.0`) that only runs
+during an omega turn, and none of those tests takes one. Unchanged-on-re-run is the result,
+not an argument for skipping the re-run.
+
+The lasting fix is procedural and is now used above: verify a restore by the value the
+interpreter actually loads, not only by `git diff`.
 
 One caveat on that 201-test run, stated because a check whose conditions were not what they
 look like is exactly what `tools/audit.py` exists to find: it was launched while this report

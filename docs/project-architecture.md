@@ -23,8 +23,6 @@ epistemic status.
 ### Track A — Reference *C. elegans*
 
 A reconstruction. The goal is a convincing simulated roundworm, viewable in a browser,
-built from the real animal downwards:
-
 built from the real animal downwards. Every line below mixes things of different epistemic
 status, and the mixture is the point of the project — so each says which:
 
@@ -228,9 +226,9 @@ Neither has any purchase on a path the runtime does not implement. That is the w
 
 ---
 
-## 5. Measured, modelled, tuned, evolved
+## 5. Measured, reconstructed, modelled, tuned, evolved
 
-Four epistemic classes. Keeping them separable is a Track A requirement and a Track B
+Five epistemic classes. Keeping them separable is a Track A requirement and a Track B
 safety property.
 
 | Class | Example | Where it is recorded | May evolution touch it? |
