@@ -257,6 +257,9 @@ NO_CI_NEEDED = {
                "131 kB working log on a docker-and-puppeteer job was judged the worse "
                "trade; the check still fails, just later and blaming the wrong change.",
     "LICENSE": "prose",
+    "docs/project-architecture.md": "prose -- the intent/architecture compass. It states "
+                                    "invariants rather than implementing any, so there is "
+                                    "nothing here for a job to execute.",
     ".gitignore": "affects no job's inputs",
     "Dockerfile": "not built by any workflow; the cache-policy job runs nginx:alpine "
                   "directly against docker/nginx.conf",
