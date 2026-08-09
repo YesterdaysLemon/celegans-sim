@@ -17,21 +17,50 @@ by a fixed proprioceptive reach with nothing scaling it by load.
 Single-medium sweeps already exist and answer half of it: `worm/params.py` records a
 `tools/wave_speed.py` sweep in which reach moves wavelength 0.49 → 0.64 L with the frequency
 flat to within 1%. **What is unmeasured is whether that survives a change of medium** — every
-existing sweep is one medium. So: does the wavelength *span* move, and does moving it drag the
-frequency span with it? If reach sets wavelength without touching the span, frequency and
-wavelength are *separate* failures needing separate mechanisms — worth knowing before anyone
-builds either.
+existing sweep is one medium.
+
+**Measure the product, not the two factors.** An external review pointed out that wave speed
+`v = f · λ` is the quantity the animal actually opens up, and that frequency and wavelength are
+its two projections rather than two independent failures:
+
+| | crawl | swim | ratio |
+|---|---|---|---|
+| animal (Fang-Yen) | 0.30 × 0.65 = **0.195 L/s** | 1.76 × 1.54 = **2.71 L/s** | **13.9×** |
+| this model | 0.656 × 0.86 = **0.564** | 0.833 × 0.91 = **0.758** | **1.34×** |
+
+That reframes the item. The suspicion it raises is structural: this model carries a fixed
+temporal head lag *and* a fixed spatial proprioceptive reach — two independent knobs, where a
+single per-segment propagation time would set both. That is a candidate explanation for the
+otherwise odd result that reach moves λ with frequency flat to 1%.
+
+**So the cheapest decisive experiment is the (f, λ) locus, not a reach sweep.** Sweep the
+medium and plot the model's (f, λ) points against the animal's crawl→swim line. If the model's
+locus slides *off* that line, the two knobs are genuinely independent here and are not in the
+animal — one mechanism to find, not two. It needs no new model code.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
-> gait-modulation span and all four failed. The tables are in
+> gait-modulation span and all four failed. Full tables in
 > [`docs/research-log/`](docs/research-log/); this is the do-not-repeat list.
 >
-> | tried | result | do not retry as |
-> |---|---|---|
-> | the cascade's frequency-dependent phase | 1.27× → 1.29× | a stage count or a lag budget |
-> | cutting the fixed head lag fourfold | 1.29× → 1.40× | a smaller head reflex |
-> | muscle force-velocity | 1.27× → 1.17×, worse | a stronger derating; unstable there |
-> | body internal damping, down to zero | 1.27× → 1.30× (0.03 Hz) | a mechanical-dissipation problem |
+> **Absolute frequencies, not just spans** — an external reviewer given only the span column
+> inferred a frequency floor at ~0.9 Hz and built a whole mechanism on it. The lag-cut row
+> refutes that outright: buffer reaches **1.900 Hz**. A table of ratios discards exactly what
+> is needed to reason about mechanism, so both are quoted here.
+>
+> | tried | agar Hz | buffer Hz | span | do not retry as |
+> |---|---|---|---|---|
+> | *(shipped, for reference)* | 0.656 | 0.833 | 1.27× | — |
+> | the cascade's frequency-dependent phase | 0.644 | 0.833 | 1.29× | a stage count or a lag budget |
+> | cutting the fixed head lag fourfold (0.500 → 0.125 s) | 1.356 | 1.900 | 1.40× | a smaller head reflex |
+> | muscle force-velocity (`fv_vmax = 500`) | 0.600 | 0.700 | 1.17×, worse | a stronger derating; unstable there |
+> | body internal damping, down to zero | 0.667 | 0.867 | 1.30× | a mechanical-dissipation problem |
+>
+> Read the lag-cut row carefully before proposing anything: a fourfold cut roughly **doubles
+> the frequency in both media at once**. Frequency is set by total loop lag and there is no
+> floor — but the *span* barely moves, which is what an additive `τ_fixed + τ_body(K)` model
+> cannot do. Fitting that model to those points puts the buffer-end body lag near 0.8 s,
+> larger than the head reflex's entire budget, on a body with almost no drag on it. Both the
+> additive frame and the floor frame are dead.
 
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
