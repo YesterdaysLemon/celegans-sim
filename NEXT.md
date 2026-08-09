@@ -115,18 +115,7 @@ the model being clean.
 
 ## Blocked, or needs an owner decision
 
-- **Should `test_medium_changes_the_gait` assert the *direction* of gait modulation?** It
-  currently asserts `ratio > 1.2`, which is direction-free — and that is why the suite could
-  not see a docstring claiming the model ran backwards. Direction is now right at every seed
-  measured, but the margin is thin (seed 5 gives 1.214 against a 1.2 bound), so tightening it
-  wants a larger seed count first. Changing it is a change to a scientific acceptance
-  criterion and belongs in its own commit.
-- **`worm/genome.py` claims something untrue about `tools/optimise.py`.** Its comment says the
-  three shared fields "retain that tool's ranges"; measured, none of the three does —
-  `proprio_gain` is (20, 300) there and (8, 80) here, and the other two disagree comparably.
-  The envelopes still overlap, which is what `tests/test_genome.py` now pins. Correcting the
-  comment is a one-line change under `worm/`, deliberately not made in the pass that kept that
-  directory at zero changes.
+*(Nothing open here right now.)*
 
 ### Settled
 
@@ -137,6 +126,17 @@ the model being clean.
   cited by path in `worm/params.py` as the provenance for shipped constants
   (`gate_calibrate.py`, `modulator_sweep.py`, `osc_control.py`, `reversal_test.py`,
   `tau_sweep.py`) and `twi_by_region.py` is cited from `tools/reflex_gain.py`.
+- **`test_medium_changes_the_gait` now asserts direction**, on 12 seeds' evidence
+  (0, 1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29): buffer faster than agar at **12/12**, agar in
+  FFT bin 13–14, buffer always bin 17. The old `ratio > 1.2` bound had a margin of *one bin* —
+  `analyse` quantises to 0.05 Hz exactly, so a single bin of drift on the agar side would have
+  failed the suite for a change smaller than the measurement's own resolution. It also passed
+  a model running backwards, which is why a stale docstring claiming exactly that survived a
+  week. The floor is now expressed in bins (≥ 2, observed 3–4) and the sign is asserted.
+- **`worm/genome.py`'s "retain that tool's ranges" is corrected.** It was never true —
+  `proprio_gain` is (20, 300) in `optimise.py` and (8, 80) there. The comment now records both
+  envelopes and says why equality is *not* asserted: the two searches answer different
+  questions, and pinning equality would freeze a relationship the repository does not maintain.
 - **`tools/optimise.py` stays live, and its search space is now pinned.** It covers four
   parameters `BOUNDS` deliberately excludes — `proprio_reach`, `peak_moment`, `head_tau`,
   `head_reach` — so it is not redundant with `wasm/evolve.mjs`. `tests/test_genome.py` pins

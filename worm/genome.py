@@ -35,9 +35,29 @@ class Bound(NamedTuple):
 
 
 # These are conservative engineering search envelopes, not biological confidence
-# intervals. The three fields already searched by tools/optimise.py retain that tool's
-# ranges; the remaining gains are bounded around the shipped operating point. Crucially,
-# this is an allow-list. Measured constants (C_m, reversal potentials, drag, length, EI),
+# intervals. Every gain here is bounded around the shipped operating point.
+#
+# THREE OF THEM ARE ALSO SEARCHED BY tools/optimise.py, AND THE TWO ENVELOPES DIFFER.
+# This comment used to say the three "retain that tool's ranges". They do not, and never
+# did -- measured:
+#
+#     proprio_gain        optimise.py (20.0, 300.0)   here (8.0,  80.0)
+#     head_proprio_gain   optimise.py ( 0.0, 700.0)   here (40.0, 280.0)
+#     tonic_forward       optimise.py (20.0, 160.0)   here (10.0,  35.0)
+#
+# That is not obviously wrong -- the two searches answer different questions. optimise.py
+# fits against behavioural targets and may legitimately want to look further out than a
+# lineage under selection should be allowed to wander from the shipped animal. But the
+# claim of equality was false, and a false claim about which envelope applies is exactly
+# the sort of thing that gets a range widened "back" to a value it never had.
+#
+# What IS pinned, by tests/test_genome.py: every optimise.py name resolves against a real
+# Params(); the shared/search-only partition holds; and the shared envelopes still overlap,
+# because two searches over one parameter that cannot reach each other's region would be a
+# disagreement about what the parameter is for, with no symptom. Equality is deliberately
+# not asserted -- it would pin a relationship this repository does not maintain.
+#
+# Crucially, this is an allow-list. Measured constants (C_m, reversal potentials, drag, length, EI),
 # structural/discrete fields, and known dead parameters such as world.ingestion_rate,
 # world.food_diffusion_scale, and body.dt are absent. (world.diffusion_oxygen was on that
 # list; #48 deleted the parameter rather than leaving a dead one to name -- see the static

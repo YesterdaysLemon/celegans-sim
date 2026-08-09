@@ -157,35 +157,65 @@ def test_medium_changes_the_gait():
     either, except the two drag coefficients -- so a mechanical coupling from medium to
     gait exists here and this test pins it down.
 
-    What it asserts is that the *size* of that coupling is not nothing. What it does not
-    assert is the direction, and the reason has changed since this was written.
+    It asserts two things: that the coupling exists, and that it points the way the animal
+    does. The second is new, and the first is now stated in units that mean something.
 
-    It used to read "the model currently gets it backwards: ~1.25 Hz on agar and ~0.55 Hz
-    in buffer". That is no longer true and had not been for some time. Re-measured through
-    this test's own configuration -- `analyse`, 20 s, seeds 3, 5 and 11 -- the model runs
-    0.65-0.70 Hz on agar and 0.85 Hz in buffer at every seed: buffer faster, which is the
-    animal's direction. It agrees with the README's limitations section ("gait modulation
-    points the right way now, and is far too small", 0.66 Hz against 0.85 Hz) and with the
-    three-medium sweep in the research log.
+    THE DIRECTION IS NOW ASSERTED, on twelve seeds' evidence. This test used to be
+    deliberately direction-free, because when it was written the model ran the wrong way
+    round and a directional assertion would have been asserting something untrue. That has
+    not been the case for some time, and the docstring saying so went stale for a week
+    without the suite noticing -- precisely because nothing here read the sign.
 
-    So the remaining failure is magnitude, not sign: 1.21-1.31x here against the animal's
-    0.30 -> 1.76 Hz, roughly sixfold. The `ratio > 1.2` bound below is left as it is
-    deliberately. It is a floor on the coupling existing at all, it was chosen when the
-    sign was wrong, and tightening it or making it directional is a change to a scientific
-    acceptance criterion -- which wants its own commit, its own seed count and its own
-    argument, not a docstring correction. The margin above 1.2 is thin at some seeds.
+    Measured through this test's own configuration (`analyse`, 20 s, bare plate, medium
+    swapped in place), seeds 0, 1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29:
+
+        buffer faster than agar     12 / 12
+        agar                        0.65 Hz (11 seeds), 0.70 Hz (seed 5)
+        buffer                      0.85 Hz (all 12)
+        ratio                       1.214 - 1.308
+
+    THE OLD `ratio > 1.2` BOUND WAS A QUANTISATION ARTEFACT, NOT A MARGIN. `analyse` takes
+    the dominant FFT bin of a 20 s window sampled every 4 steps, so the frequency it returns
+    is quantised to `fs/n` = 500/10000 = **0.05 Hz exactly**. Every number above is a bin
+    index: agar is bin 13 or 14, buffer is bin 17. The old bound needed roughly 2.7 bins of
+    separation and the model delivers 3 to 4 -- so a single bin of drift on the agar side
+    (0.75 Hz, bin 15) would have taken the ratio to 1.133 and failed the suite, for a change
+    smaller than the measurement's own resolution.
+
+    So the magnitude floor is expressed in bins now: at least **two**, against an observed
+    minimum of three. That is a full bin of headroom, where the old form had none, and it
+    cannot be read as a claim about a ratio the measurement cannot resolve.
+
+    Neither assertion is a claim that the magnitude is right. It is not: 1.27x here against
+    the animal's 0.30 -> 1.76 Hz, roughly sixfold, and the wave speed `f * L` that both are
+    projections of goes 1.34x here against the animal's 13.9x. That gap is the open item at
+    the top of NEXT.md; this test only guards the sign and the existence of the coupling.
     """
+    # analyse()'s FFT resolution over a 20 s window. The frequencies it returns ARE bin
+    # centres, so the comparison below is done on integer bin indices: 0.850 - 0.750 is
+    # 0.09999999999999998 in binary float, and a `>= 2 * BIN_HZ` test on that fails at
+    # exactly two bins. Integers have no such edge.
+    bin_hz = 0.05
     results = {}
     for medium in ("agar", "buffer"):
         p = Params()
         sim = Simulation(p, seed=3, world=bare_world(p))
         sim.body.medium = MEDIA[medium]
         results[medium] = analyse(sim, seconds=20.0)
-    ratio = max(results["buffer"]["freq"], results["agar"]["freq"]) / max(
-        min(results["buffer"]["freq"], results["agar"]["freq"]), 1e-9)
-    assert ratio > 1.2, (
-        "medium had almost no effect on gait: %.3f Hz agar vs %.3f Hz buffer"
-        % (results["agar"]["freq"], results["buffer"]["freq"]))
+    agar, buffer = results["agar"]["freq"], results["buffer"]["freq"]
+
+    assert buffer > agar, (
+        "gait modulation points the wrong way: %.3f Hz agar vs %.3f Hz buffer. The animal "
+        "speeds up in the thinner medium (0.30 Hz crawling, 1.76 Hz swimming); this model "
+        "has done the same on 12/12 seeds. A reversal here is a real regression, not noise "
+        "-- the two arms sit 3 to 4 FFT bins apart." % (agar, buffer))
+
+    separation = round(buffer / bin_hz) - round(agar / bin_hz)
+    assert separation >= 2, (
+        "medium had almost no effect on gait: %.3f Hz agar vs %.3f Hz buffer, %d FFT "
+        "bins apart. Measured across 12 seeds the separation is 3 to 4 bins, so this is a "
+        "real loss of coupling rather than the estimator moving by one bin."
+        % (agar, buffer, separation))
 
 
 def test_resting_posture_is_straight():
