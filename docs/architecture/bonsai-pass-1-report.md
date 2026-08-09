@@ -462,7 +462,7 @@ Tempting refactors declined, with the reason:
 |---|---|
 | Splitting `worm/senses.py` (the command layer out of sensory transduction) | Out of scope; it is a step function, so it costs a double implementation and a conformance run |
 | Splitting `wasm/assembly/index.ts` (2,346 lines, 5.1× growth in 5 days) | Real risk of breaking a working artifact for readability |
-| Consolidating the WASM bootstrap duplicated across 9 `.mjs` files plus `web/local.js`, in four distinct byte-forms | Genuine duplication, but a Pass 2 change with its own validation |
+| Consolidating the WASM bootstrap, which recurs in 9 `.mjs` files plus `web/local.js` | Genuine duplication, but a Pass 2 change with its own validation |
 | `worm/params.py`'s structure and comment density (74% of its lines are comment-only) | The comments *are* the provenance. Splitting it is the most tempting and most harmful change available |
 | `worm/body.py` drag assembly, `worm/nervous.py` gap iteration, `worm/world.py::_settle_by_claim` | Load-bearing and verified; `_settle_by_claim` is a floating-point transcription whose iteration order matters |
 | Removing `Simulation.snapshot()` (zero callers) and an unused `import time` | Trivially safe, but out of scope for a pass whose value is *not changing code* |
@@ -484,7 +484,9 @@ Tempting refactors declined, with the reason:
    Route-2 branch is invisible.
 3. **Node-side WASM loader consolidation** — `CONSOLIDATE`. The
    `readFileSync` → instantiate → `alloc(payload.length + 8)` → `(raw + 7) & ~7` →
-   `setPayload` sequence is near-identical across nine `.mjs` harnesses, the largest byte-identical group being five. Node-side only —
+   `setPayload` sequence recurs in nine `.mjs` harnesses, with small local variations — how
+   many are byte-identical depends entirely on where you cut the comparison window, so no
+   such count is quoted here. Node-side only —
    do **not** force `web/local.js` into it; the browser fetches rather than reads.
 4. **Archive the finished one-shot tools** — `NEEDS HUMAN TASTE`. 25 candidates classified;
    how much of the record should stay executable is not an engineering question.
