@@ -33,8 +33,8 @@ temporal head lag *and* a fixed spatial proprioceptive reach — two independent
 single per-segment propagation time would set both. That is a candidate explanation for the
 otherwise odd result that reach moves λ with frequency flat to 1%.
 
-**So the cheapest decisive experiment is the (f, λ) locus, not a reach sweep.** Sweep the
-medium and plot the model's (f, λ) points against the animal's crawl→swim line. If the model's
+**So the first experiment is the (f, λ) locus, not a reach sweep** — decided, see *Settled*
+below. Sweep the medium and plot the model's (f, λ) points against the animal's crawl→swim line. If the model's
 locus slides *off* that line, the two knobs are genuinely independent here and are not in the
 animal — one mechanism to find, not two. It needs no new model code.
 
@@ -115,18 +115,33 @@ the model being clean.
 
 ## Blocked, or needs an owner decision
 
-- **Reach sweep or cascade port first?** Both touch the shared gait, so they should not be in
-  flight together. The reach sweep answers an open question; the cascade already measured
-  better but needs a runtime port before it can be a default. No engineering argument settles
-  the order.
-- **The 25 uncertain tools.** Classified in [`tools/README.md`](tools/README.md), none moved.
-  **Not purely a taste call:** five of them are cited by path in `worm/params.py` as the
-  provenance for shipped constants — `gate_calibrate.py`, `modulator_sweep.py`,
-  `osc_control.py`, `reversal_test.py`, `tau_sweep.py` — so moving those breaks a provenance
-  reference in the model's own parameter file. A sixth, `twi_by_region.py`, is cited from
-  `tools/reflex_gain.py`. What remains a taste call is the other nineteen.
-- **Is `tools/optimise.py` still live** now that `wasm/evolve.mjs` exists? They search
-  overlapping parameter sets and only one of the two lists is pinned by a test.
+- **Should `test_medium_changes_the_gait` assert the *direction* of gait modulation?** It
+  currently asserts `ratio > 1.2`, which is direction-free — and that is why the suite could
+  not see a docstring claiming the model ran backwards. Direction is now right at every seed
+  measured, but the margin is thin (seed 5 gives 1.214 against a 1.2 bound), so tightening it
+  wants a larger seed count first. Changing it is a change to a scientific acceptance
+  criterion and belongs in its own commit.
+- **`worm/genome.py` claims something untrue about `tools/optimise.py`.** Its comment says the
+  three shared fields "retain that tool's ranges"; measured, none of the three does —
+  `proprio_gain` is (20, 300) there and (8, 80) here, and the other two disagree comparably.
+  The envelopes still overlap, which is what `tests/test_genome.py` now pins. Correcting the
+  comment is a one-line change under `worm/`, deliberately not made in the pass that kept that
+  directory at zero changes.
+
+### Settled
+
+- **Gait experiment order** — the (f, λ) locus test above goes first. It subsumes the reach
+  sweep's question and needs no new model code; the cascade port waits behind it.
+- **The 25 uncertain tools stay where they are.** [`tools/README.md`](tools/README.md) solved
+  the discoverability problem the move was for. Six could not have moved anyway: five are
+  cited by path in `worm/params.py` as the provenance for shipped constants
+  (`gate_calibrate.py`, `modulator_sweep.py`, `osc_control.py`, `reversal_test.py`,
+  `tau_sweep.py`) and `twi_by_region.py` is cited from `tools/reflex_gain.py`.
+- **`tools/optimise.py` stays live, and its search space is now pinned.** It covers four
+  parameters `BOUNDS` deliberately excludes — `proprio_reach`, `peak_moment`, `head_tau`,
+  `head_reach` — so it is not redundant with `wasm/evolve.mjs`. `tests/test_genome.py` pins
+  that every `SPACE` name resolves, that the shared/search-only partition holds, and that the
+  shared envelopes still overlap.
 
 ---
 
