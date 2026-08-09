@@ -79,13 +79,14 @@ came to be misread as one-offs, but their importers outnumber every other file h
 | tool | imp | the imported surface |
 |---|---|---|
 | `diagnose_loop.py` | **42** | `analyse`, `bare_world`, `travelling_index`, `_dominant`. `analyse`'s return dict is this project's operational definition of "what the gait is doing". |
-| `assays.py` | **32** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`. |
-| `stats.py` | 6 | `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict`, `fmt`, `BOOTSTRAP`. Reached transitively by everything through `assays`. |
+| `assays.py` | **32** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`, `apply_overrides`, `current_params`. |
+| `stats.py` | 6 | `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict`, `fmt`, `BOOTSTRAP`, `clears_zero`, `two_sample_ci`. Reached transitively by everything through `assays`. |
 | `coherence.py` | 3 | `profile` — per-position wave coherence. A small library rather than a hub, but it has importers and no documentation elsewhere. |
 
 Four of those symbols are private by name and imported across modules anyway: `_dispatch`,
 `_clean_plate`, `_dominant`, and (from `worm/senses.py`) `_output_position`. Renaming one is
-a cross-module change. The three `tools/` docstrings now say so; `worm/senses.py`'s does
+a cross-module change. The two `tools/` modules that own one now say so — `assays.py` for
+`_dispatch` and `_clean_plate`, `diagnose_loop.py` for `_dominant`. `worm/senses.py`'s does
 not, because this pass keeps the change surface under `worm/` at zero.
 
 Changing what a key of `analyse` *means*, or how an assay is *scored*, silently makes every

@@ -211,7 +211,10 @@ Verified by checking each `export const` in `model_gen.ts` for a `G.<name>` refe
 run unrestricted, the same method also returns `BODY_LENGTH`, `BODY_RADIUS_MAX`, the four
 `MED_*` medium constants, `ODOUR_DECAY`, `TOUCH_DECAY` and `N_NODES`, none of which
 `index.ts` reads either. So the honest count of exported-but-unread constants is around
-eleven; three is the number *within the scalar lists this paragraph is about*. Harmless today
+twelve; three is the number *within the seven scalar lists this paragraph is about*. Run
+without that restriction over **all** 371 `export const`s the count is 101, because the
+layout constants (`LEN_*`, `OFF_*`, `ROWS_*`, `COLS_*`) are addressed through generated
+accessors rather than by name. Harmless today
 — `rest_tension` still reaches the animal, the rest are inert on both sides — but an audit run
 from this document alone would otherwise conclude the runtime honours constants it ignores.
 

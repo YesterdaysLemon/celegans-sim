@@ -26,7 +26,7 @@ Three information bottlenecks, all measured rather than asserted:
 | **Python-only model paths were undocumented and unguarded.** Nothing recorded which switches the runtime implements, and a fresh read of the repository got the answer wrong in both directions. | see §D |
 
 Secondary: `tools/diagnose_loop.py` (42 importers) and `tools/assays.py` (32) described
-themselves as printers; ~25 tools had no importer, no reference and no documentation.
+themselves as printers; ~25 tools had no importer and no documentation (six turned out to be referenced; §F.9).
 
 ---
 
@@ -43,7 +43,7 @@ themselves as printers; ~25 tools had no importer, no reference and no documenta
 | **Shared substrate** | `docs/project-architecture.md` §3 — described as it exists today, with an explicit instruction not to generalise it before a second consumer disagrees |
 | **Reading order for a fresh maintainer** | `README.md` (a six-line pointer, near the top) and `docs/project-architecture.md` §8 |
 
-The compass is 19.1 kB. It states teleology and invariants and links out for everything
+The compass is 19.3 kB. It states teleology and invariants and links out for everything
 else, because a second 180 kB document would move the context problem rather than solve it.
 
 ---
@@ -138,7 +138,7 @@ were Python-only. **They are not.** All four are exported as compile-time consta
 it looks, and "the runtime cannot do X" is an expensive thing to believe falsely.
 
 Lifecycle labels: `REFERENCE_SHIPPED`, `REFERENCE_CANDIDATE`, `HISTORICAL_SUPERSEDED`,
-`HISTORICAL_NEGATIVE`, `DIGITAL_LIFE_CANDIDATE`, `UNCERTAIN`. A path may carry two when the
+`HISTORICAL_NEGATIVE`, `DIGITAL_LIFE_CANDIDATE`, `DIAGNOSTIC_CONTROL`, `UNCERTAIN`. A path may carry two when the
 two tracks ask different questions of it, and `UNCERTAIN` is used where the repository does
 not settle the matter. `neural.v_th_from_rest` was offered as the example and turned out to be
 the wrong one — see §F.6; it is not uncertain, it is unread.
@@ -188,8 +188,8 @@ the unused branch is currently unguarded.
 
 ## E. Tooling silhouette
 
-`tools/README.md` classifies all 70-odd files by **measured** importer count, reference count
-and last-touched date — never by filename. Each one-line purpose is its own docstring's first
+`tools/README.md` classifies all 70-odd files by **measured** importer count and last-touched
+date — never by filename. (A `ref` column existed until §F.9 removed it as unreproducible.) Each one-line purpose is its own docstring's first
 line, not a guess.
 
 | Class | n | Examples |
@@ -199,7 +199,7 @@ line, not a guess.
 | `MAINTAINED_INSTRUMENT` | 24 | `kymo.py`, `scorecard.py`, `compare.py`, `ethogram.py`, … |
 | `ACTIVE_EXPERIMENT` | **1** | `head_cascade.py` — the only one whose question is still open |
 | `ANSWERED_PROBE` | 4 | `head_medium.py`, `lag_span.py`, `force_velocity.py`, `damping_sweep.py` — sacrifice branches, all four negative |
-| `UNCERTAIN` | **25** | no importers, no references, untouched since the first days |
+| `UNCERTAIN` | **25** | no importers, untouched since the first days — but six *are* referenced; see §F.9 |
 
 The 25 are labelled uncertain rather than dead. No importers is evidence, not proof; several
 are cited by name in the research log; a probe is cheap to keep and expensive to reconstruct.
@@ -207,7 +207,8 @@ are cited by name in the research log; a probe is cheap to keep and expensive to
 
 Four symbols are private by name and imported across modules anyway — `_dispatch`,
 `_clean_plate` (`assays`), `_dominant` (`diagnose_loop`), `_output_position`
-(`worm/senses.py`). The three `tools/` modules' docstrings now say so; **`worm/senses.py`'s
+(`worm/senses.py`). The two `tools/` modules that own one — `assays.py` for `_dispatch` and
+`_clean_plate`, `diagnose_loop.py` for `_dominant` — now say so; **`worm/senses.py`'s
 does not, and cannot in this pass** — the change surface under `worm/` is deliberately zero,
 so `_output_position` remains an unannotated cross-module import. Named here rather than
 glossed. The three library docstrings
@@ -222,7 +223,8 @@ one, silently, with nothing to fail.
 Fourteen. Two in the pre-existing repository, and twelve in this pass's own drafts — recorded here
 rather than quietly fixed, since a pass about not rewriting history should not begin by
 rewriting its own. F.6 onwards came out of an independent adversarial audit commissioned
-against the finished branch; four of the seven were found by auditors rather than by me.
+against the finished branch: F.6 onwards is nine entries, and all of F.10-F.14 were found by
+auditors rather than by me.
 
 ### F.1 — a stale claim in a test docstring *(pre-existing)*
 
@@ -460,8 +462,8 @@ Tempting refactors declined, with the reason:
 |---|---|
 | Splitting `worm/senses.py` (the command layer out of sensory transduction) | Out of scope; it is a step function, so it costs a double implementation and a conformance run |
 | Splitting `wasm/assembly/index.ts` (2,346 lines, 5.1× growth in 5 days) | Real risk of breaking a working artifact for readability |
-| Consolidating the WASM bootstrap duplicated across 8 files | Genuine duplication, but a Pass 2 change with its own validation |
-| `worm/params.py`'s structure and 58% comment density | The comments *are* the provenance. Splitting it is the most tempting and most harmful change available |
+| Consolidating the WASM bootstrap duplicated across 9 `.mjs` files plus `web/local.js`, in four distinct byte-forms | Genuine duplication, but a Pass 2 change with its own validation |
+| `worm/params.py`'s structure and comment density (74% of its lines are comment-only) | The comments *are* the provenance. Splitting it is the most tempting and most harmful change available |
 | `worm/body.py` drag assembly, `worm/nervous.py` gap iteration, `worm/world.py::_settle_by_claim` | Load-bearing and verified; `_settle_by_claim` is a floating-point transcription whose iteration order matters |
 | Removing `Simulation.snapshot()` (zero callers) and an unused `import time` | Trivially safe, but out of scope for a pass whose value is *not changing code* |
 | Deleting or moving any of the 25 uncertain tools | Owner decision; classification first |
@@ -482,7 +484,7 @@ Tempting refactors declined, with the reason:
    Route-2 branch is invisible.
 3. **Node-side WASM loader consolidation** — `CONSOLIDATE`. The
    `readFileSync` → instantiate → `alloc(payload.length + 8)` → `(raw + 7) & ~7` →
-   `setPayload` sequence is byte-identical across seven `.mjs` harnesses. Node-side only —
+   `setPayload` sequence is near-identical across nine `.mjs` harnesses, the largest byte-identical group being five. Node-side only —
    do **not** force `web/local.js` into it; the browser fetches rather than reads.
 4. **Archive the finished one-shot tools** — `NEEDS HUMAN TASTE`. 25 candidates classified;
    how much of the record should stay executable is not an engineering question.
@@ -502,7 +504,7 @@ Estimated *first read before a safe change*, before and after:
 | Task | Before | After |
 |---|---|---|
 | **Viewer change** | `web/README.md` (6.5 kB) — already excellent | `web/README.md`. Unchanged; it was already the best compressor in the repo |
-| **Reference-model change** | `README.md` 64 kB + `NEXT.md` 181 kB + `worm/params.py` 2,387 lines, with no way to know which was current | `docs/project-architecture.md` 19.1 kB + `docs/runtime-parity.md` 18.5 kB + the relevant `params.py` section. **~245 kB → ~38 kB** before touching source |
+| **Reference-model change** | `README.md` 64 kB + `NEXT.md` 181 kB + `worm/params.py` 2,387 lines, with no way to know which was current | `docs/project-architecture.md` ~19 kB + `docs/runtime-parity.md` ~19 kB + the relevant `params.py` section. **~245 kB → ~38 kB** before touching source |
 | **Runtime/WASM change** | `wasm/README.md` + grep `index.ts` to discover what exists | `docs/runtime-parity.md` answers "does the runtime implement this?" directly, with the porting procedure |
 | **Digital Life change** | Nothing described the track at all; the boundary lived in the owner's head | `docs/project-architecture.md` §1 and §6 |
 | **"What should I work on?"** | Read 181 kB and infer | `NEXT.md`, 6.4 kB, one sitting |
@@ -551,7 +553,7 @@ right:
   written procedure.
 
 What is left pushing right is real and unaddressed by design: `wasm/assembly/index.ts` at
-2,346 lines and 5.1× growth in five days, and eight copies of the WASM bootstrap. Both are
+2,346 lines and 5.1× growth in five days, and ten copies of the WASM bootstrap. Both are
 Pass 2 candidates.
 
 The honest summary from the pre-pass audit stands, with one clause resolved: *this
