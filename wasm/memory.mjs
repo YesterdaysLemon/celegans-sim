@@ -50,13 +50,21 @@ const N_SCRATCH_ARRAYS = 37;
  * fifth place that makes the claim without adding it here is the drift this cannot catch,
  * which is why the runtime source is on the list: any new claim is downstream of that one.
  *
- * One further hole, stated rather than papered over: NEXT.md is prose and sits outside
- * every workflow path filter, so an edit to *it alone* schedules nothing and this check
- * does not run. A drift there is caught by the next commit that touches wasm/ or web/,
- * which is later than it should be and blames the wrong change. See NO_CI_NEEDED in
+ * One further hole, stated rather than papered over: the research log is prose and sits
+ * outside every workflow path filter, so an edit to *it alone* schedules nothing and this
+ * check does not run. A drift there is caught by the next commit that touches wasm/ or
+ * web/, which is later than it should be and blames the wrong change. See NO_CI_NEEDED in
  * tests/test_ci_policy.py for why that trade was taken.
+ *
+ * The first entry used to be NEXT.md, which is where the claim was made while NEXT.md was
+ * also the research log. It is now docs/research-log/next-history-through-2026-08-04.md,
+ * byte-for-byte the same document under a name that says what it is; the claim travelled
+ * with the text and this list follows the claim rather than the filename. The live NEXT.md
+ * is a roadmap and makes no memory claim, so listing it here would assert against a
+ * document that has no business carrying the figure.
  */
-const QUOTES = ['NEXT.md', 'web/local.js', 'wasm/README.md', 'wasm/assembly/index.ts'];
+const QUOTES = ['docs/research-log/next-history-through-2026-08-04.md',
+                'web/local.js', 'wasm/README.md', 'wasm/assembly/index.ts'];
 const FORBIDDEN = /a few kB|a few kb|nearly free/;
 
 const results = [];
@@ -80,8 +88,26 @@ for (const [file, how] of [
 // ------------------------------------------------------------------ the runtime source --
 /* Read the dimensions out of the source rather than hard-coding them a second time: the
  * numbers above are the claim, and the source is the thing the claim is about. */
-const src = fs.readFileSync(at('wasm', 'assembly', 'index.ts'), 'utf8');
-const gen = fs.readFileSync(at('wasm', 'assembly', 'model_gen.ts'), 'utf8');
+/* Line endings are normalised on the way in, and the reason is a real failure rather than
+ * defensive habit. Git for Windows checks out with `core.autocrlf=true` by default, so
+ * index.ts arrives CRLF; the class-body scan below looks for a literal '\n}\n', which
+ * cannot match '\n}\r\n', so classEnd came back -1 and this file exited 2 with
+ * "cannot find class Worm in wasm/assembly/index.ts".
+ *
+ * That message is the interesting part. classStart *did* match -- '\nclass Worm {' finds
+ * the \n of a \r\n quite happily -- so the diagnostic accused the runtime source of having
+ * lost a class it had not lost, on a platform where every check downstream of this one
+ * would then not run. A parser that reports the wrong subject is worse than one that
+ * crashes, and this is the file whose whole point is that a claim nobody reads goes stale.
+ *
+ * Normalising once here keeps every literal-newline pattern below platform-independent.
+ * Nothing downstream cares about \r: the constant regex uses \s*, and the document checks
+ * are substring and \s-based. The .ts files themselves are not touched -- this is a
+ * reader-side fix, and the repository stores LF. */
+const readSource = (...parts) =>
+  fs.readFileSync(at(...parts), 'utf8').replace(/\r\n/g, '\n');
+const src = readSource('wasm', 'assembly', 'index.ts');
+const gen = readSource('wasm', 'assembly', 'model_gen.ts');
 
 const consts = {};
 for (const m of gen.matchAll(/export const (\w+):\s*(?:i32|f64)\s*=\s*([-\d.]+)/g)) {

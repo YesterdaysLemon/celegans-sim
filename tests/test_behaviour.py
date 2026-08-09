@@ -157,10 +157,23 @@ def test_medium_changes_the_gait():
     either, except the two drag coefficients -- so a mechanical coupling from medium to
     gait exists here and this test pins it down.
 
-    What it deliberately does NOT assert is the *direction*, because the model currently
-    gets it backwards: it runs at ~1.25 Hz on agar and ~0.55 Hz in buffer, where the
-    animal is the other way round. Asserting the real direction would be asserting
-    something the model does not do. See the README's limitations section.
+    What it asserts is that the *size* of that coupling is not nothing. What it does not
+    assert is the direction, and the reason has changed since this was written.
+
+    It used to read "the model currently gets it backwards: ~1.25 Hz on agar and ~0.55 Hz
+    in buffer". That is no longer true and had not been for some time. Re-measured through
+    this test's own configuration -- `analyse`, 20 s, seeds 3, 5 and 11 -- the model runs
+    0.65-0.70 Hz on agar and 0.85 Hz in buffer at every seed: buffer faster, which is the
+    animal's direction. It agrees with the README's limitations section ("gait modulation
+    points the right way now, and is far too small", 0.66 Hz against 0.85 Hz) and with the
+    three-medium sweep in the research log.
+
+    So the remaining failure is magnitude, not sign: 1.21-1.31x here against the animal's
+    0.30 -> 1.76 Hz, roughly sixfold. The `ratio > 1.2` bound below is left as it is
+    deliberately. It is a floor on the coupling existing at all, it was chosen when the
+    sign was wrong, and tightening it or making it directional is a change to a scientific
+    acceptance criterion -- which wants its own commit, its own seed count and its own
+    argument, not a docstring correction. The margin above 1.2 is thin at some seeds.
     """
     results = {}
     for medium in ("agar", "buffer"):

@@ -249,14 +249,36 @@ def test_representative_edits_schedule_their_gates(path, wanted):
 # decision somebody made rather than an oversight nobody noticed.
 NO_CI_NEEDED = {
     "README.md": "prose",
-    "NEXT.md": "prose -- the working log. One caveat, written down because it is a real "
-               "hole rather than an absence of one: wasm/memory.mjs asserts that NEXT.md "
-               "quotes the measured per-worm memory figure, and an edit to NEXT.md alone "
-               "schedules nothing, so a drift there is caught by the next commit that "
-               "touches wasm/ or web/ rather than by the commit that causes it. Gating a "
-               "131 kB working log on a docker-and-puppeteer job was judged the worse "
-               "trade; the check still fails, just later and blaming the wrong change.",
+    "NEXT.md": "prose -- the live roadmap. It carries no asserted figure: the per-worm "
+               "memory claim that used to make this entry interesting moved to the "
+               "research log along with the rest of the working log, and wasm/memory.mjs "
+               "reads it there now.",
     "LICENSE": "prose",
+    "docs/project-architecture.md": "prose -- the intent/architecture compass. It states "
+                                    "invariants rather than implementing any, so there is "
+                                    "nothing here for a job to execute.",
+    "docs/research-log/README.md": "prose -- index and handling rules for the archive",
+    "docs/architecture/bonsai-pass-1-report.md":
+        "prose -- the record of a maintainability pass. Dated and closed; it describes what "
+        "was done rather than asserting anything a job could re-check.",
+    "docs/runtime-parity.md": "prose. The claim it documents IS gated: "
+                              "tests/test_runtime_parity.py pins the same registry under "
+                              "tests/**, so a default moving out from under this file "
+                              "fails the Python suite even though the file itself "
+                              "schedules nothing.",
+    "tools/README.md": "prose -- the instrument index. The python filter is tools/*.py "
+                       "plus tools/check_all.mjs, deliberately narrow, and widening it to "
+                       "tools/** to catch a markdown file would schedule the model suite "
+                       "on documentation edits.",
+    "docs/research-log/next-history-through-2026-08-04.md":
+        "prose -- the archived working log, preserved byte-for-byte. The same caveat the "
+        "NEXT.md entry used to carry now applies here: wasm/memory.mjs asserts that this "
+        "file quotes the measured per-worm figure, and an edit to it alone schedules "
+        "nothing, so a drift is caught by the next commit that touches wasm/ or web/ "
+        "rather than by the commit that causes it. Gating a 181 kB archive on a "
+        "docker-and-puppeteer job was judged the worse trade; the check still fails, just "
+        "later and blaming the wrong change. In practice the archive is append-only "
+        "history and should not drift at all.",
     ".gitignore": "affects no job's inputs",
     "Dockerfile": "not built by any workflow; the cache-policy job runs nginx:alpine "
                   "directly against docker/nginx.conf",

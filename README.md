@@ -12,6 +12,13 @@ gradient and obstacles. Plus a browser front end to watch it in.
 
 The worm is the project. The web app is a media player for it.
 
+> **New here, human or agent?** Read [`docs/project-architecture.md`](docs/project-architecture.md)
+> first. It is short, and it is the only place that says what the project is *for* — this
+> repository serves two tracks, a *C. elegans* reconstruction and a digital-life laboratory,
+> and they must not be confused for one another. Then [`NEXT.md`](NEXT.md) for what is
+> actually being worked on, and [`docs/runtime-parity.md`](docs/runtime-parity.md) before
+> changing any model default.
+
 ```bash
 python3 -m venv .venv                      # Python 3.10 or newer
 .venv/bin/python -m pip install -e .

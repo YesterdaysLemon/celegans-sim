@@ -1,0 +1,133 @@
+"""The shipped defaults stay on the side of the branch the runtime implements.
+
+`worm/` is a research superset and `wasm/assembly/index.ts` is the canonical browser
+animal. Several model paths therefore exist in Python and nowhere else, and that is a
+design decision rather than a defect -- counterfactuals, retired mechanisms and half-tested
+ideas belong on the Python side.
+
+What is not a design decision is a Python-only path becoming the *default*. That produces a
+divergence with no detector:
+
+    Python gains an experimental path, off by default
+      -> it measures better, so someone flips the default
+      -> the reference animal changes
+      -> the runtime keeps implementing the old path, having never implemented the new one
+      -> the browser and the reference are different animals
+
+HOW MUCH OF THAT CONFORMANCE ALREADY CATCHES, measured rather than assumed. An earlier
+version of this docstring said conformance was blind to it. It is not: flip `head_stages`
+to 4, or `fv_vmax` to 1.0, regenerate the reference and run `node wasm/conform.mjs` against
+the committed .wasm, and it FAILS, exit 10, in both cases. Conformance rebuilds the Python
+side from `Params()`, so the moment the new configuration moves the Python trajectory the
+comparison against the unchanged runtime diverges.
+
+The gap it does not cover is narrower and worse: a path escapes conformance when it is
+INERT ACROSS EVERY CONFORMANCE CASE. `omega_wave_suppression` scales by `abs(omega)`, no
+conformance case fires an omega turn, and so it PASSES even at 1.0. `tools/conform.py`
+records the same shape of miss letting the serotonin-gated chloride path reach the runtime
+unported.
+
+So this file is a second, earlier, better-named detector for two of the three registered
+paths -- and the only detector for the third. `tools/export_model.py::RUNTIME_UNSUPPORTED`
+names each path and the value the runtime is equivalent to; the assertion below is that
+`Params()` still sits there.
+
+WHAT THIS DOES NOT CONSTRAIN, because a guard that blocked research would be the wrong
+trade: it pins the shipped default only. Every tool, test and sweep that constructs a
+modified tree is untouched -- `tools/force_velocity.py` passes `fv_vmax=1000` and will keep
+passing it. Nothing here looks at a `replace()`d `Params`.
+
+A failure here does not mean the change is wrong. It means it is unfinished, and the
+message says what finishing looks like. Removing an entry from the registry is the last step
+of porting a path, not a way to make a red test green.
+
+See docs/runtime-parity.md for what each path does and why it is where it is.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pytest
+
+from tools.export_model import RUNTIME_UNSUPPORTED
+from worm.params import Params
+
+
+def _resolve(params: Params, dotted: str):
+    """`"sensory.head_stages"` -> the value, raising rather than returning a default."""
+    node = params
+    for part in dotted.split("."):
+        if not hasattr(node, part):
+            raise AttributeError(
+                "RUNTIME_UNSUPPORTED names %r, and %r has no attribute %r. A registry entry "
+                "that resolves to nothing pins nothing, which is the failure this test "
+                "would otherwise have." % (dotted, type(node).__name__, part))
+        node = getattr(node, part)
+    return node
+
+
+# An empty registry would make every assertion below vacuous while still reporting a pass --
+# exactly the shape of hollow green this repository has shipped three times and now audits
+# for. If the last Python-only path is ever ported, delete this file along with the registry
+# rather than leaving a check that validates thin air.
+def test_the_registry_is_not_empty():
+    assert RUNTIME_UNSUPPORTED, (
+        "RUNTIME_UNSUPPORTED is empty. If every Python-only path has genuinely been ported, "
+        "remove this test file and the registry together; an empty registry passes every "
+        "assertion in it while covering nothing.")
+
+
+@pytest.mark.parametrize("dotted,shipped", sorted(RUNTIME_UNSUPPORTED.items()))
+def test_python_only_paths_are_still_off_by_default(dotted, shipped):
+    actual = _resolve(Params(), dotted)
+    assert actual == shipped, (
+        "%s defaults to %r, but the WebAssembly runtime implements only %r.\n"
+        "\n"
+        "wasm/assembly/index.ts has no branch for this path, so re-exporting cannot carry "
+        "it: the browser would keep running the old model while worm/ runs the new one.\n"
+        "\n"
+        "Conformance may or may not also catch this -- measured, it FAILS for head_stages "
+        "and fv_vmax, and PASSES for omega_wave_suppression, which is inert across every "
+        "conformance case because it scales by abs(omega) and no case fires a turn. So do "
+        "not read a green conformance run as evidence that this is fine.\n"
+        "\n"
+        "If you meant to adopt this path, the change is unfinished rather than wrong:\n"
+        "  1. implement it in wasm/assembly/index.ts\n"
+        "  2. export the constant that selects it from tools/export_model.py\n"
+        "  3. extend tools/conform.py and wasm/conform.mjs to cover both sides\n"
+        "  4. rebuild web/worm.model and web/worm.wasm as a pair, and run conformance\n"
+        "  5. drop %r from RUNTIME_UNSUPPORTED, in this commit\n"
+        "\n"
+        "If you meant to experiment, pass it to the tool instead of moving the default -- "
+        "nothing here looks at a replace()d tree. See docs/runtime-parity.md."
+        % (dotted, actual, shipped, dotted))
+
+
+def test_every_registered_value_is_distinguishable_from_a_moved_one():
+    """Each registry entry resolves, and its shipped value is distinguishable from a change.
+
+    NAMED FOR WHAT IT MEASURES, which is less than it used to claim. This was called
+    `test_the_guard_would_actually_fire`, and an audit showed that name was too strong: it
+    does not invoke the guard above. Neuter that assertion to `assert True`, move a default,
+    and this test still passes -- measured.
+
+    What it does check is the two vacuity traps underneath the guard: that every registered
+    key resolves to something real (a key that silently resolved to the wrong object would
+    pin nothing), and that `shipped` is `!=` a moved value under Python's numeric coercion
+    (`1.0 != True` is False, so a future boolean entry needs a non-numeric-equal partner).
+
+    Watching the guard itself fail is a manual step, and it is recorded in
+    docs/architecture/bonsai-pass-1-report.md with the transcript. `tools/audit.py` is the
+    tool for making that automatic; this is not it.
+    """
+    for dotted, shipped in RUNTIME_UNSUPPORTED.items():
+        section, field = dotted.split(".", 1)
+        params = Params()
+        # Pick something that is != shipped under Python's numeric coercion. `1.0 != True`
+        # is False, so a future boolean entry needs a non-numeric-equal partner.
+        moved = (not shipped) if isinstance(shipped, bool) else (4 if shipped == 1 else 1.0)
+        patched = replace(params, **{section: replace(getattr(params, section), **{field: moved})})
+        assert _resolve(patched, dotted) != shipped, (
+            "flipping %s to %r did not move it away from the shipped %r, so the assertion "
+            "above cannot detect that change" % (dotted, moved, shipped))

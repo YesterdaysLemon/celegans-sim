@@ -27,6 +27,15 @@ constraint, at half an hour a run.
 The bootstrap is seeded, so a reported interval is reproducible. That is not a detail: an
 error bar that moves when you look at it again is worse than no error bar, because it
 invites exactly the "run it until it agrees" search these intervals exist to prevent.
+
+INFRASTRUCTURE. Imported by 6 modules directly, and by everything else transitively through
+`tools/assays.py` -- so in practice every error bar this project has ever quoted came out of
+here. `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict` and `fmt` are the public
+surface, and `BOOTSTRAP` (the seed and resample count) is read by `tools/compare.py`.
+
+Changing the seed or the resample count silently moves every interval in the project by a
+little. That is not wrong, but it is not free either: intervals recorded in
+`docs/research-log/` were computed under the current values. Say so in the commit.
 """
 
 from __future__ import annotations
