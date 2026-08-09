@@ -448,9 +448,21 @@ With zero files changed under `worm/`, `data/` and `wasm/assembly/`, the traject
 fingerprint can only differ if the harness is wrong. It is a consistency check on the change
 surface, not an independent proof, and the change surface is the primary evidence. It is also
 not third-party reproducible: the hash appears here but the serialisation is not committed as
-a script. An independent auditor confirmed the underlying claim by writing their own
-base-vs-head fingerprint over a different seed set, duration, media and state vector, and
-found the two trees identical in all five cases.
+a script.
+
+**So do not take the fingerprint, or this report, as the evidence.** Check the change surface
+yourself — it is one command, it needs no trust, and it is what the claim actually rests on:
+
+```bash
+git diff --name-only 0f7c25b..HEAD -- worm/ data/ wasm/assembly/ web/ docker/ .github/
+#   (empty)
+```
+
+If that is empty, no committed line that the model reads has changed, and the fingerprint
+could not have moved. During review an auditor did independently rebuild the claim from
+scratch — their own base-vs-head fingerprint over a different seed set, duration, media and
+state vector, identical in all five cases — but a report citing an auditor the next reader
+cannot name is not evidence either. The command above is.
 
 ---
 
