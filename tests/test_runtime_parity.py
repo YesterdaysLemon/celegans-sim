@@ -85,8 +85,12 @@ def test_python_only_paths_are_still_off_by_default(dotted, shipped):
         "%s defaults to %r, but the WebAssembly runtime implements only %r.\n"
         "\n"
         "wasm/assembly/index.ts has no branch for this path, so re-exporting cannot carry "
-        "it: the browser would keep running the old model while worm/ runs the new one, and "
-        "conformance would stay green because both sides are built from this same Params().\n"
+        "it: the browser would keep running the old model while worm/ runs the new one.\n"
+        "\n"
+        "Conformance may or may not also catch this -- measured, it FAILS for head_stages "
+        "and fv_vmax, and PASSES for omega_wave_suppression, which is inert across every "
+        "conformance case because it scales by abs(omega) and no case fires a turn. So do "
+        "not read a green conformance run as evidence that this is fine.\n"
         "\n"
         "If you meant to adopt this path, the change is unfinished rather than wrong:\n"
         "  1. implement it in wasm/assembly/index.ts\n"
@@ -100,18 +104,29 @@ def test_python_only_paths_are_still_off_by_default(dotted, shipped):
         % (dotted, actual, shipped, dotted))
 
 
-def test_the_guard_would_actually_fire():
-    """A check nobody has watched fail is not known to work. This watches it.
+def test_every_registered_value_is_distinguishable_from_a_moved_one():
+    """Each registry entry resolves, and its shipped value is distinguishable from a change.
 
-    `tools/audit.py`'s whole premise, applied to the check itself: flip each registered
-    default on a copy of the tree and assert the comparison rejects it. Without this, a
-    registry entry that silently resolved to the wrong object -- or a comparison that
-    coerced `1` to `True` -- would pass forever against an unchanged repository.
+    NAMED FOR WHAT IT MEASURES, which is less than it used to claim. This was called
+    `test_the_guard_would_actually_fire`, and an audit showed that name was too strong: it
+    does not invoke the guard above. Neuter that assertion to `assert True`, move a default,
+    and this test still passes -- measured.
+
+    What it does check is the two vacuity traps underneath the guard: that every registered
+    key resolves to something real (a key that silently resolved to the wrong object would
+    pin nothing), and that `shipped` is `!=` a moved value under Python's numeric coercion
+    (`1.0 != True` is False, so a future boolean entry needs a non-numeric-equal partner).
+
+    Watching the guard itself fail is a manual step, and it is recorded in
+    docs/architecture/bonsai-pass-1-report.md with the transcript. `tools/audit.py` is the
+    tool for making that automatic; this is not it.
     """
     for dotted, shipped in RUNTIME_UNSUPPORTED.items():
         section, field = dotted.split(".", 1)
         params = Params()
-        moved = 1.0 if isinstance(shipped, bool) or shipped != 1 else 4
+        # Pick something that is != shipped under Python's numeric coercion. `1.0 != True`
+        # is False, so a future boolean entry needs a non-numeric-equal partner.
+        moved = (not shipped) if isinstance(shipped, bool) else (4 if shipped == 1 else 1.0)
         patched = replace(params, **{section: replace(getattr(params, section), **{field: moved})})
         assert _resolve(patched, dotted) != shipped, (
             "flipping %s to %r did not move it away from the shipped %r, so the assertion "

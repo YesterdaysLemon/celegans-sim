@@ -14,7 +14,7 @@ and one narrow prose correction backed by remeasurement.
 ## A. Baseline
 
 The repository at `0f7c25b`: 141 commits over eight days (2026-07-29 → 2026-08-05),
-~18 commits/day. Roughly 6.7k lines under `worm/`, 13.8k under `tools/` (`.py` + `.mjs`), 6.5k under `wasm/`,
+~18 commits/day. Roughly 6.7k lines under `worm/`, 13.7k under `tools/` (`.py` + `.mjs`), 6.5k under `wasm/`,
 4.6k under `tests/`, 3.5k under `web/` — and **282 kB of markdown**.
 
 Three information bottlenecks, all measured rather than asserted:
@@ -159,8 +159,8 @@ constructed is data.
 **Guardrail added.** `tools/export_model.py::RUNTIME_UNSUPPORTED` is the registry — data
 only; nothing in the export reads it, because an exporter that refused to run would block the
 experiments Python exists to host. `tests/test_runtime_parity.py` asserts the shipped
-`Params()` still sits on those values, and includes a `test_the_guard_would_actually_fire`
-case so the check is not trusted unwatched.
+`Params()` still sits on those values, and includes a distinguishability self-test (§F.11)
+so the registry cannot silently pin nothing.
 
 It has been watched to fail. Setting `head_stages = 4`:
 
@@ -207,7 +207,10 @@ are cited by name in the research log; a probe is cheap to keep and expensive to
 
 Four symbols are private by name and imported across modules anyway — `_dispatch`,
 `_clean_plate` (`assays`), `_dominant` (`diagnose_loop`), `_output_position`
-(`worm/senses.py`). Each owning module's docstring now says so. The three library docstrings
+(`worm/senses.py`). The three `tools/` modules' docstrings now say so; **`worm/senses.py`'s
+does not, and cannot in this pass** — the change surface under `worm/` is deliberately zero,
+so `_output_position` remains an unannotated cross-module import. Named here rather than
+glossed. The three library docstrings
 also state the blast radius: changing what a key of `analyse()` means, or how an assay is
 scored, makes every number already in `docs/research-log/` incomparable with every future
 one, silently, with nothing to fail.
@@ -216,7 +219,7 @@ one, silently, with nothing to fail.
 
 ## F. Scientific documentation corrections
 
-Nine. Two in the pre-existing repository, and seven in this pass's own drafts — recorded here
+Fourteen. Two in the pre-existing repository, and twelve in this pass's own drafts — recorded here
 rather than quietly fixed, since a pass about not rewriting history should not begin by
 rewriting its own. F.6 onwards came out of an independent adversarial audit commissioned
 against the finished branch; four of the seven were found by auditors rather than by me.
@@ -396,6 +399,57 @@ Smaller, all evidence-backed, all now fixed:
 - Plus: `export_model.py`'s importer count (this branch added the third), a dangling `§13`,
   and several self-measurements that went stale as the documents grew.
 
+### F.10 — four defects this pass fixed silently in its own drafts
+
+Recorded late, at an auditor's prompting, because the standard §F sets applies to the pass as
+much as to the repository. Commit `26db467` corrected four of its own draft defects and put
+the reasoning only in the commit message, never here:
+
+- a Route-1 table whose column header promised "lifecycle of the alternate" while three of
+  five rows described the shipped path instead;
+- `DIAGNOSTIC_CONTROL` used as a label before it was one of the defined labels;
+- a duplicated "built from the real animal downwards" across a paragraph break;
+- a section introducing "four epistemic classes" above a table of five.
+
+None changes a scientific claim. All four are the same shape as the errors §F does record,
+and leaving them in a commit message while §F counted only the others was the inconsistency.
+
+### F.11 — a self-test named for more than it measures
+
+`test_the_guard_would_actually_fire` did not invoke the guard. An auditor neutered the real
+assertion to `assert True`, moved a registered default, and the self-test still passed. It
+checks the two vacuity traps *underneath* the guard — that every key resolves, and that
+`shipped` is distinguishable from a moved value under numeric coercion — which is worth
+having and is not what the name promised. Renamed to
+`test_every_registered_value_is_distinguishable_from_a_moved_one`, with the limit stated in
+its docstring. The guard has been watched to fail manually, and that transcript is above;
+making that automatic is `tools/audit.py`'s job, not this file's.
+
+### F.12 — "each owning module's docstring now says so" was false for one of four
+
+§E claimed all four privately-named cross-module imports were annotated in their owning
+module. `_output_position` lives in `worm/senses.py`, and this pass keeps the change surface
+under `worm/` at zero — so it is not annotated and could not be. Three of four; now stated
+that way in both §E and `tools/README.md`.
+
+### F.13 — the 201-test run's exculpation used a wrong mechanism
+
+It said "almost every test reads only the installed package". There is no installed package:
+`worm` resolves into the working tree, and CI's `pip install -e` is an editable install of the
+same tree, so all 201 import from the tree. The conclusion stands on a different footing — the
+change surface in that window was markdown plus one additive comment — and §Validation now
+says that instead. Six tests, not two, read tree *files* at runtime.
+
+### F.14 — the fingerprint was over-sold as the binding evidence
+
+With zero files changed under `worm/`, `data/` and `wasm/assembly/`, the trajectory
+fingerprint can only differ if the harness is wrong. It is a consistency check on the change
+surface, not an independent proof, and the change surface is the primary evidence. It is also
+not third-party reproducible: the hash appears here but the serialisation is not committed as
+a script. An independent auditor confirmed the underlying claim by writing their own
+base-vs-head fingerprint over a different seed set, duration, media and state vector, and
+found the two trees identical in all five cases.
+
 ---
 
 ## G. Things deliberately left alone
@@ -450,7 +504,7 @@ Estimated *first read before a safe change*, before and after:
 | **Viewer change** | `web/README.md` (6.5 kB) — already excellent | `web/README.md`. Unchanged; it was already the best compressor in the repo |
 | **Reference-model change** | `README.md` 64 kB + `NEXT.md` 181 kB + `worm/params.py` 2,387 lines, with no way to know which was current | `docs/project-architecture.md` 19.1 kB + `docs/runtime-parity.md` 18.5 kB + the relevant `params.py` section. **~245 kB → ~38 kB** before touching source |
 | **Runtime/WASM change** | `wasm/README.md` + grep `index.ts` to discover what exists | `docs/runtime-parity.md` answers "does the runtime implement this?" directly, with the porting procedure |
-| **Digital Life change** | Nothing described the track at all; the boundary lived in the owner's head | `docs/project-architecture.md` §1 and §5 |
+| **Digital Life change** | Nothing described the track at all; the boundary lived in the owner's head | `docs/project-architecture.md` §1 and §6 |
 | **"What should I work on?"** | Read 181 kB and infer | `NEXT.md`, 6.4 kB, one sitting |
 
 The archive is *larger* to read than the old `NEXT.md` was — but it is now reached
@@ -533,9 +587,15 @@ after   a9d09d6312bcf621fe288ff7402d1dc9b35ed928e306ded5f30c514bc1d307f2   IDENT
 No connectome change, no model default change, no physical equation change, no WASM
 step-function change, no regenerated artifact, no measured constant changed.
 
-The only executable edits are `tools/export_model.py` (**purely additive** — a data-only
-constant no code path reads) and `wasm/memory.mjs` (one path in `QUOTES`, following the
-document the claim lives in). The three tool-library edits are purely additive docstrings.
+The executable edits are: `tools/export_model.py` (**purely additive** — a data-only constant
+that no *export* path reads; `tests/test_runtime_parity.py` imports it); `wasm/memory.mjs`
+(one path in `QUOTES`, plus the reader-side CRLF fix of §F.2); `tests/test_ci_policy.py`
+(`NO_CI_NEEDED` data); and the new `tests/test_runtime_parity.py`. The three tool-library
+edits are purely additive docstrings. **None of them is reachable from `worm/`** — which is
+the actual load-bearing fact, and why the zero-file change surface under `worm/`, `data/` and
+`wasm/assembly/` is the primary evidence here. The fingerprint below is a consistency check
+on that, not an independent proof: with no file changed under `worm/`, it could only differ
+if the harness were wrong.
 
 **Checks run:**
 
@@ -545,6 +605,7 @@ document the claim lives in). The three tool-library edits are purely additive d
 | `node wasm/memory.mjs` | PASS — 239,360 B / 234 kB in 4 files, share 89% |
 | `node wasm/population.mjs` | PASS |
 | `node --test wasm/{invariants,solve,eggs-fitness,conform-inputs}.test.mjs` | 14 pass, 0 fail |
+| `node --test wasm/{energy-fitness,medium}.test.mjs` — the two that also run without a rebuild | 14 pass, 0 fail |
 | `node --test tools/sim_rate.test.mjs` | 4 pass, 0 fail |
 | module parse sweep (`node --check`, all of `web/`, `tools/*.mjs`, `wasm/*.mjs`) | all parse |
 | `pytest tests/test_ci_policy.py tests/test_local_checks.py` | 50 pass |
@@ -613,10 +674,20 @@ interpreter actually loads, not only by `git diff`.
 One caveat on that 201-test run, stated because a check whose conditions were not what they
 look like is exactly what `tools/audit.py` exists to find: it was launched while this report
 and the last two commits were still being written, so the working tree moved underneath it.
-Almost every test in it reads only the installed package, but two read the tree itself —
-`test_ci_policy.py` (`git ls-files`, the workflow files) and `test_local_checks.py` (the gate
-list against both workflows). Both were re-run afterwards against the final tree: **50
-passed**. The remaining 199 cannot see the tree and are unaffected.
+The reason first given for why that was tolerable was wrong, and is corrected here: it said
+"almost every test reads only the installed package". There is no installed package — `worm`
+resolves into the working tree, and CI's `pip install -e` is an editable install of the same
+tree, so **every one of the 201 imports from the tree**. What actually bounds the exposure is
+the change surface in that window: markdown, plus an additive comment in `tools/export_model.py`.
+The tests that read tree *files* at runtime — `test_ci_policy.py`, `test_local_checks.py`,
+and also `test_dataset_sources.py`, `test_export_precision.py`, `test_audit.py`,
+`test_threads.py` — are the ones worth re-running, and the first two were: **50 passed**
+against the final tree.
+
+One environment caveat that applies to every Python number above: `pyproject.toml` pins
+`pytest>=8.0,<9` and this environment runs **pytest 9.1.1**, so the local results were produced
+outside the declared range. Moot while hosted CI is off — nothing else ran them — but it means
+"the suite passes" is a claim about pytest 9, not about the pinned range.
 
 Not run: the full `tests/test_behaviour.py` (~30 min of simulation) and `tools/audit.py`,
 on the grounds that the trajectory fingerprint is a stronger and cheaper non-interference

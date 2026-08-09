@@ -18,7 +18,7 @@ and several of the ones below are cited by name in `docs/research-log/`.
 | **MAINTAINED_INSTRUMENT** | A measurement you are meant to reach for. Documented in `README.md`, and expected to still work. |
 | **ACTIVE_EXPERIMENT** | Its question is **still open** in `NEXT.md`. |
 | **ANSWERED_PROBE** | Asked a sharp question, got an answer, and the answer is load-bearing. A sacrifice branch: it did its job. Kept executable because the result is a do-not-repeat. |
-| **UNCERTAIN** | No importers, no references, untouched since the first days. *Probably* a finished one-shot — but "probably" is the honest word, and none of them has been confirmed dead. |
+| **UNCERTAIN** | No importers, and untouched since the first days. *Probably* a finished one-shot — but "probably" is the honest word, none has been confirmed dead, and six of them **are** referenced — see the section's own note. |
 
 **Recency is not activity, and this index used to make that mistake.** Four probes were
 labelled `ACTIVE_EXPERIMENT` because they had been touched in the project's last days of
@@ -85,7 +85,8 @@ came to be misread as one-offs, but their importers outnumber every other file h
 
 Four of those symbols are private by name and imported across modules anyway: `_dispatch`,
 `_clean_plate`, `_dominant`, and (from `worm/senses.py`) `_output_position`. Renaming one is
-a cross-module change. Each module's own docstring now says so.
+a cross-module change. The three `tools/` docstrings now say so; `worm/senses.py`'s does
+not, because this pass keeps the change surface under `worm/` at zero.
 
 Changing what a key of `analyse` *means*, or how an assay is *scored*, silently makes every
 number already recorded in `docs/research-log/` incomparable with every future one, with
@@ -177,11 +178,11 @@ and a probe is cheap to keep and expensive to reconstruct. Whether they eventual
 | `common_drive.py` | Is a shared oscillating drive forcing the motor neurons into lockstep? | |
 | `coupling_strength.py` | How much muscle-muscle coupling keeps the tail coherent? | |
 | `efficacy.py` | Is the efficacy gradient attenuating the wave before the tail? | |
-| `gate_calibrate.py` | Place the direction gate and size the cord drive |  `params.py` |
+| `gate_calibrate.py` | Place the direction gate and size the cord drive | `params.py` |
 | `gate_sweep.py` | Why the animal never reverses, and what letting him costs | |
 | `head_balance.py` | Retest the head reflex now the body reflex works | |
 | `ml_scan.py` | Search Morris-Lecar space for a usable conditional oscillator | |
-| `modulator_sweep.py` | Calibrate the modulator layer against basal slowing |  `params.py` |
+| `modulator_sweep.py` | Calibrate the modulator layer against basal slowing | `params.py` |
 | `moment_candidate.py` | Test the `peak_moment` candidate, and the ratio caveat | |
 | `muscle_leak.py` | Is the coupling weak, or is the muscle leak too high? | |
 | `noise_test.py` | Is the tail's incoherence just amplified background noise? | |
@@ -191,9 +192,9 @@ and a probe is cheap to keep and expensive to reconstruct. Whether they eventual
 | `phase_profile.py` | Where along the chain does the phase gradient get lost? | |
 | `pool_probe.py` | Does `pooled()` lose jobs when there are more than workers? | |
 | `reflex_gain.py` | Per-segment gain of the proprioceptive reflex | log |
-| `reversal_test.py` | Does the animal reverse now both cords are regenerative? |  `params.py` |
+| `reversal_test.py` | Does the animal reverse now both cords are regenerative? | `params.py` |
 | `stiffness.py` | Does bending stiffness decide travelling vs standing? | |
-| `tau_sweep.py` | `adapt_tau` at the critically-poised operating point |  `params.py` |
+| `tau_sweep.py` | `adapt_tau` at the critically-poised operating point | `params.py` |
 | `twi_by_region.py` | Is the travelling-wave ceiling the head dragging the average down? | `tools/reflex_gain.py`, log |
 | `where_it_stands.py` | Localise the standing wave: muscle drive, or body? | |
 

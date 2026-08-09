@@ -74,7 +74,8 @@ comparison against the unchanged runtime diverges and the run fails.
 **The real gap is narrower and worse.** A path escapes conformance when it is *inert across
 every conformance case* — when the term it controls is multiplied by something that is zero
 throughout the reference trajectories. `omega_wave_suppression` scales by `abs(self.omega)`
-(`worm/senses.py`), and no conformance case ever fires an omega turn, so the whole term is
+(`worm/senses.py`: `wave_gain = max(0.0, 1.0 - p.omega_wave_suppression * abs(self.omega))`),
+and no conformance case ever fires an omega turn, so the whole term is
 multiplied by zero however large the coefficient is.
 
 This repository has been bitten by exactly that before, and says so at `tools/conform.py`:
@@ -99,7 +100,7 @@ Used below and in `tools/README.md`. Deliberately few, and `UNCERTAIN` is a real
 | `HISTORICAL_NEGATIVE` | Tried and refuted. The refutation is the value. Each one names the form it should **not** be retried in. |
 | `DIGITAL_LIFE_CANDIDATE` | Plausibly useful to Track B, whose fitness question is not the reference-gait question. |
 | `DIAGNOSTIC_CONTROL` | Not a candidate mechanism at all. It exists so that a null result can be produced on demand — the switch is kept *because* turning it on changes nothing, and that is what rules a suspect out. Distinct from `HISTORICAL_NEGATIVE`, where something was proposed and failed; here nothing was ever proposed. |
-| `UNCERTAIN` | The repository does not settle it. Not a guess dressed as a status. |
+| `UNCERTAIN` | The repository does not settle it. Not a guess dressed as a status. **No model path currently carries it** — `v_th_from_rest` did until it turned out to be unread, not uncertain. The label stays defined because the next genuinely-undetermined path needs somewhere to go that is not a guess. (`tools/README.md` has an identically-named *tool* class; different definition, different subject.) |
 
 A path can carry two labels when the two tracks ask different questions of it. Force-velocity
 does; see below.
@@ -206,9 +207,13 @@ scalar list" is not by itself evidence that the runtime honours it:
 | `WORLD_RADIUS` | redundant. The runtime uses `WORLD_EXTENT`, exported separately from the same `p.radius`. |
 
 Verified by checking each `export const` in `model_gen.ts` for a `G.<name>` reference in
-`index.ts`. Harmless today — `rest_tension` still reaches the animal, the other two are inert
-on both sides — but an audit run from this document alone would otherwise conclude the runtime
-honours three constants it ignores.
+`index.ts`, **restricted to the seven scalar-group names above** — that restriction matters:
+run unrestricted, the same method also returns `BODY_LENGTH`, `BODY_RADIUS_MAX`, the four
+`MED_*` medium constants, `ODOUR_DECAY`, `TOUCH_DECAY` and `N_NODES`, none of which
+`index.ts` reads either. So the honest count of exported-but-unread constants is around
+eleven; three is the number *within the scalar lists this paragraph is about*. Harmless today
+— `rest_tension` still reaches the animal, the rest are inert on both sides — but an audit run
+from this document alone would otherwise conclude the runtime honours constants it ignores.
 
 ## Route 1 — construction-time, baked
 

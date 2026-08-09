@@ -49,7 +49,10 @@ The founding constraint, stated at the top of `tools/optimise.py` and in the REA
 Reconstructed contact counts *are* the synaptic weights. Fitting them would throw away the
 reason the model is built on a connectome at all. Measured constants — capacitance,
 reversal potentials, bending modulus — are treated as facts, and where a "measured" constant
-is really theory (the buffer drag pair) `worm/params.py` says so.
+is really theory (the buffer drag pair) `worm/params.py` says so. The looser shorthand
+"...bending modulus, drag" survives in `README.md`, `tools/optimise.py` and `worm/genome.py`;
+those predate this document and `worm/params.py` remains the authority on any single
+constant.
 
 **Nothing in the reference worm is evolved.** That is the whole of the boundary in one line,
 and §5 is the full table of the five epistemic classes.
@@ -239,7 +242,7 @@ safety property.
 | **Measured** | `C_m = 1.5 pF`, `EI = 9.5e-14 N·m²`, reversal potentials, agar drag (the buffer drag pair is slender-body theory — see `worm/params.py`) | `worm/params.py`, with citation | **No** — absent from `BOUNDS` by design |
 | **Reconstructed** | gap/chemical contact counts, muscle roster, soma positions (23 of 302 carry `pos_approx` in `data/celegans.json`) | `data/celegans.json`, with input hashes | **No** — anatomy, baked into the payload |
 | **Modelled** | the graded-neuron equations, resistive force theory, the three-stage EC cascade | `worm/params.py` docstrings, `README.md` | Structure no; and no rate constant today — not one of the 15 `BOUNDS` keys has units of s or 1/s |
-| **Calibrated / tuned** | `proprio_gain`, `head_proprio_gain`, `cord_drive`, gate thresholds | `worm/params.py`, `tools/optimise.py::SPACE` | **Partly.** `BOUNDS` is an allow-listed *subset*. `tools/optimise.py::SPACE` is a different, larger list, and four of its seven members — `proprio_reach`, `peak_moment`, `head_tau`, `head_reach` — are tuned but deliberately **not** evolvable |
+| **Calibrated / tuned** | `proprio_gain`, `head_proprio_gain`, `cord_drive`, gate thresholds | `worm/params.py`, `tools/optimise.py::SPACE` | **Partly.** `BOUNDS` is an allow-listed *subset*. `tools/optimise.py::SPACE` is a different, *overlapping* list — seven keys against `BOUNDS`' fifteen, sharing three — and four of its seven members (`proprio_reach`, `peak_moment`, `head_tau`, `head_reach`) are tuned but deliberately **not** evolvable |
 | **Evolved** | anything out of `wasm/evolve.mjs` | never in `worm/params.py` | n/a — it is the output |
 
 A correction to a *measured* value needs a citation. A change to a *tuned* value needs a
