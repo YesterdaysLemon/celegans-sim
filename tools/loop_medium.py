@@ -90,12 +90,20 @@ freed phase against ~190 deg/Hz of total slope gives ~0.32 Hz where 0.18 Hz is
 measured), which is the accuracy a one-mode caricature deserves; the *placement* of the
 knee is the prediction that counts.
 
+Mechanics note: the sweep is chunked by (arm, medium) and every chunk's rows are appended
+to a JSONL cache (`.loop_medium_cache.jsonl`, or `LOOP_MEDIUM_CACHE`), so a run killed by
+a timeout or a container restart resumes from the last finished chunk instead of starting
+over. The first launch of the full run was lost exactly that way, with zero of 100 trials
+recoverable; the science is unchanged, the plumbing learned something.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/loop_medium.py
 """
 
 from __future__ import annotations
 
 import dataclasses
+import json
+import os
 
 import numpy as np
 
@@ -200,12 +208,34 @@ def _receptor_phase(f):
 
 def main():
     sweep = media_sweep()
-    jobs = [(f, mi, ca, s)
-            for s in SEEDS for ca in BODY_GAINS for mi in MEDIA_IX for f in FREQS]
+    cache = os.environ.get("LOOP_MEDIUM_CACHE", ".loop_medium_cache.jsonl")
+    rows, seen = [], set()
+    if os.path.exists(cache):
+        with open(cache) as fh:
+            for line in fh:
+                r = json.loads(line)
+                rows.append(r)
+                seen.add((r["freq"], r["med_ix"], r["ca"], r["seed"]))
+    total = len(FREQS) * len(MEDIA_IX) * len(BODY_GAINS) * len(SEEDS)
     print("LOOP MEDIUM -- %d trials, lock-in on the open head loop across five media"
-          % len(jobs))
-    print("  which stage's phase follows K, and does it stop below K = 9?\n")
-    rows = pooled(_job, jobs, procs=8, timeout=14400)
+          % total)
+    print("  which stage's phase follows K, and does it stop below K = 9?")
+    if rows:
+        print("  resuming: %d of %d trials cached in %s" % (len(rows), total, cache))
+    print(flush=True)
+    for ca in BODY_GAINS:
+        for mi in MEDIA_IX:
+            pending = [(f, mi, ca, s) for s in SEEDS for f in FREQS
+                       if (f, mi, ca, s) not in seen]
+            if not pending:
+                continue
+            got = [r for r in pooled(_job, pending, procs=8, timeout=14400) if r]
+            with open(cache, "a") as fh:
+                for r in got:
+                    fh.write(json.dumps(r) + "\n")
+            rows.extend(got)
+            print("  chunk done: body gain %.0f, K %.2f -- %d/%d total"
+                  % (ca, sweep[mi].anisotropy, len(rows), total), flush=True)
     if not rows:
         print("  no trials completed")
         return 1
