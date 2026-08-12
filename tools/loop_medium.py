@@ -64,6 +64,32 @@ Media are `tools/flambda_locus.py::media_sweep` indices (8, 6, 4, 2, 0) -- K = 4
 operating band (0.656-0.856 Hz) rather than chasing the animal's: the crossover being
 predicted is this model's.
 
+THE ANALYTIC PREDICTION, committed while the first full run was still executing and
+before any of its output had been read. An elastica bending mode of wavenumber k under
+normal drag c_n relaxes with tau = c_n / (EI k^4); its phase against an oscillating
+moment is -arctan(omega tau). With the measured EI = 0.095 uN mm^2 and each medium's
+measured operating point from the locus run, the single-mode estimate of the curvature
+stage's phase is:
+
+       K     c_n uN s/mm^2   tau_body    omega*tau   predicted body phase
+     40.00      128.0         0.410 s      1.69          -59 deg
+     26.70       36.2         0.134 s      0.64          -33 deg
+     17.82       10.2         0.041 s      0.21          -12 deg
+     11.89        2.89        0.012 s      0.061          -3.5 deg
+      7.94        0.816       3.3e-3 s     0.017          -1.0 deg
+      1.58        0.0052      2.4e-5 s     1.3e-4         -0.0 deg
+
+So the prediction is sharp and falsifiable: the collapse of the body's phase lives
+almost entirely between K = 40 and K = 8, which is exactly where the closed-loop
+frequency motion was found to live (89% above K = 9). If the lock-in's curvature-stage
+column tracks this table to within, say, a factor of two, the saturation is passive
+mechanics -- the body going quasi-static -- and the analytic form says why nothing below
+K = 9 can matter: omega*tau is already 0.02 there and falling like c_n. A rough loop
+budget from the same numbers over-predicts the frequency span by about 2x (60 deg of
+freed phase against ~190 deg/Hz of total slope gives ~0.32 Hz where 0.18 Hz is
+measured), which is the accuracy a one-mode caricature deserves; the *placement* of the
+knee is the prediction that counts.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/loop_medium.py
 """
 
