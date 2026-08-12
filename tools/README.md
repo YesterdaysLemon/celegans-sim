@@ -144,10 +144,11 @@ do-not-repeats, and because a probe is cheap to keep and expensive to reconstruc
 | `lag_span.py` | 2026-08-04 | If the fixed lag pins the swimming end, does cutting it widen the span? **Barely** — 1.29× → 1.40× for a fourfold cut, which retracted the diagnosis the same day it was written. The tool fixed its own success criteria before the run; that is why the retraction was clean. |
 | `force_velocity.py` | 2026-08-04 | Does a Hill-type force-velocity curve widen the span? **It narrows it**, monotonically, 1.27× → 1.17×. Its own header predicted this failure mode before the run. |
 | `damping_sweep.py` | 2026-08-04 | Is the buffer-end frequency set by the body's internal damping rather than the medium? **No** — zero internal damping buys 0.03 Hz. An existing assumption checked outside the regime it was made in. |
+| `flambda_locus.py` | 2026-08-12 | Does the model's (f, λ) locus lie on the animal's crawl→swim line, or slide off it as the medium sweeps? **On it, but bunched** — perpendicular drift never exceeds 0.10 L while the model traverses 11% of the chord, 89% of its frequency motion above K = 9. One saturating coupling moves f and λ together; the two-independent-knobs suspicion is dead, and the flat wavelength is not its own problem. |
 
-All four are negative results and all four are in `NEXT.md`'s do-not-re-run table. The
-reasoning is in [`docs/research-log/`](../docs/research-log/); the model-path lifecycle
-labels are in [`docs/runtime-parity.md`](../docs/runtime-parity.md).
+The four 2026-08-04 probes are negative results and all four are in `NEXT.md`'s
+do-not-re-run table. The reasoning is in [`docs/research-log/`](../docs/research-log/); the
+model-path lifecycle labels are in [`docs/runtime-parity.md`](../docs/runtime-parity.md).
 
 `force_velocity.py` is the one with a second life: its verdict is negative **for the
 reference-gait question only**. Whether a lineage that must pay for shortening velocity

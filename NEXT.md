@@ -9,34 +9,33 @@ tracks below you are in and what must not blur between them.
 
 ## Reference worm
 
-**1. Sweep `proprio_reach` against wavelength, in both media.** The sharpest unexplained
-thing in the model. The animal changes wavelength by **2.37×** between crawling and swimming;
-this model changes it by 1.01–1.17× under every configuration tried so far. Wavelength is set
-by a fixed proprioceptive reach with nothing scaling it by load.
+**1. Localise the medium coupling: which stage of the loop actually changes between
+K = 40 and K = 9, and why does it stop there?** The (f, λ) locus experiment ran 2026-08-12
+— `tools/flambda_locus.py`, nine media K = 1.58–40, three seeds, full tables and the
+considered reading in its docstring. Compressed:
 
-Single-medium sweeps already exist and answer half of it: `worm/params.py` records a
-`tools/wave_speed.py` sweep in which reach moves wavelength 0.49 → 0.64 L with the frequency
-flat to within 1%. **What is unmeasured is whether that survives a change of medium** — every
-existing sweep is one medium.
+- **The locus does not slide off the animal's crawl→swim line.** Perpendicular offset stays
+  within −0.03 to −0.10 L, non-monotone, ending −0.05 L. Under the load axis — the axis the
+  animal is measured on — f and λ move *together*, roughly along the chord. The
+  two-independent-knobs suspicion is dead, and the parameter-space independence
+  `tools/wave_speed.py` measured (reach moves λ, f flat to 1%) does not govern the load
+  response; inferring one from the other was the error.
+- **What dominates is bunching, not direction.** The model traverses **11%** of the animal's
+  chord, and 89% of its frequency motion happens above K = 9. The saturation `MediumParams`
+  documents in the frequency column holds for the locus as a whole, in both coordinates at
+  once. Wave speed v = f·λ spans 1.37× measured across the full sweep, against the animal's
+  13.9×.
 
-**Measure the product, not the two factors.** An external review pointed out that wave speed
-`v = f · λ` is the quantity the animal actually opens up, and that frequency and wavelength are
-its two projections rather than two independent failures:
+So: one coupling between loop and load, moving f and λ together in roughly the animal's
+proportion (log-log exponent ~0.22 against the chord's 0.49, coarse), a factor of ~10 too
+small in reach, running out exactly where swimming begins. **Do not attack the flat
+wavelength as its own problem** — under the load axis it rides the same saturating coupling
+as the frequency.
 
-| | crawl | swim | ratio |
-|---|---|---|---|
-| animal (Fang-Yen) | 0.30 × 0.65 = **0.195 L/s** | 1.76 × 1.54 = **2.71 L/s** | **13.9×** |
-| this model | 0.656 × 0.86 = **0.564** | 0.833 × 0.91 = **0.758** | **1.34×** |
-
-That reframes the item. The suspicion it raises is structural: this model carries a fixed
-temporal head lag *and* a fixed spatial proprioceptive reach — two independent knobs, where a
-single per-segment propagation time would set both. That is a candidate explanation for the
-otherwise odd result that reach moves λ with frequency flat to 1%.
-
-**So the first experiment is the (f, λ) locus, not a reach sweep** — decided, see *Settled*
-below. Sweep the medium and plot the model's (f, λ) points against the animal's crawl→swim line. If the model's
-locus slides *off* that line, the two knobs are genuinely independent here and are not in the
-animal — one mechanism to find, not two. It needs no new model code.
+The next probe: run the loop-phase decomposition per medium — `tools/loop_phase.py` opens
+the head loop and measures each stage's gain and phase, and nobody has run it anywhere but
+agar. Find which stage's numbers move between K = 40 and K = 9, and confirm they stop moving
+below. That localises the coupling before any mechanism is proposed for it.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in
@@ -124,8 +123,9 @@ the model being clean.
 
 ### Settled
 
-- **Gait experiment order** — the (f, λ) locus test above goes first. It subsumes the reach
-  sweep's question and needs no new model code; the cascade port waits behind it.
+- **Gait experiment order** — the (f, λ) locus test went first, and has now run
+  (`tools/flambda_locus.py`, 2026-08-12). It subsumed the reach sweep's question — the reach
+  sweep is retired with it — and the cascade work in (2) is unblocked.
 - **The 25 uncertain tools stay where they are.** [`tools/README.md`](tools/README.md) solved
   the discoverability problem the move was for. Six could not have moved anyway: five are
   cited by path in `worm/params.py` as the provenance for shipped constants

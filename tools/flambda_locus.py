@@ -69,6 +69,55 @@ A wide point bought by a broken gait is not data, so TWI, curvature, net speed a
 net/path are reported per medium, and any medium whose TWI falls below +0.4 is flagged
 rather than silently averaged into the fits.
 
+WHAT THE FIRST FULL RUN FOUND (2026-08-12, 27 of 27 cells, endpoints reproducing the
+shipped record exactly: agar 0.656 Hz / 0.83 L, buffer 0.833 Hz / 0.91 L).
+
+The data straddle the pre-registered outcomes, which is itself the result:
+
+    K      freq Hz          wavelen L     v=f*lam   TWI     net mm/s   along   perp L
+    40.00  0.656 +-0.031    0.83 +-0.02    0.548   +0.846   0.2949    +0.234  -0.027
+    26.70  0.767 +-0.027    0.86 +-0.03    0.664   +0.804   0.3049    +0.298  -0.059
+    17.82  0.800 +-0.000    0.88 +-0.01    0.706   +0.836   0.3196    +0.320  -0.062
+    11.89  0.833 +-0.000    0.88 +-0.02    0.730   +0.799   0.2810    +0.335  -0.085
+     7.94  0.844 +-0.016    0.88 +-0.03    0.746   +0.746   0.2180    +0.343  -0.084
+     5.30  0.856 +-0.016    0.87 +-0.01    0.748   +0.738   0.1669    +0.346  -0.098
+     3.54  0.844 +-0.016    0.87 +-0.02    0.735   +0.733   0.1197    +0.339  -0.095
+     2.36  0.844 +-0.016    0.89 +-0.02    0.750   +0.716   0.0765    +0.344  -0.080
+     1.58  0.833 +-0.027    0.91 +-0.04    0.761   +0.657   0.0380    +0.347  -0.051
+
+  * **The locus does not slide off the animal's line.** The perpendicular offset stays
+    inside -0.03 to -0.10 L over the whole sweep, is non-monotone (deepest at K = 5.3,
+    recovering toward both ends), and ends at -0.05 L. Nothing grows systematically the
+    way outcome two required. The two-independent-knobs suspicion is not what a load
+    sweep shows: under the axis the animal is actually measured on, f and lambda move
+    *together*, diagonally, roughly along the chord. The parameter-space independence
+    `tools/wave_speed.py` measured -- reach moves lambda with f flat to 1% -- does not
+    govern the load response, and the inference from one to the other was the error.
+  * **But it is outcome three that dominates: the locus is bunched, not a curve.** The
+    model traverses 11% of the animal's chord (along 0.234 -> 0.347) and 89% of its
+    frequency motion happens above K = 9. The saturation `MediumParams` documents in the
+    frequency column holds for the locus as a whole, in both coordinates at once.
+  * The log-log exponent along the locus is +0.218 against the animal's +0.488 -- same
+    sign, about half the wavelength share -- but the traversal is so short that this is
+    a coarse number, and the chord-tracking above is weak evidence about the coupling's
+    exact direction for the same reason.
+
+READING, and what it retires. There are not two failures (a frequency one and a
+wavelength one) and there are not two independent knobs to fix. There is **one coupling
+between the loop and the load; it moves f and lambda together in roughly the animal's
+proportion; it is a factor of ~10 too small in reach along the chord; and it runs out
+exactly where swimming begins.** Do not attack the flat wavelength as its own problem --
+under the load axis it is not flat, it is riding the same saturating coupling as the
+frequency. The question this leaves is not "why doesn't lambda modulate" but "what is
+the coupling that moves the operating point between K = 40 and K = 9, and why does it
+stop": localising it (which stage of the loop actually changes with K, e.g.
+`tools/loop_phase.py` run per medium) is the natural next probe.
+
+Also worth carrying: net speed falls monotonically agar -> buffer, 0.295 -> 0.038 mm/s,
+while the real animal swims *faster* than it crawls (~0.4 mm/s); and v = f*lambda spans
+1.37x against the animal's 13.9x. The automated verdict printed outcome one's text with
+outcome three's caveat; this reading supersedes the printed text where they differ.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/flambda_locus.py
 """
 

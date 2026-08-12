@@ -905,6 +905,18 @@ class MediumParams:
     Muscle force-velocity remains worth measuring -- it is a genuinely load-dependent element
     and `MuscleParams` now has one, off by default -- but it is a candidate on its own merits
     now rather than the conclusion of an argument, because the argument has been withdrawn.
+
+    THE SHAPE OF WHAT DOES EXIST (tools/flambda_locus.py, 2026-08-12: nine media,
+    K = 1.58-40 geometric, three seeds). In the (f, lambda) plane the model's points do not
+    slide off the animal's crawl->swim chord -- the perpendicular offset never exceeds
+    0.10 L -- they are *bunched* on it: 11% of the chord traversed, 89% of the frequency
+    motion above K = 9, wave speed f*lambda spanning 1.37x against the animal's 13.9x. So
+    under load, f and lambda ride one coupling together, in roughly the animal's proportion
+    (log-log exponent ~0.22 against the chord's 0.49, coarse at this traversal), and it is
+    that one coupling which is ~10x too small and saturating -- the flat wavelength is not a
+    separate failure, and a fix aimed at lambda alone is aimed at a symptom. Whatever moves
+    the operating point between K = 40 and K = 9 is the thing to localise; below K = 9
+    nothing does.
     """
 
     name: str = "agar"
