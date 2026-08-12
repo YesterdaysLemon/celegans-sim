@@ -121,12 +121,6 @@ the model being clean.
   measured, but the margin is thin (seed 5 gives 1.214 against a 1.2 bound), so tightening it
   wants a larger seed count first. Changing it is a change to a scientific acceptance
   criterion and belongs in its own commit.
-- **`worm/genome.py` claims something untrue about `tools/optimise.py`.** Its comment says the
-  three shared fields "retain that tool's ranges"; measured, none of the three does —
-  `proprio_gain` is (20, 300) there and (8, 80) here, and the other two disagree comparably.
-  The envelopes still overlap, which is what `tests/test_genome.py` now pins. Correcting the
-  comment is a one-line change under `worm/`, deliberately not made in the pass that kept that
-  directory at zero changes.
 
 ### Settled
 

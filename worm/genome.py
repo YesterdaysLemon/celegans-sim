@@ -35,8 +35,11 @@ class Bound(NamedTuple):
 
 
 # These are conservative engineering search envelopes, not biological confidence
-# intervals. The three fields already searched by tools/optimise.py retain that tool's
-# ranges; the remaining gains are bounded around the shipped operating point. Crucially,
+# intervals. Three fields are also searched by tools/optimise.py, but none retains that
+# tool's ranges (measured: proprio_gain is (20, 300) there and (8, 80) here, and the
+# other two disagree comparably) -- the envelopes only overlap, which is what
+# tests/test_genome.py pins. The remaining gains are bounded around the shipped
+# operating point. Crucially,
 # this is an allow-list. Measured constants (C_m, reversal potentials, drag, length, EI),
 # structural/discrete fields, and known dead parameters such as world.ingestion_rate,
 # world.food_diffusion_scale, and body.dt are absent. (world.diffusion_oxygen was on that
