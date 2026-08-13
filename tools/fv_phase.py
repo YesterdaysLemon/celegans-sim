@@ -51,6 +51,48 @@ WHAT EACH OUTCOME WOULD MEAN, fixed before the run.
   * **No phase at all** -- gain drops, phase unmoved anywhere. Same retirement, stronger:
     not even a time, just a brake.
 
+WHAT THE FULL RUN FOUND (2026-08-13, 60 of 60 trials). The outcome is the fourth
+combination, the one the pre-registered list did not enumerate: a load-scaled time, with
+the wrong sign, saturating at the same knee.
+
+  * **Force-velocity adds real phase, and it lands where the code says it must** -- the
+    muscle column moves at most 1.1 deg while the curvature stage carries all of it,
+    because fv multiplies the moment applied to the body, downstream of the measured
+    tension.
+  * **The phase is load-dependent, backwards.** At fv = 500 the added plant phase is
+    -16.8 deg on agar, -34.3 at K = 7.9, -34.9 in buffer: it brakes hardest exactly where
+    the animal accelerates, because in thin fluid the body shortens faster at matched
+    drive and the derating engages harder. Predicted span 1.170 against 1.263 at fv = 0
+    -- narrower, which is what the closed-loop sweep measured and could not explain.
+  * **And it saturates at the same K ~ 8.** The added phase at K = 7.9 and K = 1.58
+    differs by under a degree, at both doses. Anything that reads the body's motion
+    inherits the body's saturation: below the knee the *entire plant* -- gain and phase,
+    current to curvature at matched drive -- is measured K-independent, so no observer
+    inside the reflex loop can even tell K = 1.58 from K = 7.9. The signal is not
+    attenuated there; it does not exist.
+  * **The validation held.** Predicted crossovers at fv = 500: 0.578 on agar against the
+    closed-loop record's 0.600 (-3.7%), 0.677 in buffer against 0.700 (-3.3%) -- an
+    amplitude-dependent nonlinearity screened at one amplitude, so a few percent is the
+    expected cost. The span prediction is essentially exact: 1.170 predicted, 1.167
+    measured. The calculator now stands on two configurations.
+
+READING. Force-velocity retires as a gait-modulation mechanism with its mechanism named:
+it converts load into lag with the wrong sign and stops converting at the same knee as
+everything else. params.py's cancellation suspicion was close but generous -- the derating
+does not cancel out of the span, it actively narrows it. The candidate remains what
+params.py always said it was, more faithful muscle at a cost to the calibrated crawl.
+
+The structural residue is the sharpest thing this screen produced: **below K ~ 8 the
+bending dynamics carry no information about the medium at all**, so gait modulation there
+cannot come from any mechanism that observes bending -- gain, phase, threshold or
+otherwise, linear or not. What still distinguishes media below the knee is translation:
+net speed falls 0.218 -> 0.038 mm/s from K = 7.9 to 1.58 while the bending stays
+identical, because thrust collapses with the anisotropy. A mechanism that senses *slip*
+-- the difference between how the body bends and how it advances -- would have signal all
+the way down the continuum. Whether the animal has one, and whether this model should, is
+a physiology question above this tool's pay grade; it is recorded in NEXT.md as the
+constraint every future proposal has to pass.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/fv_phase.py
       (run tools/loop_medium.py first, or let this tool fill its cache for the baseline)
 """
