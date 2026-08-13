@@ -145,14 +145,15 @@ the model being clean.
 
 ## Blocked, or needs an owner decision
 
-- **Should `test_medium_changes_the_gait` assert the *direction* of gait modulation?** It
-  currently asserts `ratio > 1.2`, which is direction-free — and that is why the suite could
-  not see a docstring claiming the model ran backwards. Direction is now right at every seed
-  measured, but the margin is thin (seed 5 gives 1.214 against a 1.2 bound), so tightening it
-  wants a larger seed count first. Changing it is a change to a scientific acceptance
-  criterion and belongs in its own commit.
 
 ### Settled
+
+- **`test_medium_changes_the_gait` asserts direction now.** The seed count it wanted was
+  measured (16 seeds, the test's exact protocol): buffer faster at 16 of 16, ratios
+  1.214–1.308, weakest directional margin three FFT bins. The bound is 1.15 directional —
+  under the weakest measured seed with margin, and strictly stronger than the old
+  direction-free 1.2, which accepted a backwards animal. Own commit, own seed count, own
+  argument, per the rule this item set for itself.
 
 - **Gait experiment order** — the (f, λ) locus test went first, and has now run
   (`tools/flambda_locus.py`, 2026-08-12). It subsumed the reach sweep's question — the reach
