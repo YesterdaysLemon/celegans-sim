@@ -1475,6 +1475,45 @@ class SensoryParams:
     # set by ModulatorParams.dopamine_wavelength and by how much dopamine it has.
     proprio_reach_food: float = 0.10
 
+    # --- the amine load-sensing path (Python-only research path, all defaults 0 = off) --
+    #
+    # Motivated by the 2026-08-13 measurement chain: gait modulation saturates because
+    # below K ~ 8 the bending dynamics carry no information about the medium at all
+    # (tools/loop_medium.py, tools/fv_phase.py) -- but the drag *force* on the cuticle
+    # keeps scaling with the drag coefficients all the way down the continuum, because it
+    # is c x v and c keeps falling. Slip is the signal that survives, and the animal's own
+    # literature says it uses it through the amines: dopamine is necessary and sufficient
+    # to initiate and hold crawling and serotonin to enter swimming (Vidal-Gadea et al.
+    # 2011, PNAS 108:17504, doi 10.1073/pnas.1108673108), and mechanical load modulates
+    # the swimming gait through mechanosensation (Korta et al. 2007, J Exp Biol, PMID
+    # 17575043). The cells that carry the dopamine signal here -- CEP/ADE/PDE -- are the
+    # same mechanoreceptors this model already gives the lawn-texture modality.
+    #
+    # `load_gain` is pA of drive into the dopaminergic mechanoreceptors per unit of
+    # saturated load signal. The signal is the body-mean drag force per unit length
+    # (Body.drag_load, uN/mm), compressed through F / (F + load_half) because real
+    # mechanoreceptors saturate and the raw quantity spans four decades between agar and
+    # buffer. Both numbers are TUNED; the cell identity and the sign are the reconstructed
+    # part, exactly as for every other channel in this class.
+    #
+    # KNOWN CONFOUND, stated before anyone trips on it: dopamine here also carries the
+    # lawn-texture signal for the basal slowing response, so with `load_gain` on, bare
+    # agar already drives dopamine toward saturation and food adds almost nothing on top.
+    # The two modalities share cells in the animal too, but the basal-slowing calibration
+    # in ModulatorParams assumed food was the only source. Resolving that -- separate
+    # transduction, recalibration, or the measurement that says it does not matter -- is
+    # required before any of these five constants moves off zero by default.
+    load_gain: float = 0.0           # pA per unit saturated load
+    load_half: float = 1.0           # uN/mm half-saturation of the transduction
+
+    # The reach the receptive fields blend toward as dopamine falls -- the swim-end
+    # counterpart of proprio_reach_food, built as a third precomputed matrix pair and
+    # blended by ModulatorParams.dopamine_reach_swim. Zero disables construction
+    # entirely. The animal's swimming wavelength is 1.54 L against this model's 0.86 at
+    # reach 0.16 (Fang-Yen et al. 2010); what reach reaches it in the cascade
+    # configuration is unmeasured, so this is a search knob, not a claim.
+    proprio_reach_swim: float = 0.0  # fraction of body length; 0 = off
+
     # Stretch receptors adapt, like every other mechanoreceptor -- and unlike the version
     # of this model that shipped first, where proprioception was the one sensory channel
     # left responding to absolute value rather than to change.
@@ -2023,6 +2062,34 @@ class ModulatorParams:
     # the on-food reversal rate falls out of its band as well (0.27 /min at 3.5), so this
     # is the corner: the most slowing available without spending the behaviour to get it.
     dopamine_wavelength: float = 0.0
+
+    # --- the amine load-sensing path's two effects (Python-only, defaults 0 = off) ------
+    #
+    # Both read the same dopamine level the basal slowing response does, driven through
+    # SensoryParams.load_gain (see the provenance and the stated confound there). Both are
+    # written so that a well-fed crawler on agar -- dopamine near its ceiling -- is the
+    # SHIPPED animal, and the effect only engages as dopamine falls below that ceiling,
+    # i.e. as the substrate stops pushing back. Vidal-Gadea et al. 2011: dopamine holds
+    # the crawl; its absence permits the swim.
+    #
+    # `dopamine_head_lag` shortens the head reflex's lag budget as dopamine falls:
+    # lag scale = clip(1 - coeff * max(0.5 - DA, 0), 0.4, 1). At coeff = 1 a fully
+    # unloaded animal runs the reflex at half its shipped latency, which by the
+    # tools/lag_span.py measurements roughly doubles the frequency -- the size of effect
+    # the swim needs and the only load-scaled *time* in this model that survives below
+    # K ~ 8, because its input is the drag force, not the bending. The 0.4 floor keeps
+    # the loop out of the regime lag_span measured as fast-but-degraded. Applied to
+    # head_tau and to the cascade stage taus; NOT to the head_delay ring buffer, whose
+    # length is fixed at construction -- so the research configuration runs the cascade
+    # (head_stages = 4, head_delay = 0), where the whole budget is stage taus and all of
+    # it scales.
+    dopamine_head_lag: float = 0.0
+    # `dopamine_reach_swim` blends the proprioceptive fields toward the longer
+    # SensoryParams.proprio_reach_swim as dopamine falls: blend = clip(coeff *
+    # max(0.5 - DA, 0), 0, 1). The swim is a longer wave, not only a faster one -- 1.54 L
+    # against 0.65 crawling (Fang-Yen et al. 2010) -- and reach is the one knob measured
+    # to move wavelength without moving frequency (tools/wave_speed.py).
+    dopamine_reach_swim: float = 0.0
     serotonin_turning: float = 0.6
     # Implemented, wired, and left at zero: not calibrated against anything. PDF in
     # particular is sourced from AVB, so a non-zero coefficient closes a positive feedback

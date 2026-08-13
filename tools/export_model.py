@@ -225,6 +225,15 @@ RUNTIME_UNSUPPORTED = {
     # `fv_vmax = 0.0` disables the whole term, including the rate low-pass in engine.py,
     # which is why the other three fv_* constants need no entry of their own.
     "muscle.fv_vmax": 0.0,
+    # The amine load-sensing path (2026-08-13): CEP/ADE/PDE transduce the drag force on
+    # the cuticle, and dopamine scales the head reflex's lag and the proprioceptive reach.
+    # Five constants, one path; every runtime consequence flows through these, so pinning
+    # them pins the path. load_half needs no entry: with load_gain = 0 the transduction is
+    # never evaluated, the same shape as the fv_* constants behind fv_vmax.
+    "sensory.load_gain": 0.0,
+    "sensory.proprio_reach_swim": 0.0,
+    "modulator.dopamine_head_lag": 0.0,
+    "modulator.dopamine_reach_swim": 0.0,
     # Omega wave suppression -- stands the body wave down during a turn. Distinct from
     # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.
     #

@@ -152,8 +152,12 @@ class Simulation:
         # that within a step the wireless layer is one step behind the wired one -- the
         # same consistent unit delay used everywhere else in this model.
         self.modulators.step(activation, alive=self.nervous.alive)
+        # The amine load-sensing path reads the drag force the cuticle bore on the
+        # previous step -- the same unit delay as every other sensory quantity. Only
+        # computed when the path is on, so the shipped animal pays nothing.
+        load = (self.body.drag_load() if self.p.sensory.load_gain != 0.0 else 0.0)
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
-                                  self.modulators)
+                                  self.modulators, load=load)
 
         self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
         self.muscles.step(self.nervous.s)
