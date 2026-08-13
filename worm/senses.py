@@ -77,6 +77,14 @@ class Senses:
                                           p.proprio_reach_food, +1)
         self.W_a_food = _receptive_fields(conn, self.da, self.va, joint_s,
                                           p.proprio_reach_food, -1)
+        # And a third pair at the longer swim reach, for the amine load-sensing path.
+        # Only built when the reach is set, so the shipped animal carries no extra state.
+        self.W_b_swim = self.W_a_swim = None
+        if p.proprio_reach_swim > 0.0:
+            self.W_b_swim = _receptive_fields(conn, self.db, self.vb, joint_s,
+                                              p.proprio_reach_swim, +1)
+            self.W_a_swim = _receptive_fields(conn, self.da, self.va, joint_s,
+                                              p.proprio_reach_swim, -1)
 
         # The head oscillator. Dorsal and ventral head motor neurons, wired as a
         # resistance reflex against the curvature of the head itself.
@@ -170,6 +178,7 @@ class Senses:
         # Zero means subdivide head_tau, whose ceiling is a pure delay of head_tau and is
         # measured to be too small; a positive value gives the cascade its own lag budget.
         stage_tau = p.head_stage_tau if p.head_stage_tau > 0.0 else p.head_tau / self._head_stages
+        self._head_stage_tau = stage_tau     # kept: the amine path rescales it at runtime
         self._head_stage_decay = np.exp(-dt / stage_tau)
         # One row per stage. Only allocated past the first when there is a cascade, so the
         # shipped configuration carries no extra state at all.
@@ -233,8 +242,13 @@ class Senses:
 
     def sense(self, world: World, nodes: np.ndarray, contact: np.ndarray,
               curvature: np.ndarray, activation: np.ndarray,
-              mods=None) -> np.ndarray:
-        """Build the (N,) external current vector for this step."""
+              mods=None, load: float = 0.0) -> np.ndarray:
+        """Build the (N,) external current vector for this step.
+
+        `load` is the body-mean drag force per unit length (Body.drag_load, uN/mm) for
+        the amine load-sensing path; it is only read when SensoryParams.load_gain is
+        non-zero, and the engine only computes it then.
+        """
         p = self.p
         n = self.conn.n
         I = np.zeros(n)
@@ -331,6 +345,12 @@ class Senses:
         # --------------------------------------------------------------------------- food
         f = float(world.sample(world.food, nose[0], nose[1]))
         I[self.dopaminergic] += p.food_gain * f
+        # The amine load-sensing path: the same mechanoreceptors also feel the substrate
+        # pushing back on the cuticle. Saturating transduction, because the raw drag force
+        # spans four decades between agar and buffer and no receptor is linear over that.
+        # See the provenance block at SensoryParams.load_gain, confound included.
+        if p.load_gain != 0.0 and load > 0.0:
+            I[self.dopaminergic] += p.load_gain * (load / (load + p.load_half))
         # NSM tastes food in the pharynx, and is the serotonergic arm of the response to
         # it (Flavell et al. 2013). It was not previously given any food input at all,
         # which left the serotonergic system with nothing to respond to.
@@ -433,6 +453,14 @@ class Senses:
             wa = (1.0 - short) * (self.W_a @ k) + short * (self.W_a_food @ k)
         else:
             wb, wa = self.W_b @ k, self.W_a @ k
+        # The amine load-sensing path lengthens the wave as dopamine falls -- the swim is
+        # a longer wave, not only a faster one. Blended the same way the food reach is,
+        # and inert unless both the swim fields and the coefficient exist.
+        if self.W_b_swim is not None and mods is not None:
+            swim = mods.swim_reach_blend()
+            if swim > 1e-6:
+                wb = (1.0 - swim) * wb + swim * (self.W_b_swim @ k)
+                wa = (1.0 - swim) * wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
@@ -455,13 +483,22 @@ class Senses:
             raw = self.W_head @ k_head
         else:
             raw = float(np.dot(self._head_window, k_head))
+        # The amine load-sensing path quickens the reflex as dopamine falls. At scale 1 --
+        # the coefficient off, or a fully loaded animal -- the precomputed decays are used
+        # unchanged, so the shipped configuration is bit-identical. The head_delay ring
+        # buffer is deliberately NOT rescaled (its length is fixed at construction), which
+        # is why the path's research configuration runs the cascade with head_delay = 0.
+        lag_scale = mods.head_lag_scale() if mods is not None else 1.0
         if self._head_chain is None:
-            self.head_signal += (raw - self.head_signal) * (1.0 - self._head_decay)
+            a1 = ((1.0 - self._head_decay) if lag_scale == 1.0
+                  else -np.expm1(-self.dt / (p.head_tau * lag_scale)))
+            self.head_signal += (raw - self.head_signal) * a1
         else:
             # Each stage sees the previous stage's output, which is what makes the phase
             # add rather than average. The last stage is `head_signal`, so everything
             # downstream -- the tanh, the gain, the omega suppression -- is untouched.
-            a = 1.0 - self._head_stage_decay
+            a = ((1.0 - self._head_stage_decay) if lag_scale == 1.0
+                 else -np.expm1(-self.dt / (self._head_stage_tau * lag_scale)))
             for s in range(self._head_stages - 1):
                 self._head_chain[s] += (raw - self._head_chain[s]) * a
                 raw = self._head_chain[s]

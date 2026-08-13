@@ -172,6 +172,32 @@ class Modulators:
         return float(np.clip(self.p.dopamine_wavelength * self.level["dopamine"],
                              0.0, 1.0))
 
+    def head_lag_scale(self) -> float:
+        """Multiplier on the head reflex's lag budget: 1 at full dopamine, smaller below.
+
+        The amine load-sensing path (SensoryParams.load_gain, and the provenance there).
+        A loaded animal -- dopamine at its ceiling -- runs the shipped latency exactly, so
+        the crawl this model is calibrated on is untouched; as the substrate stops pushing
+        back the reflex quickens. Floored at 0.4 because tools/lag_span.py measured the
+        short-lag regime as fast but degraded, and the floor keeps the loop above it.
+        """
+        c = self.p.dopamine_head_lag
+        if c == 0.0:
+            return 1.0
+        return float(np.clip(1.0 - c * max(0.5 - self.level["dopamine"], 0.0), 0.4, 1.0))
+
+    def swim_reach_blend(self) -> float:
+        """How far to blend the proprioceptive fields toward the swim reach: 0 to 1.
+
+        The wavelength half of the same path: the swim is a longer wave, and reach is the
+        knob measured to set wavelength without touching frequency (tools/wave_speed.py).
+        Zero at full dopamine, so the crawl keeps its calibrated fields.
+        """
+        c = self.p.dopamine_reach_swim
+        if c == 0.0:
+            return 0.0
+        return float(np.clip(c * max(0.5 - self.level["dopamine"], 0.0), 0.0, 1.0))
+
     def turn_bias(self) -> float:
         """Added to the direction gate's 50/50 point.
 

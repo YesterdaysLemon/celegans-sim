@@ -335,6 +335,32 @@ class Body:
         self.theta = theta + qdot[2:] * dt
 
     # ---------------------------------------------------------------------- diagnostics
+    def drag_load(self) -> float:
+        """Mean drag force per unit length the cuticle currently bears, in uN/mm.
+
+        The physical signal a cuticle mechanoreceptor has access to: c x v, per segment,
+        magnitude, averaged along the body. Unlike the bending dynamics -- which are
+        measured to become independent of the medium below K ~ 8, because the elastic
+        response dominates the drag there -- this quantity keeps scaling with the drag
+        coefficients all the way down the continuum, since the coefficients are in it as
+        factors. It is a read-only diagnostic of the *previous* step's velocities, which
+        is the same one-step lag every other sensory pathway carries.
+        """
+        qdot = getattr(self, "qdot", None)
+        if qdot is None:
+            return 0.0
+        u = np.stack([np.cos(self.theta), np.sin(self.theta)], axis=1)
+        nvec = np.stack([-u[:, 1], u[:, 0]], axis=1)
+        # Velocity at each segment midpoint: the head node's translation plus the
+        # accumulated rotation of every link anterior to it, plus half its own.
+        contrib = self.l * nvec * qdot[2:, None]
+        csum = np.cumsum(contrib, axis=0)
+        vmid = qdot[:2] + np.vstack([np.zeros((1, 2)), csum[:-1]]) + 0.5 * contrib
+        v_t = np.einsum("mi,mi->m", vmid, u)
+        v_n = np.einsum("mi,mi->m", vmid, nvec)
+        f = np.hypot(self.medium.c_tangential * v_t, self.medium.c_normal * v_n)
+        return float(f.mean())
+
     def speed(self) -> float:
         """Instantaneous speed of the body centroid, mm/s."""
         u = np.stack([np.cos(self.theta), np.sin(self.theta)], axis=1)
