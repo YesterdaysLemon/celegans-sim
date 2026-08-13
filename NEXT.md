@@ -43,10 +43,23 @@ nonlinearity on curvature or its rate, force-velocity included — inherits that
 by construction. What still distinguishes media below the knee is **translation**: net
 speed falls 0.218 → 0.038 mm/s from K = 7.9 to 1.58 while the bending stays identical. A
 mechanism that senses *slip* — bending against advance — has signal all the way down.
-Whether the animal carries one, and what cell would (this reconstruction's candidates
-would need identifying before any model change), is the physiology question this item now
-is. It touches `worm/` model structure, so it is an owner decision before it is an
-experiment.
+
+And the animal's own answer is in the literature, with cells this model already carries.
+Vidal-Gadea et al. 2011 (PNAS 108:17504, doi 10.1073/pnas.1108673108) measured that the
+crawl and swim are amine-selected gaits: dopamine is necessary and sufficient to initiate
+and hold crawling, serotonin to transition into swimming. Mechanical load modulating the
+swimming gait through mechanosensation is measured directly in Korta et al. 2007
+(J Exp Biol, PMID 17575043 — title and identifiers verified; full text unreachable through
+this container's proxy, so its details are not quoted here). This model's
+`worm/modulators.py` already sources dopamine from CEP/ADE/PDE as *mechanoreceptors* firing
+on lawn texture, already carries serotonin, and already lets dopamine modulate a gait
+parameter (`dopamine_wavelength` → proprioceptive reach on food). So the owner decision has
+a concrete shape: extend the dopaminergic mechanoreceptors' modality from "lawn texture" to
+"substrate resistance" (the biological cells carry both), and let the amines set a *time*
+in the loop — not a gain, per the constraint above — screened open-loop before any
+closed-loop sweep. It touches `worm/` sensory physiology and modulation targets, so it is
+an owner decision before it is an experiment; this paragraph is the reference-evidence
+groundwork that decision asked for.
 
 **The screening is cheap and twice-validated.** A candidate no longer needs closed-loop
 gait sweeps: measure its phase contribution open-loop at the operating band
