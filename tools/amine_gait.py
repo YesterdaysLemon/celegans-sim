@@ -52,6 +52,42 @@ WHAT EACH OUTCOME WOULD MEAN, fixed before the run.
 A locus bought with a broken gait is not modulation, so TWI, curvature, net speed and
 net/path print per medium, with the same TWI floor as the baseline tool.
 
+WHAT THE FULL RUN FOUND (2026-08-13, 27 of 27 cells, run at the probe calibration with
+no re-tuning). The first pre-registered outcome, with the crawl-end check passed first:
+
+  * **The agar end did not move.** 0.656 +-0.016 Hz at 0.84 L against the baseline's
+    0.656 at 0.83, dopamine saturated at its ceiling, lag scale 1.000, blend 0.000. The
+    path does not spend the crawl. (Not bit-identical, and the docstring should not be
+    read as claiming it: the mechanoreceptors themselves are depolarised on agar and
+    their wired synapses carry that; behaviourally it lands on the shipped numbers.)
+  * **The locus runs along the chord.** Along-chord +0.234 -> +0.595: this configuration
+    traverses 36% of the animal's crawl->swim line against the baseline's 11%, and hugs
+    the chord *more* tightly than the baseline through the middle of the continuum
+    (perp -0.015 L against -0.087 at K = 7.9). The K ~ 8 knee is gone: below it the
+    baseline moved 0.000 Hz and this moves 0.900 -> 1.233, because the transduced drag
+    force (0.109 -> 0.002 uN/mm) keeps discriminating after the bending dynamics have
+    gone blind. Frequency span 1.88x clean (baseline 1.31x), wave speed 0.548 -> 1.324
+    L/s, 2.42x (baseline 1.39x; animal 13.9x).
+  * **Two blemishes, kept in the table rather than averaged away.** Seed 3 at K = 26.7
+    fell out of the travelling wave for its analysis window (0.167 Hz, lambda 13.9 L,
+    TWI +0.30 -- a long reversal episode; its two sibling seeds sit exactly on the locus
+    at 0.750 Hz / 0.90 L), which is what the 5.25 +-6.15 row and the printed "6.28x
+    lambda span" are made of -- the clean lambda span is 0.84 -> 1.09 L, 1.30x against
+    the baseline's 1.10x. And the wavelength plateaus at ~1.08 L from K = 5.3 down while
+    the frequency keeps climbing, so the thin end bends below the chord (perp -0.124 at
+    K = 1.58): the reach blend saturates against its proprio_reach_swim = 0.32 ceiling.
+    That is a calibration knob with a name, not a wall.
+
+READING. A signal from outside the bending dynamics does what three arcs of measurement
+proved nothing inside them could: the operating point keeps moving all the way down the
+continuum, in the animal's direction, along the animal's line, at zero measured cost to
+the calibrated crawl. What remains between this and the animal is size, and the knobs are
+explicit: the swim reach ceiling (the lambda plateau), the head-lag floor of 0.4 (the
+loop still carries 0.54 of its budget in buffer; the animal needs less), and the
+serotonin arm of Vidal-Gadea's result, which this pass never touched. Adoption stays an
+owner decision with the preconditions named in the docstring above -- the food/load
+confound first among them -- and NEXT.md carries the calibration path.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/amine_gait.py
 """
 

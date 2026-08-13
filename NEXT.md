@@ -9,64 +9,39 @@ tracks below you are in and what must not blur between them.
 
 ## Reference worm
 
-**1. Find what keeps a load-scaled time in the loop below K = 9 — and screen candidates
-open-loop, which is now cheap.** Two measurements (2026-08-12/13) turned gait modulation
-from a mystery into a mechanism search with tight constraints:
+**1. Calibrate the amine load-sensing path toward the animal, then decide adoption.** The
+mechanism search is over: the path is built (`worm/` — Python-only, every coefficient
+defaulting to zero, provably inert when off) and measured (`tools/amine_gait.py`,
+2026-08-13, 27/27 cells at the first probe calibration). The agar end holds the shipped
+gait exactly with dopamine at its ceiling; the (f, λ) locus traverses **36% of the
+animal's crawl→swim chord against the baseline's 11%**; the K ≈ 8 saturation is gone,
+because the transduced drag force keeps discriminating after the bending dynamics go
+blind. Full tables, blemishes included, in the tool's docstring; the lifecycle entry with
+the whole measurement chain is in [`docs/runtime-parity.md`](docs/runtime-parity.md)
+(`REFERENCE_CANDIDATE`).
 
-- `tools/flambda_locus.py` (nine media, K = 1.58–40): the model's (f, λ) locus does **not**
-  slide off the animal's crawl→swim line — it is *bunched* on it. 11% of the chord
-  traversed, 89% of the frequency motion above K = 9, v = f·λ spanning 1.37× against the
-  animal's 13.9×. One coupling moves f and λ together; the two-independent-knobs suspicion
-  is dead; **do not attack the flat wavelength as its own problem**.
-- `tools/loop_medium.py` (per-medium lock-in, five media, both body-reflex arms): that
-  coupling is **the passive body's bending relaxation and nothing else**. From K = 40 → 7.9
-  the tension→curvature stage moves +40°; every other stage ≤0.2°; below K = 7.9 nothing
-  moves at all, both arms identical. The analytic form τ = c_n/(EI·k⁴), committed before the
-  run, placed the knee correctly and the magnitudes within 2×. And the open-loop account
-  closes quantitatively: plant phase + analytic receptor phase predicts the measured
-  closed-loop frequency at **every** medium to ≤1.5% (0.662 vs 0.656 at K = 40, 0.800 vs
-  0.800 at 17.8, 0.836 vs 0.833 at 1.58).
+What remains is size, and the knobs are named:
 
-- `tools/fv_phase.py` (2026-08-13): the first candidate screened, and retired with its
-  mechanism named. Muscle force-velocity **is** a load-scaled time — and it is backwards
-  and knee-bound: −16.8° of plant phase on agar, −34.9° in buffer (braking hardest where
-  the animal accelerates, because thin fluid lets the body shorten faster), and identical
-  at K = 7.9 and 1.58 because it reads the body's motion, which is what saturates. The
-  screen predicted the closed-loop fv = 500 record from open-loop phase alone — span 1.170
-  predicted, 1.167 measured — so the calculator now stands on two configurations.
+- **The λ plateau.** Wavelength stops at ~1.08 L from K = 5.3 down while frequency keeps
+  climbing — the swim-reach blend saturates against `proprio_reach_swim = 0.32`. Sweep
+  that ceiling (the animal wants 1.54 L).
+- **The lag floor.** The loop still carries 0.54 of its lag budget in buffer against a
+  `head_lag_scale` floor of 0.4. How much more frequency the remaining headroom buys, and
+  at what cost to the wave, is one sweep.
+- **The serotonin arm is untouched.** Vidal-Gadea's result is two amines; this pass used
+  only dopamine's withdrawal. Serotonin actively promoting the swim (it already exists in
+  the wireless layer) is the unexplored half.
 
-So the constraint on any gait-modulation mechanism, sharpened twice and stated so it can
-kill proposals early: **below K ≈ 8 the bending dynamics carry no information about the
-medium at all** — the whole plant, gain and phase at matched drive, is measured
-K-independent there. A mechanism that observes bending — any gain, lag, threshold or
-nonlinearity on curvature or its rate, force-velocity included — inherits that saturation
-by construction. What still distinguishes media below the knee is **translation**: net
-speed falls 0.218 → 0.038 mm/s from K = 7.9 to 1.58 while the bending stays identical. A
-mechanism that senses *slip* — bending against advance — has signal all the way down.
+**Adoption is a separate decision from calibration, with preconditions already named:**
+the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it —
+bare agar now saturates dopamine, so the basal-slowing calibration's assumption breaks in
+the enabled configuration); a full `tools/scorecard.py`/`tools/ethogram.py` pass, because
+dopamine now moves during ordinary locomotion and everything it touches moves with it;
+and runtime parity for five constants plus the cascade the path runs on.
 
-And the animal's own answer is in the literature, with cells this model already carries.
-Vidal-Gadea et al. 2011 (PNAS 108:17504, doi 10.1073/pnas.1108673108) measured that the
-crawl and swim are amine-selected gaits: dopamine is necessary and sufficient to initiate
-and hold crawling, serotonin to transition into swimming. Mechanical load modulating the
-swimming gait through mechanosensation is measured directly in Korta et al. 2007
-(J Exp Biol, PMID 17575043 — title and identifiers verified; full text unreachable through
-this container's proxy, so its details are not quoted here). This model's
-`worm/modulators.py` already sources dopamine from CEP/ADE/PDE as *mechanoreceptors* firing
-on lawn texture, already carries serotonin, and already lets dopamine modulate a gait
-parameter (`dopamine_wavelength` → proprioceptive reach on food). So the owner decision has
-a concrete shape: extend the dopaminergic mechanoreceptors' modality from "lawn texture" to
-"substrate resistance" (the biological cells carry both), and let the amines set a *time*
-in the loop — not a gain, per the constraint above — screened open-loop before any
-closed-loop sweep. It touches `worm/` sensory physiology and modulation targets, so it is
-an owner decision before it is an experiment; this paragraph is the reference-evidence
-groundwork that decision asked for.
-
-**The screening is cheap and twice-validated.** A candidate no longer needs closed-loop
-gait sweeps: measure its phase contribution open-loop at the operating band
-(`tools/loop_medium.py` machinery), add the receptor arctans, read the predicted frequency
-per medium. fv = 0 matched every medium to ≤1.5%; fv = 500 matched to ~3.5% with the span
-essentially exact. A mechanism that cannot move the predicted crossover between K = 9 and
-K = 1.58 is dead before any behavioural assay runs.
+*(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
+below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
+docstrings, `worm/params.py::MediumParams`, and `docs/runtime-parity.md`.)*
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in

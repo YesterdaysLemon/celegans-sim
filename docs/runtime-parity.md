@@ -109,8 +109,33 @@ does; see below.
 
 ## Route 3 — the Python-only paths
 
-Three families. **All are off by default**, and that is what
+Four families. **All are off by default**, and that is what
 `tests/test_runtime_parity.py` pins.
+
+### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`) — the amine load-sensing path
+**Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
+
+CEP/ADE/PDE transduce the drag force the cuticle bears (`Body.drag_load`, the mean |c·v|
+per unit length — the one gait signal measured to survive below the K ≈ 8 knee where the
+bending dynamics go medium-blind); dopamine integrates it through the existing wireless
+layer; and two effects engage as it falls: the head reflex's lag budget shrinks (a
+load-scaled *time*) and the proprioceptive reach lengthens toward a third precomputed
+field pair. Biology: Vidal-Gadea et al. 2011 (dopamine holds the crawl), Korta et al.
+2007 (load modulates the swim); both cited with what could be verified at
+`SensoryParams.load_gain`.
+
+*Measured* (`tools/amine_gait.py`, 2026-08-13, probe calibration, no re-tuning): the agar
+end holds the shipped gait exactly (0.656 Hz, dopamine at ceiling), and the (f, λ) locus
+traverses **36% of the animal's crawl→swim chord against the baseline's 11%**, wave-speed
+span 2.42× against 1.39×, the K ≈ 8 saturation gone. The candidate label is earned, not
+aspirational — but adoption has named preconditions: the food/load confound on the
+dopamine scalar (stated at `load_gain`), a full behavioural scorecard (dopamine now moves
+during ordinary locomotion), runtime parity for five constants plus the cascade this path
+runs on, and the calibration knobs in `NEXT.md`.
+
+Python: `worm/body.py::drag_load`, `worm/senses.py` (transduction, swim fields, cascade
+rescale), `worm/modulators.py::head_lag_scale/swim_reach_blend`, `worm/engine.py` (the
+load pass-through). Tools: `tools/amine_gait.py`.
 
 ### `sensory.head_stages`, `sensory.head_stage_tau` — the head-reflex cascade
 **Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
