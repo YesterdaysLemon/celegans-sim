@@ -124,10 +124,13 @@ field pair. Biology: Vidal-Gadea et al. 2011 (dopamine holds the crawl), Korta e
 2007 (load modulates the swim); both cited with what could be verified at
 `SensoryParams.load_gain`.
 
-*Measured* (`tools/amine_gait.py`, 2026-08-13, probe calibration, no re-tuning): the agar
-end holds the shipped gait exactly (0.656 Hz, dopamine at ceiling), and the (f, λ) locus
-traverses **36% of the animal's crawl→swim chord against the baseline's 11%**, wave-speed
-span 2.42× against 1.39×, the K ≈ 8 saturation gone. The candidate label is earned, not
+*Measured* (`tools/amine_gait.py`, 2026-08-13, two calibrations, both full nine-media
+locus runs): the agar end holds the shipped gait exactly at both (0.656 Hz, dopamine at
+ceiling, perp from the animal's chord −0.003 L), and the (f, λ) locus reaches **+0.786
+along the animal's crawl→swim chord against the baseline's +0.347 endpoint** — 79% of the
+way to the swim; the first calibration reached +0.595 and the pair shows what each knob
+bought. Wave-speed span 3.39× against the baseline's 1.39× (animal: 13.9×), buffer wave
+speed 71% of the animal's swim, the K ≈ 8 saturation gone, TWI ≥ +0.72 at every medium. The candidate label is earned, not
 aspirational — but adoption has named preconditions: the food/load confound on the
 dopamine scalar (stated at `load_gain`), a full behavioural scorecard (dopamine now moves
 during ordinary locomotion), runtime parity for five constants plus the cascade this path

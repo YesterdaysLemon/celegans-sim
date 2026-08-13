@@ -31,4 +31,4 @@ web/traj-wasm.json
 web/egg-events.json
 .loop_medium_cache.jsonl
 .fv_phase_cache.jsonl
-.amine_gait_cache.jsonl
+.amine_gait_cache*.jsonl

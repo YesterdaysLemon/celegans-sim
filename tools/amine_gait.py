@@ -88,6 +88,29 @@ serotonin arm of Vidal-Gadea's result, which this pass never touched. Adoption s
 owner decision with the preconditions named in the docstring above -- the food/load
 confound first among them -- and NEXT.md carries the calibration path.
 
+THE SECOND CALIBRATION (2026-08-13, after the buffer-end grid). A 3x3 sweep of the two
+knobs at the swim end found them still separable -- at fixed lag, reach moves lambda with
+f flat; at fixed reach, lag moves f -- and found one cliff: reach 0.48 with the lag
+coefficient left at 1.0 breaks the wave outright (0.70 Hz, lambda 2.8 L, TWI +0.54), so
+reach must be paired with lag, which is the phase-consistency wave_speed.py's law always
+demanded. The winner, reach_swim 0.48 with head_lag 1.30 (the effective lag scale bottoms
+at ~0.42, essentially the floor), then ran the full nine-media locus, 27/27:
+
+    K 40:   0.656 +-0.016 Hz  0.86 L   TWI +0.831   perp -0.003 L   (crawl untouched)
+    K 7.94: 0.911            1.13     +0.783        +0.091
+    K 3.54: 1.267            1.32     +0.756        +0.065
+    K 1.58: 1.478 +-0.016    1.30     +0.726        -0.059
+
+    along-chord +0.242 -> +0.786 (first calibration +0.595, baseline +0.347)
+    spans: f 2.25x, lambda 1.53x, v = 0.566 -> 1.919 L/s, 3.39x
+    (animal: 5.87x, 2.37x, 13.9x; buffer wave speed 71% of the animal's swim)
+
+No cliff appears at any intermediate medium -- every TWI is +0.72 or better -- and the
+one distortion is a bulge above the chord peaking at +0.15 L around K = 5.3, the
+wavelength getting ahead of the frequency mid-continuum, closing again at both ends. The
+tool's default configuration is this calibration; the first calibration's table above is
+kept because the pair shows what each knob bought.
+
 Run:  PYTHONPATH=. .venv/bin/python tools/amine_gait.py
 """
 
@@ -113,8 +136,8 @@ SEEDS = (0, 3, 7)
 # the identical protocol (tools/flambda_locus.py, same seeds, same media).
 LOAD_GAIN = float(os.environ.get("AMINE_LOAD_GAIN", 60.0))
 LOAD_HALF = float(os.environ.get("AMINE_LOAD_HALF", 1.0))
-HEAD_LAG = float(os.environ.get("AMINE_HEAD_LAG", 1.0))
-REACH_SWIM = float(os.environ.get("AMINE_REACH_SWIM", 0.32))
+HEAD_LAG = float(os.environ.get("AMINE_HEAD_LAG", 1.30))
+REACH_SWIM = float(os.environ.get("AMINE_REACH_SWIM", 0.48))
 REACH_BLEND = float(os.environ.get("AMINE_REACH_BLEND", 2.0))
 
 # The shipped model's locus on the same protocol (tools/flambda_locus.py, 2026-08-12),
