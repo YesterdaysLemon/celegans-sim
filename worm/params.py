@@ -905,6 +905,32 @@ class MediumParams:
     Muscle force-velocity remains worth measuring -- it is a genuinely load-dependent element
     and `MuscleParams` now has one, off by default -- but it is a candidate on its own merits
     now rather than the conclusion of an argument, because the argument has been withdrawn.
+
+    THE SHAPE OF WHAT DOES EXIST (tools/flambda_locus.py, 2026-08-12: nine media,
+    K = 1.58-40 geometric, three seeds). In the (f, lambda) plane the model's points do not
+    slide off the animal's crawl->swim chord -- the perpendicular offset never exceeds
+    0.10 L -- they are *bunched* on it: 11% of the chord traversed, 89% of the frequency
+    motion above K = 9, wave speed f*lambda spanning 1.37x against the animal's 13.9x. So
+    under load, f and lambda ride one coupling together, in roughly the animal's proportion
+    (log-log exponent ~0.22 against the chord's 0.49, coarse at this traversal), and it is
+    that one coupling which is ~10x too small and saturating -- the flat wavelength is not a
+    separate failure, and a fix aimed at lambda alone is aimed at a symptom. Whatever moves
+    the operating point between K = 40 and K = 9 is the thing to localise; below K = 9
+    nothing does.
+
+    AND WHERE IT LIVES (tools/loop_medium.py, 2026-08-13: per-medium lock-in on the open
+    head loop, five media, both body-reflex arms). The coupling is the passive body's
+    bending relaxation and nothing else. From K = 40 to 7.9 the tension->curvature stage's
+    phase moves +40 degrees while neuron, release and muscle move at most 0.2; below
+    K = 7.9 nothing moves anywhere; the two arms are the same table, so the body reflex
+    contributes nothing to the saturation. The form is tau = c_n / (EI k^4) -- committed
+    as a prediction mid-run, knee landing where it was put -- which is why the saturation
+    is immovable by tuning: every other element in the loop is load-independent by
+    construction, and in buffer the body's relaxation is five orders of magnitude faster
+    than the undulation period. The account closes quantitatively: measured plant phase
+    plus the analytic receptor phase predicts the closed-loop frequency at every medium to
+    within 1.5%. A gait-modulation mechanism must keep a *time* in the loop scaled to the
+    load below K ~ 9, and candidates can now be screened open-loop -- see NEXT.md.
     """
 
     name: str = "agar"

@@ -9,34 +9,37 @@ tracks below you are in and what must not blur between them.
 
 ## Reference worm
 
-**1. Sweep `proprio_reach` against wavelength, in both media.** The sharpest unexplained
-thing in the model. The animal changes wavelength by **2.37×** between crawling and swimming;
-this model changes it by 1.01–1.17× under every configuration tried so far. Wavelength is set
-by a fixed proprioceptive reach with nothing scaling it by load.
+**1. Find what keeps a load-scaled time in the loop below K = 9 — and screen candidates
+open-loop, which is now cheap.** Two measurements (2026-08-12/13) turned gait modulation
+from a mystery into a mechanism search with tight constraints:
 
-Single-medium sweeps already exist and answer half of it: `worm/params.py` records a
-`tools/wave_speed.py` sweep in which reach moves wavelength 0.49 → 0.64 L with the frequency
-flat to within 1%. **What is unmeasured is whether that survives a change of medium** — every
-existing sweep is one medium.
+- `tools/flambda_locus.py` (nine media, K = 1.58–40): the model's (f, λ) locus does **not**
+  slide off the animal's crawl→swim line — it is *bunched* on it. 11% of the chord
+  traversed, 89% of the frequency motion above K = 9, v = f·λ spanning 1.37× against the
+  animal's 13.9×. One coupling moves f and λ together; the two-independent-knobs suspicion
+  is dead; **do not attack the flat wavelength as its own problem**.
+- `tools/loop_medium.py` (per-medium lock-in, five media, both body-reflex arms): that
+  coupling is **the passive body's bending relaxation and nothing else**. From K = 40 → 7.9
+  the tension→curvature stage moves +40°; every other stage ≤0.2°; below K = 7.9 nothing
+  moves at all, both arms identical. The analytic form τ = c_n/(EI·k⁴), committed before the
+  run, placed the knee correctly and the magnitudes within 2×. And the open-loop account
+  closes quantitatively: plant phase + analytic receptor phase predicts the measured
+  closed-loop frequency at **every** medium to ≤1.5% (0.662 vs 0.656 at K = 40, 0.800 vs
+  0.800 at 17.8, 0.836 vs 0.833 at 1.58).
 
-**Measure the product, not the two factors.** An external review pointed out that wave speed
-`v = f · λ` is the quantity the animal actually opens up, and that frequency and wavelength are
-its two projections rather than two independent failures:
+So the constraint on any gait-modulation mechanism, stated so it can kill proposals early:
+the loop's only load-dependent time falls like c_n and is finished by K ≈ 8, five orders of
+magnitude too fast in buffer. The mechanism must keep a *time* in the loop scaled to the
+load all the way down the continuum. Load-independent elements — gains, fixed lags, cascade
+shapes, internal damping (load-independent by form, and `tools/damping_sweep.py` measured
+it) — cannot do it by construction, which is why the do-not-repeat table below reads the
+way it does.
 
-| | crawl | swim | ratio |
-|---|---|---|---|
-| animal (Fang-Yen) | 0.30 × 0.65 = **0.195 L/s** | 1.76 × 1.54 = **2.71 L/s** | **13.9×** |
-| this model | 0.656 × 0.86 = **0.564** | 0.833 × 0.91 = **0.758** | **1.34×** |
-
-That reframes the item. The suspicion it raises is structural: this model carries a fixed
-temporal head lag *and* a fixed spatial proprioceptive reach — two independent knobs, where a
-single per-segment propagation time would set both. That is a candidate explanation for the
-otherwise odd result that reach moves λ with frequency flat to 1%.
-
-**So the first experiment is the (f, λ) locus, not a reach sweep** — decided, see *Settled*
-below. Sweep the medium and plot the model's (f, λ) points against the animal's crawl→swim line. If the model's
-locus slides *off* that line, the two knobs are genuinely independent here and are not in the
-animal — one mechanism to find, not two. It needs no new model code.
+**The screening is now cheap.** A candidate no longer needs closed-loop gait sweeps:
+measure its phase contribution open-loop at the operating band (`tools/loop_medium.py`
+machinery), add the receptor arctans, read the predicted frequency per medium. A mechanism
+that cannot move the predicted crossover between K = 9 and K = 1.58 is dead before any
+behavioural assay runs.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in
@@ -121,17 +124,12 @@ the model being clean.
   measured, but the margin is thin (seed 5 gives 1.214 against a 1.2 bound), so tightening it
   wants a larger seed count first. Changing it is a change to a scientific acceptance
   criterion and belongs in its own commit.
-- **`worm/genome.py` claims something untrue about `tools/optimise.py`.** Its comment says the
-  three shared fields "retain that tool's ranges"; measured, none of the three does —
-  `proprio_gain` is (20, 300) there and (8, 80) here, and the other two disagree comparably.
-  The envelopes still overlap, which is what `tests/test_genome.py` now pins. Correcting the
-  comment is a one-line change under `worm/`, deliberately not made in the pass that kept that
-  directory at zero changes.
 
 ### Settled
 
-- **Gait experiment order** — the (f, λ) locus test above goes first. It subsumes the reach
-  sweep's question and needs no new model code; the cascade port waits behind it.
+- **Gait experiment order** — the (f, λ) locus test went first, and has now run
+  (`tools/flambda_locus.py`, 2026-08-12). It subsumed the reach sweep's question — the reach
+  sweep is retired with it — and the cascade work in (2) is unblocked.
 - **The 25 uncertain tools stay where they are.** [`tools/README.md`](tools/README.md) solved
   the discoverability problem the move was for. Six could not have moved anyway: five are
   cited by path in `worm/params.py` as the provenance for shipped constants
