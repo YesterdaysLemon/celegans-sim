@@ -90,6 +90,47 @@ freed phase against ~190 deg/Hz of total slope gives ~0.32 Hz where 0.18 Hz is
 measured), which is the accuracy a one-mode caricature deserves; the *placement* of the
 knee is the prediction that counts.
 
+WHAT THE FULL RUN FOUND (2026-08-13, 100 of 100 trials). The first pre-registered outcome,
+in full, with the analytic prediction landing inside its stated tolerance.
+
+  * **The localisation is total.** At 0.8 Hz, from K = 40 to 7.9 the curvature stage's
+    phase moves +40.2 deg (shipped body) / +43.5 deg (open body); neuron, release and
+    muscle move at most 0.2 deg. From K = 7.9 to 1.58 *nothing* moves -- the curvature
+    stage's +0.7 deg is the largest change anywhere. The medium enters the loop at exactly
+    one arrow and its influence is finished by K ~ 8.
+  * **It is the passive body.** The shipped-body and open-body arms are the same table to
+    within a few degrees, so the body-reflex loop contributes nothing to the saturation:
+    the mechanics alone stop feeling the medium.
+  * **The elastica prediction held.** Measured curvature-stage phase at the operating
+    band: -32 deg (K = 40), -5 deg (17.8), -0.6 (7.9), ~0 below -- against the predicted
+    -59 / -12 / -1 / 0. Factor ~1.5-1.8 on the thick end, knee exactly where tau = c_n /
+    (EI k^4) put it, arctan-shaped frequency dependence at K = 40 as the form requires.
+  * **The crossover closes the loop on the whole account.** Plant phase plus the analytic
+    receptor phase, criterion 0 deg (see the sign-convention note in the code, corrected
+    post hoc and flagged), predicts the closed-loop frequency measured by flambda_locus:
+
+        K       predicted (shipped/open)   measured
+        40.00      0.662 / 0.642            0.656
+        17.82      0.800 / 0.800            0.800
+         7.94      0.832 / 0.832            0.844
+         3.54      0.836 / 0.836            0.844
+         1.58      0.836 / 0.836            0.833
+
+    Every medium within 1.5%, both arms. The undulation frequency of this animal is now a
+    *computable* quantity: open the loop, measure the plant at five frequencies, add two
+    arctans and a line, and the gait falls out -- per medium.
+
+READING. Gait modulation's shortfall is a mechanical fact with a mechanical form: the
+body's bending relaxation, tau = c_n / (EI k^4), is the only load-dependent time in the
+loop, and it falls through the undulation period at K ~ 10-40 and is five orders of
+magnitude too fast to matter in buffer. Below K ~ 9 this model is mechanically deaf to
+the medium -- no retuning of gains, lags or cascade shapes can help, because every one of
+those is load-independent by construction. What the animal has and this model lacks is
+some element that keeps a *time* in the loop scaled to the load all the way down the
+continuum. And the crossover table converts that search from expensive to cheap: a
+candidate mechanism can now be screened open-loop -- measure its phase at the band, add
+the receptor, read the predicted frequency shift -- without a single closed-loop sweep.
+
 Mechanics note: the sweep is chunked by (arm, medium) and every chunk's rows are appended
 to a JSONL cache (`.loop_medium_cache.jsonl`, or `LOOP_MEDIUM_CACHE`), so a run killed by
 a timeout or a container restart resumes from the last finished chunk instead of starting
@@ -287,11 +328,19 @@ def main():
                       % (label, _wrap(ph[4] - ph[8]), _wrap(ph[0] - ph[4])))
         print()
 
-    # The crossover: plant phase plus the analytic receptor phase reaches -180 where the
-    # closed loop should oscillate. Interpolated in f per medium, then held against the
-    # closed-loop frequencies flambda_locus measured. Pattern, not absolute value.
+    # The crossover: plant phase plus the analytic receptor phase, interpolated in f per
+    # medium, held against the closed-loop frequencies flambda_locus measured.
+    #
+    # The criterion is total = 0 degrees, not -180, and the first full run is why this
+    # comment exists: it used -180 and printed NaN at every medium. The muscle column
+    # carries a ~+180 degree block -- the dorsoventral inversion between the voltage
+    # difference (ventral minus dorsal) and the bending it produces -- so the measured
+    # plant already contains the loop's net minus sign, and the oscillation condition on
+    # this table is 0. A convention correction made after seeing the data, and flagged as
+    # such; there was no freedom in it -- the offset is 180 exactly and the muscle column
+    # shows where it lives.
     print("  PREDICTED CROSSOVER against the measured closed-loop frequency")
-    print("     K    | f_180 shipped-body  f_180 open-body |  measured f (flambda_locus)")
+    print("     K    | f_cross shipped-body  f_cross open-body |  measured f (flambda_locus)")
     for mi in MEDIA_IX:
         preds = []
         for ca in BODY_GAINS:
@@ -311,9 +360,9 @@ def main():
                 fs, tot = fs[order], tot[order]
                 for i in range(len(fs) - 1):
                     lo, hi = tot[i], tot[i + 1]
-                    if (lo + 180.0) * (hi + 180.0) <= 0.0:
+                    if lo * hi <= 0.0:
                         pred = float(fs[i] + (fs[i + 1] - fs[i])
-                                     * (-180.0 - lo) / (hi - lo))
+                                     * (0.0 - lo) / (hi - lo))
                         break
             preds.append(pred)
         print("   %5.2f  |      %5.3f              %5.3f       |   %.3f"

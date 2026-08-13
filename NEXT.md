@@ -9,33 +9,37 @@ tracks below you are in and what must not blur between them.
 
 ## Reference worm
 
-**1. Localise the medium coupling: which stage of the loop actually changes between
-K = 40 and K = 9, and why does it stop there?** The (f, λ) locus experiment ran 2026-08-12
-— `tools/flambda_locus.py`, nine media K = 1.58–40, three seeds, full tables and the
-considered reading in its docstring. Compressed:
+**1. Find what keeps a load-scaled time in the loop below K = 9 — and screen candidates
+open-loop, which is now cheap.** Two measurements (2026-08-12/13) turned gait modulation
+from a mystery into a mechanism search with tight constraints:
 
-- **The locus does not slide off the animal's crawl→swim line.** Perpendicular offset stays
-  within −0.03 to −0.10 L, non-monotone, ending −0.05 L. Under the load axis — the axis the
-  animal is measured on — f and λ move *together*, roughly along the chord. The
-  two-independent-knobs suspicion is dead, and the parameter-space independence
-  `tools/wave_speed.py` measured (reach moves λ, f flat to 1%) does not govern the load
-  response; inferring one from the other was the error.
-- **What dominates is bunching, not direction.** The model traverses **11%** of the animal's
-  chord, and 89% of its frequency motion happens above K = 9. The saturation `MediumParams`
-  documents in the frequency column holds for the locus as a whole, in both coordinates at
-  once. Wave speed v = f·λ spans 1.37× measured across the full sweep, against the animal's
-  13.9×.
+- `tools/flambda_locus.py` (nine media, K = 1.58–40): the model's (f, λ) locus does **not**
+  slide off the animal's crawl→swim line — it is *bunched* on it. 11% of the chord
+  traversed, 89% of the frequency motion above K = 9, v = f·λ spanning 1.37× against the
+  animal's 13.9×. One coupling moves f and λ together; the two-independent-knobs suspicion
+  is dead; **do not attack the flat wavelength as its own problem**.
+- `tools/loop_medium.py` (per-medium lock-in, five media, both body-reflex arms): that
+  coupling is **the passive body's bending relaxation and nothing else**. From K = 40 → 7.9
+  the tension→curvature stage moves +40°; every other stage ≤0.2°; below K = 7.9 nothing
+  moves at all, both arms identical. The analytic form τ = c_n/(EI·k⁴), committed before the
+  run, placed the knee correctly and the magnitudes within 2×. And the open-loop account
+  closes quantitatively: plant phase + analytic receptor phase predicts the measured
+  closed-loop frequency at **every** medium to ≤1.5% (0.662 vs 0.656 at K = 40, 0.800 vs
+  0.800 at 17.8, 0.836 vs 0.833 at 1.58).
 
-So: one coupling between loop and load, moving f and λ together in roughly the animal's
-proportion (log-log exponent ~0.22 against the chord's 0.49, coarse), a factor of ~10 too
-small in reach, running out exactly where swimming begins. **Do not attack the flat
-wavelength as its own problem** — under the load axis it rides the same saturating coupling
-as the frequency.
+So the constraint on any gait-modulation mechanism, stated so it can kill proposals early:
+the loop's only load-dependent time falls like c_n and is finished by K ≈ 8, five orders of
+magnitude too fast in buffer. The mechanism must keep a *time* in the loop scaled to the
+load all the way down the continuum. Load-independent elements — gains, fixed lags, cascade
+shapes, internal damping (load-independent by form, and `tools/damping_sweep.py` measured
+it) — cannot do it by construction, which is why the do-not-repeat table below reads the
+way it does.
 
-The next probe: run the loop-phase decomposition per medium — `tools/loop_phase.py` opens
-the head loop and measures each stage's gain and phase, and nobody has run it anywhere but
-agar. Find which stage's numbers move between K = 40 and K = 9, and confirm they stop moving
-below. That localises the coupling before any mechanism is proposed for it.
+**The screening is now cheap.** A candidate no longer needs closed-loop gait sweeps:
+measure its phase contribution open-loop at the operating band (`tools/loop_medium.py`
+machinery), add the receptor arctans, read the predicted frequency per medium. A mechanism
+that cannot move the predicted crossover between K = 9 and K = 1.58 is dead before any
+behavioural assay runs.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in
