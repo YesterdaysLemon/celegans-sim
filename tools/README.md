@@ -131,7 +131,7 @@ Two. Their questions are open in `NEXT.md`.
 | tool | last | open question |
 |---|---|---|
 | `head_cascade.py` | 2026-08-04 | Should the cascade be adopted? It matches the shipped frequency with `head_delay = 0` and improves the wave, so it is live **as a simplification** — the mechanism argument it was built for was refuted by `head_medium.py` below. Adoption is blocked on a scorecard/ethogram baseline and a runtime port. Now also load-bearing for the amine path, which runs on it. |
-| `amine_gait.py` | 2026-08-13 | How far toward the animal can the amine load-sensing path be calibrated, and should it be adopted? First measurement: 36% of the animal's crawl→swim chord traversed against the baseline's 11%, agar untouched, K ≈ 8 saturation gone. Calibration knobs and adoption preconditions in `NEXT.md`; lifecycle in `docs/runtime-parity.md`. |
+| `amine_gait.py` | 2026-08-13 | How far toward the animal can the amine load-sensing path be calibrated, and should it be adopted? Measured twice: the second calibration reaches 79% of the way along the animal's chord (baseline endpoint 35%), agar untouched at both, K ≈ 8 saturation gone. Calibration knobs and adoption preconditions in `NEXT.md`; lifecycle in `docs/runtime-parity.md`. |
 
 ## ANSWERED_PROBE — sacrifice branches
 

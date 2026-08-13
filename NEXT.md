@@ -20,17 +20,22 @@ blind. Full tables, blemishes included, in the tool's docstring; the lifecycle e
 the whole measurement chain is in [`docs/runtime-parity.md`](docs/runtime-parity.md)
 (`REFERENCE_CANDIDATE`).
 
-What remains is size, and the knobs are named:
+The first two knobs are swept and folded in (buffer-end grid + full verification locus,
+same day, tables in the tool): reach 0.48 paired with lag coefficient 1.30 takes the
+locus to **+0.786 along the chord — 79% of the way to the animal's swim** — at TWI ≥
++0.72 everywhere and the crawl still untouched. Reach and lag must move *together*
+(reach 0.48 at lag 1.0 breaks the wave outright); the effective lag now bottoms at the
+0.4 floor in buffer. What remains:
 
-- **The λ plateau.** Wavelength stops at ~1.08 L from K = 5.3 down while frequency keeps
-  climbing — the swim-reach blend saturates against `proprio_reach_swim = 0.32`. Sweep
-  that ceiling (the animal wants 1.54 L).
-- **The lag floor.** The loop still carries 0.54 of its lag budget in buffer against a
-  `head_lag_scale` floor of 0.4. How much more frequency the remaining headroom buys, and
-  at what cost to the wave, is one sweep.
-- **The serotonin arm is untouched.** Vidal-Gadea's result is two amines; this pass used
-  only dopamine's withdrawal. Serotonin actively promoting the swim (it already exists in
-  the wireless layer) is the unexplored half.
+- **The serotonin arm is untouched.** Vidal-Gadea's result is two amines; everything so
+  far is dopamine's withdrawal alone. Serotonin actively promoting the swim (it already
+  exists in the wireless layer) is the unexplored half, and the natural owner of the
+  remaining frequency gap (1.48 against 1.76 Hz) now that the lag floor is reached.
+- **The mid-continuum bulge.** The locus arcs +0.15 L above the chord around K = 5.3 —
+  wavelength ahead of frequency — closing at both ends. Small, but it is the one shape
+  error left.
+- **The lag floor itself** (0.4 in `Modulators.head_lag_scale`) encodes lag_span.py's
+  fast-but-degraded regime; loosening it is a measured trade, not a sweep.
 
 **Adoption is a separate decision from calibration, with preconditions already named:**
 the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it —
