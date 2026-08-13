@@ -27,19 +27,33 @@ from a mystery into a mechanism search with tight constraints:
   closed-loop frequency at **every** medium to ≤1.5% (0.662 vs 0.656 at K = 40, 0.800 vs
   0.800 at 17.8, 0.836 vs 0.833 at 1.58).
 
-So the constraint on any gait-modulation mechanism, stated so it can kill proposals early:
-the loop's only load-dependent time falls like c_n and is finished by K ≈ 8, five orders of
-magnitude too fast in buffer. The mechanism must keep a *time* in the loop scaled to the
-load all the way down the continuum. Load-independent elements — gains, fixed lags, cascade
-shapes, internal damping (load-independent by form, and `tools/damping_sweep.py` measured
-it) — cannot do it by construction, which is why the do-not-repeat table below reads the
-way it does.
+- `tools/fv_phase.py` (2026-08-13): the first candidate screened, and retired with its
+  mechanism named. Muscle force-velocity **is** a load-scaled time — and it is backwards
+  and knee-bound: −16.8° of plant phase on agar, −34.9° in buffer (braking hardest where
+  the animal accelerates, because thin fluid lets the body shorten faster), and identical
+  at K = 7.9 and 1.58 because it reads the body's motion, which is what saturates. The
+  screen predicted the closed-loop fv = 500 record from open-loop phase alone — span 1.170
+  predicted, 1.167 measured — so the calculator now stands on two configurations.
 
-**The screening is now cheap.** A candidate no longer needs closed-loop gait sweeps:
-measure its phase contribution open-loop at the operating band (`tools/loop_medium.py`
-machinery), add the receptor arctans, read the predicted frequency per medium. A mechanism
-that cannot move the predicted crossover between K = 9 and K = 1.58 is dead before any
-behavioural assay runs.
+So the constraint on any gait-modulation mechanism, sharpened twice and stated so it can
+kill proposals early: **below K ≈ 8 the bending dynamics carry no information about the
+medium at all** — the whole plant, gain and phase at matched drive, is measured
+K-independent there. A mechanism that observes bending — any gain, lag, threshold or
+nonlinearity on curvature or its rate, force-velocity included — inherits that saturation
+by construction. What still distinguishes media below the knee is **translation**: net
+speed falls 0.218 → 0.038 mm/s from K = 7.9 to 1.58 while the bending stays identical. A
+mechanism that senses *slip* — bending against advance — has signal all the way down.
+Whether the animal carries one, and what cell would (this reconstruction's candidates
+would need identifying before any model change), is the physiology question this item now
+is. It touches `worm/` model structure, so it is an owner decision before it is an
+experiment.
+
+**The screening is cheap and twice-validated.** A candidate no longer needs closed-loop
+gait sweeps: measure its phase contribution open-loop at the operating band
+(`tools/loop_medium.py` machinery), add the receptor arctans, read the predicted frequency
+per medium. fv = 0 matched every medium to ≤1.5%; fv = 500 matched to ~3.5% with the span
+essentially exact. A mechanism that cannot move the predicted crossover between K = 9 and
+K = 1.58 is dead before any behavioural assay runs.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in
@@ -55,7 +69,7 @@ behavioural assay runs.
 > | *(shipped, for reference)* | 0.656 | 0.833 | 1.27× | — |
 > | the cascade's frequency-dependent phase | 0.644 | 0.833 | 1.29× | a stage count or a lag budget |
 > | cutting the fixed head lag fourfold (0.500 → 0.125 s) | 1.356 | 1.900 | 1.40× | a smaller head reflex |
-> | muscle force-velocity (`fv_vmax = 500`) | 0.600 | 0.700 | 1.17×, worse | a stronger derating; unstable there |
+> | muscle force-velocity (`fv_vmax = 500`) | 0.600 | 0.700 | 1.17×, worse | a stronger derating; unstable there. And not at any dose as a modulation mechanism: its phase is load-scaled backwards and knee-bound (`tools/fv_phase.py`) |
 > | body internal damping, down to zero | 0.667 | 0.867 | 1.30× | a mechanical-dissipation problem |
 >
 > Read the lag-cut row carefully before proposing anything: a fourfold cut roughly **doubles

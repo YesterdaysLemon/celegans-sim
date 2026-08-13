@@ -642,6 +642,16 @@ class MuscleParams:
     # Not adopted. It is more faithful muscle than none and it costs the crawl, which is where
     # this model is calibrated; adopting it would mean re-fitting the gait to buy a property
     # that has just been measured not to arrive.
+    #
+    # And the candidacy itself is now settled (tools/fv_phase.py, 2026-08-13, open-loop
+    # lock-in per medium): force-velocity IS a load-scaled time, backwards -- it adds
+    # -16.8 deg of loop phase on agar and -34.9 in buffer, braking hardest where the animal
+    # accelerates, which is why the closed-loop span narrowed -- and its load-dependence
+    # saturates at the same K ~ 8 knee as the body's, because it reads the body's motion
+    # and below the knee the bending dynamics carry no information about the medium at all.
+    # The cancellation suspicion above was close but generous: the derating does not cancel
+    # out of the span, it narrows it. Retired as a gait-modulation mechanism; remains what
+    # this note always said it was, more faithful muscle at a cost to the calibrated crawl.
     fv_vmax: float = 0.0            # 1/(mm*s), 0 = off
 
     # Hill's curvature constant, the `a/F0` of the classic hyperbola. 4 is the usual value
@@ -931,6 +941,13 @@ class MediumParams:
     plus the analytic receptor phase predicts the closed-loop frequency at every medium to
     within 1.5%. A gait-modulation mechanism must keep a *time* in the loop scaled to the
     load below K ~ 9, and candidates can now be screened open-loop -- see NEXT.md.
+
+    One consequence sharp enough to state on its own (tools/fv_phase.py, the screen's
+    first use): below the knee the whole plant -- gain and phase, current to curvature at
+    matched drive -- is K-independent, so *no observer of the body's bending, linear or
+    not, can distinguish media there*. What still differs below K ~ 8 is translation, not
+    bending: thrust collapses with the anisotropy while the waveform stays put. Slip is
+    the signal that survives.
     """
 
     name: str = "agar"

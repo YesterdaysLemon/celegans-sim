@@ -30,3 +30,4 @@ web/traj-wasm.json
 # Event times from wasm/egglaying.mjs, for tools/egglaying.py clustering.
 web/egg-events.json
 .loop_medium_cache.jsonl
+.fv_phase_cache.jsonl
