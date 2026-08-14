@@ -49,7 +49,15 @@
  * obvious story; a gain interaction nobody has looked for is the interesting one), and
  * per the header above it is a fact about this reconstruction's fitness landscape, never
  * about the animal. Laying also shut down in pulses as camped lawns ran dry -- the plate
- * economy is a real constraint, not scenery. One run, one seed: patterns, not findings.
+ * economy is a real constraint, not scenery.
+ *
+ * REPLICATION (2026-08-14, seeds 2-4, same defaults): every seed ended above wild-type
+ * 30.0 -- 39.8, 33.9, 37.7, 33.6 -- four dishes, four climbs, no reversals, with
+ * magnitude tracking dish turnover (124/88/67/34 births). Four same-signed seeds is a
+ * one-sided sign test at p = 1/16 = 0.0625: one seed short of a clean claim, and it is
+ * recorded exactly that way. A fifth seed settles whether "the dish selects a stronger
+ * body reflex" graduates from replicated pattern to finding; docs/niche-museum.md IV.1
+ * holds the exhibit either way.
  */
 
 import {
