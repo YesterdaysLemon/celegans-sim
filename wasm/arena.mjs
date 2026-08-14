@@ -61,6 +61,20 @@ const SECONDS = env('ARENA_SECONDS', 900);
 const CAP = env('ARENA_CAP', 10);
 const FOUNDERS = env('ARENA_FOUNDERS', 4);
 const MUT = env('ARENA_MUT', 0.10);
+/* Tier-two mutation: ARENA_WMUT is the lognormal sigma applied to ARENA_WMUT_N heritable
+ * weights per hatch, picked uniformly over all 3,935 entries (chemical synapses, gap
+ * junctions, raw muscle rows) so every locus carries the same per-hatch rate. 0 -- the
+ * default -- is genes-only, byte-identical to the arena before tier two existed. The
+ * runtime refuses sign flips and asymmetric gap junctions on its own (wasm/weights.test.mjs);
+ * what is policy here is only rate and size. developWorm() after mutation is NOT optional:
+ * a mutated graph under inherited thresholds is bookkeeping error, not phenotype.
+ * Shakedown (2026-08-14, seed 7, WMUT=0.15 N=4, 240 s): 37 births, the whole population
+ * weighted by t=180 s, no drops, no physics failures -- and the scalar-gene spreads ran
+ * visibly wider than any genes-only run (proprio_gain +-6.6 against the usual +-3.3),
+ * which is what mutated wiring underneath the same genes should do. One run, one seed:
+ * the machinery works; nothing here is yet a result. */
+const WMUT = env('ARENA_WMUT', 0.0);
+const WMUT_N = env('ARENA_WMUT_N', 3);
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
@@ -117,6 +131,17 @@ function hatchDue() {
       const v = E.getGene(id, s) + normal() * MUT * scaleOf(GENES[s]);
       E.setGene(id, s, clampGene(GENES[s], v));
     }
+    if (WMUT > 0) {
+      const counts = [E.weightCount(0), E.weightCount(1), E.weightCount(2)];
+      const total = counts[0] + counts[1] + counts[2];
+      for (let j = 0; j < WMUT_N; j++) {
+        let k = Math.floor(rand() * total);
+        let fam = 0;
+        while (k >= counts[fam]) { k -= counts[fam]; fam++; }
+        E.scaleWeight(id, fam, k, Math.exp(normal() * WMUT));
+      }
+      E.developWorm(id);
+    }
     founderOf.set(id, founderOf.get(parent) ?? -1);   // -1: parent already culled
     born.set(id, simT);
     eatenAt.set(id, 0.0);
@@ -142,10 +167,12 @@ function report() {
   };
   const watch = ['sen_proprio_gain', 'sen_gate_bias', 'sen_food_gain']
     .map((g) => [g, GENES.indexOf(g)]).filter(([, s]) => s >= 0);
+  const carriers = WMUT > 0
+    ? `  weighted ${pop.filter((id) => E.hasOwnWeights(id)).length}/${pop.length}` : '';
   console.log(`t=${simT.toFixed(0).padStart(5)}s  pop ${pop.length}  eggs ${E.eggCount()}`
     + `  births ${births}  deaths ${deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
-    + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join(''));
+    + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('') + carriers);
 }
 
 console.log(`ARENA -- ${FOUNDERS} founders, cap ${CAP}, ${SECONDS} s of dish time,`

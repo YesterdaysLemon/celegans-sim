@@ -21,7 +21,7 @@
  * Layout: one shared Model (read-only, the payload), one shared World (the fields the
  * animals eat from), one block of shared per-step scratch, and N independent Worms. The
  * 302x302 matrices are anatomy, identical for every animal, so only state is duplicated --
- * but state is not nothing. A second animal costs a measured 239,360 bytes, 234 kB, of
+ * but state is not nothing. A second animal costs a measured 239,952 bytes, 234 kB, of
  * which 210,936 is the head-delay line alone. See the scratch block below and #33; the
  * figure is asserted by wasm/memory.mjs, which also checks that every document quoting it
  * quotes this number, because the previous one was out by a factor of a hundred and stayed
@@ -35,10 +35,115 @@ import * as G from "./model_gen";
 let B: usize = 0;
 
 export function alloc(nbytes: i32): usize { return heap.alloc(<usize>nbytes); }
-export function setPayload(ptr: usize): void { B = ptr; }
+export function setPayload(ptr: usize): void { B = ptr; initWeightTables(); }
 
 @inline function m(off: usize, i: i32): f64 { return load<f64>(B + off + (<usize>i << 3)); }
 @inline function mi(off: usize, i: i32): i32 { return load<i32>(B + off + (<usize>i << 2)); }
+
+/* --------------------------------------------------------------- heritable weights -----
+ *
+ * Tier two of the evolution project (docs/research-log/next-history-through-2026-08-04.md,
+ * "Decided: the shape of the evolution project"): per-animal synaptic weights, on the graph
+ * the payload already carries. TRACK B MACHINERY -- an animal with mutated weights is not
+ * C. elegans and nothing it does is a claim about the animal.
+ *
+ * The payload's CSR matrices stay what they always were: the wild-type anatomy, read-only.
+ * What changes is that every weight *consumer* in the step now reads through a per-worm
+ * reference which, for a wild-type animal, points at the shared arrays below -- byte
+ * copies of the payload regions, so the arithmetic sees identical f64s in an identical
+ * order and the canonical animal is bit-for-bit what it was. A mutated animal gets its own
+ * copies (about 50 kB against the 234 kB an animal already costs) and nobody else pays.
+ *
+ * WEIGHTS ARE HERITABLE STATE; THE REST IS DEVELOPMENT. The exported V_th, ca_vhalf,
+ * k_vhalf, gap totals and balanced muscle matrix are all *products* of the wild-type graph
+ * (#96), so a mutant must regrow them from its own graph or run miscalibrated -- every
+ * half-voltage is a fixed offset from the cell's own resting potential, and the resting
+ * potentials move when the weights do. developWorm() is that regrowth: the ported LU
+ * resting solve on the worm's own matrices, the half-voltage offsets re-applied, the
+ * muscle balance re-run from the worm's raw matrix, gap totals re-summed, and the animal
+ * reset to its own rest. This mirrors what worm/nervous.py and worm/muscle.py do at
+ * construction, which is the model's own claim about what development is.
+ *
+ * WHAT THE MECHANISM REFUSES, deliberately: a chemical synapse's two value arrays scale
+ * in lockstep (they are one synapse viewed twice -- G_syn and GE_syn share a pattern);
+ * a gap junction scales both directions together (it is one resistor, and breaking its
+ * symmetry would be a non-physical one-way coupling, not a mutation); and scale factors
+ * clamp at zero, so a weight can shrink to deletion but never flip sign -- an excitatory
+ * synapse cannot mutate into an inhibitory one. Sign is topology, and topology is tier
+ * three. Everything else -- who mutates, how often, how hard -- is policy and lives with
+ * the caller, same contract as genes.
+ *
+ * WHAT DELIBERATELY REMAINS ANATOMY at this tier, so nobody reads more heritability into
+ * the dish than exists: the sensory receptive fields (wb/wa and the swim variants), the
+ * muscle-to-muscle gap grid, g_ca/g_adapt (including the command-interneuron boost, which
+ * strictly tracks resting conductance in Python and is frozen at its wild-type value
+ * here), and every mechanical property -- EI, drag, the body itself. A tier-two mutant
+ * can rewire how strongly its cells talk; it cannot grow a new ear or a stiffer spine. */
+
+let wtSynVal: StaticArray<f64> = new StaticArray<f64>(0);
+let wtSynVal2: StaticArray<f64> = new StaticArray<f64>(0);
+let wtGapVal: StaticArray<f64> = new StaticArray<f64>(0);
+let wtMusVal: StaticArray<f64> = new StaticArray<f64>(0);
+let wtMusRaw: StaticArray<f64> = new StaticArray<f64>(0);
+let wtVth: StaticArray<f64> = new StaticArray<f64>(0);
+let wtCaVhalf: StaticArray<f64> = new StaticArray<f64>(0);
+let wtKVhalf: StaticArray<f64> = new StaticArray<f64>(0);
+/* For each gap CSR entry (r, c), the index of its mirror (c, r). Built once; the matrix
+ * is symmetric by construction so the mirror always exists, and a missing one traps
+ * loudly rather than letting an asymmetric junction in quietly. */
+let gapPair: StaticArray<i32> = new StaticArray<i32>(0);
+
+function copyPayloadF64(off: usize, n: i32): StaticArray<f64> {
+  const a = new StaticArray<f64>(n);
+  for (let k = 0; k < n; k++) unchecked(a[k] = m(off, k));
+  return a;
+}
+
+function initWeightTables(): void {
+  wtSynVal = copyPayloadF64(G.OFF_syn_val, G.LEN_syn_val);
+  wtSynVal2 = copyPayloadF64(G.OFF_syn_val2, G.LEN_syn_val2);
+  wtGapVal = copyPayloadF64(G.OFF_gap_val, G.LEN_gap_val);
+  wtMusVal = copyPayloadF64(G.OFF_mus_val, G.LEN_mus_val);
+  wtMusRaw = copyPayloadF64(G.OFF_mus_raw_val, G.LEN_mus_raw_val);
+  wtVth = copyPayloadF64(G.OFF_V_th, G.N_NEURONS);
+  wtCaVhalf = copyPayloadF64(G.OFF_ca_vhalf, G.N_NEURONS);
+  wtKVhalf = copyPayloadF64(G.OFF_k_vhalf, G.N_NEURONS);
+  gapPair = new StaticArray<i32>(G.LEN_gap_val);
+  for (let r = 0; r < G.N_NEURONS; r++) {
+    const e = mi(G.OFF_gap_ptr, r + 1);
+    for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
+      const c = mi(G.OFF_gap_idx, k);
+      let found = -1;
+      const ce = mi(G.OFF_gap_ptr, c + 1);
+      for (let kk = mi(G.OFF_gap_ptr, c); kk < ce; kk++) {
+        if (mi(G.OFF_gap_idx, kk) == r) { found = kk; break; }
+      }
+      if (found < 0) unreachable();   // the gap matrix is not the symmetric one the model claims
+      unchecked(gapPair[k] = found);
+    }
+  }
+}
+
+/* The heritable half of an animal, snapshotted into an egg at laying. Products (V_th and
+ * friends) are deliberately absent: they are regrown at hatch, which is what keeps an egg
+ * at ~50 kB instead of carrying a full developed nervous system. */
+class WeightSet {
+  syn: StaticArray<f64>;
+  syn2: StaticArray<f64>;
+  gap: StaticArray<f64>;
+  musRaw: StaticArray<f64>;
+  constructor(syn: StaticArray<f64>, syn2: StaticArray<f64>,
+              gap: StaticArray<f64>, musRaw: StaticArray<f64>) {
+    this.syn = cloneF64(syn); this.syn2 = cloneF64(syn2);
+    this.gap = cloneF64(gap); this.musRaw = cloneF64(musRaw);
+  }
+}
+
+function cloneF64(a: StaticArray<f64>): StaticArray<f64> {
+  const out = new StaticArray<f64>(a.length);
+  for (let k = 0; k < a.length; k++) unchecked(out[k] = unchecked(a[k]));
+  return out;
+}
 
 /* Sparse matrix-vector product, compressed sparse row.
  *
@@ -50,6 +155,20 @@ export function setPayload(ptr: usize): void { B = ptr; }
     let acc: f64 = 0.0;
     const e = mi(pOff, r + 1);
     for (let k = mi(pOff, r); k < e; k++) acc += m(vOff, k) * unchecked(x[mi(iOff, k)]);
+    unchecked(out[r] = acc);
+  }
+}
+
+/* The same product with the values in a StaticArray instead of the payload, for the
+ * per-worm weight path. Identical arithmetic in identical order: for a wild-type animal
+ * the array is a byte copy of the payload region, so this is bit-for-bit spmv. */
+@inline function spmvA(pOff: usize, iOff: usize, val: StaticArray<f64>, rows: i32,
+                       x: StaticArray<f64>, out: StaticArray<f64>): void {
+  for (let r = 0; r < rows; r++) {
+    let acc: f64 = 0.0;
+    const e = mi(pOff, r + 1);
+    for (let k = mi(pOff, r); k < e; k++)
+      acc += unchecked(val[k]) * unchecked(x[mi(iOff, k)]);
     unchecked(out[r] = acc);
   }
 }
@@ -209,7 +328,7 @@ class World {
    * WHAT IT COSTS. Two f64 grids a patch, 2 * 65,536 * 8 = 1,048,576 bytes, plus the
    * patch's own lawn density over its bounding box -- 6,496 bytes for the 5 mm lawn in the
    * conformance plate, at most 524,288 for one that covers the dish. So 1.0 MB a patch in
-   * the ordinary case and 1.5 MB in the worst, against 239,360 bytes for a whole animal:
+   * the ordinary case and 1.5 MB in the worst, against 239,952 bytes for a whole animal:
    * a lawn is four worms. MAX_FOOD_PATCHES is what stops the viewer's drop-food button
    * from turning that into an unbounded leak; past it, `addPatch` refuses and counts the
    * refusal, the same way a full plate refuses an egg. */
@@ -240,7 +359,14 @@ class World {
    * most of the point of laying it -- so a dead or recycled parent must not be able to
    * change or invalidate what its eggs carry. At 15 genes and 4096 eggs that is 480 kB,
    * which is affordable; a much larger genome would want a shared table and an index. */
-  layEgg(x: f64, y: f64, parent: i32, t: f64, genes: StaticArray<f64>): void {
+  /* Heritable weights ride along the same way the genome does: a *snapshot* taken at
+   * laying, or null for a wild-type parent -- which keeps the common case free. The
+   * WeightSet constructor clones, so a parent mutated after laying cannot reach back
+   * into its eggs, exactly the genome's contract. */
+  eggW: StaticArray<WeightSet | null> = new StaticArray<WeightSet | null>(G.MAX_EGGS);
+
+  layEgg(x: f64, y: f64, parent: i32, t: f64, genes: StaticArray<f64>,
+         w: WeightSet | null): void {
     /* Eggs used to live in a ring that silently dropped the oldest when it filled. That is
      * right for a picture and wrong for a record, and it does not survive eggs being
      * hatchable either: removing one from the middle of a ring leaves the write head
@@ -261,6 +387,7 @@ class World {
     for (let g = 0; g < G.N_GENES; g++) {
       unchecked(this.eggGene[base + g] = unchecked(genes[g]));
     }
+    unchecked(this.eggW[at] = w);
   }
 
   /* Take an egg off the plate, leaving the array dense. Swap-with-last, the same shape as
@@ -278,7 +405,9 @@ class World {
       for (let g = 0; g < G.N_GENES; g++) {
         unchecked(this.eggGene[a + g] = unchecked(this.eggGene[b + g]));
       }
+      unchecked(this.eggW[i] = unchecked(this.eggW[last]));
     }
+    unchecked(this.eggW[last] = null);   // release the reference so the GC can have it
     return true;
   }
 
@@ -708,7 +837,7 @@ let sRowV: StaticArray<f64> = new StaticArray<f64>(G.MUS_N_ROWS);
 
 // -- proprioception. sKn is the normalised curvature, recomputed from the per-worm `kappa`
 //    every call; sKh is read out of the per-worm `headHist` ring immediately after. The
-//    delay line is the state and stays per-worm -- it is also 89% of what a worm costs.
+//    delay line is the state and stays per-worm -- it is also 88% of what a worm costs.
 let sKn: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
 let sKh: StaticArray<f64> = new StaticArray<f64>(G.N_JOINTS);
 
@@ -857,6 +986,21 @@ class Worm {
    * of genes and the reasoning about what may be on it live. */
   genes: StaticArray<f64> = new StaticArray<f64>(G.N_GENES);
 
+  /* Heritable weights (tier two -- see the block above initWeightTables). References,
+   * not copies: a wild-type animal aliases the shared wild-type arrays and costs nothing
+   * extra; ensureOwnWeights() gives an animal private copies the first time something
+   * mutates it. vTh/caVhalf/kVhalf/musVal are *products* -- regrown by developWorm(),
+   * never inherited directly. */
+  synVal: StaticArray<f64> = wtSynVal;
+  synVal2: StaticArray<f64> = wtSynVal2;
+  gapVal: StaticArray<f64> = wtGapVal;
+  musVal: StaticArray<f64> = wtMusVal;
+  musRaw: StaticArray<f64> = wtMusRaw;
+  vTh: StaticArray<f64> = wtVth;
+  caVhalf: StaticArray<f64> = wtCaVhalf;
+  kVhalf: StaticArray<f64> = wtKVhalf;
+  ownWeights: bool = false;
+
   @inline gene(slot: i32): f64 { return unchecked(this.genes[slot]); }
 
   resetGenes(): void {
@@ -935,8 +1079,8 @@ class Worm {
       const e = mi(G.OFF_syn_ptr, r + 1);
       for (let k = mi(G.OFF_syn_ptr, r); k < e; k++) {
         const rv = unchecked(sRel[mi(G.OFF_syn_idx, k)]);
-        a1 += m(G.OFF_syn_val, k) * rv;
-        a2 += m(G.OFF_syn_val2, k) * rv;
+        a1 += unchecked(this.synVal[k]) * rv;
+        a2 += unchecked(this.synVal2[k]) * rv;
       }
       unchecked(sGs[r] = a1); unchecked(sEs[r] = a2);
     }
@@ -958,7 +1102,7 @@ class Worm {
       const V = unchecked(sVold[i]);
       const gAd = m(G.OFF_g_adapt, i) * unchecked(this.av[i]);
       const gC = m(G.OFF_g_ca, i) * 0.5 *
-                 (1.0 + Math.tanh((V - m(G.OFF_ca_vhalf, i)) / G.NEURAL_CA_SLOPE));
+                 (1.0 + Math.tanh((V - unchecked(this.caVhalf[i])) / G.NEURAL_CA_SLOPE));
       let gt = gLeak + unchecked(this.gapTot[i]) + unchecked(sGs[i]) + gAd + gC;
       let fx = gLeak * eLeak + unchecked(sEs[i])
                + gAd * G.NEURAL_E_K + gC * G.NEURAL_E_CA
@@ -981,12 +1125,12 @@ class Worm {
           const e = mi(G.OFF_gap_ptr, r + 1);
           for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
             const c = mi(G.OFF_gap_idx, k);
-            if (unchecked(this.alive[c])) acc += m(G.OFF_gap_val, k) * unchecked(sVn[c]);
+            if (unchecked(this.alive[c])) acc += unchecked(this.gapVal[k]) * unchecked(sVn[c]);
           }
           unchecked(sGapAcc[r] = acc);
         }
       } else {
-        spmv(G.OFF_gap_ptr, G.OFF_gap_idx, G.OFF_gap_val, n, sVn, sGapAcc);
+        spmvA(G.OFF_gap_ptr, G.OFF_gap_idx, this.gapVal, n, sVn, sGapAcc);
       }
       for (let r = 0; r < n; r++) {
         const vInf = (unchecked(sFx[r]) + unchecked(sGapAcc[r])) / unchecked(sGtot[r]);
@@ -1005,8 +1149,8 @@ class Worm {
       // Release is driven by the *pre-update* voltage, so the network has one consistent
       // step of delay everywhere rather than an index-order dependence.
       const V = unchecked(sVold[i]);
-      const phi = sigmoid(G.NEURAL_BETA * (V - m(G.OFF_V_th, i)));
-      const nInf = 0.5 * (1.0 + Math.tanh((V - m(G.OFF_k_vhalf, i)) / G.NEURAL_K_SLOPE));
+      const phi = sigmoid(G.NEURAL_BETA * (V - unchecked(this.vTh[i])));
+      const nInf = 0.5 * (1.0 + Math.tanh((V - unchecked(this.kVhalf[i])) / G.NEURAL_K_SLOPE));
       unchecked(this.av[i] = nInf + (unchecked(this.av[i]) - nInf) * m(G.OFF_adapt_decay, i));
       const rise = G.NEURAL_A_RISE * phi;
       const rate = rise + G.NEURAL_A_DECAY;
@@ -1027,7 +1171,7 @@ class Worm {
       // the mean activation of the command pools, so a dead neuron reporting anything but
       // zero votes in a decision it is not present for.
       unchecked(this.act[i] = (this.anyDead && !unchecked(this.alive[i])) ? 0.0
-        : sigmoid(G.NEURAL_BETA * (unchecked(this.V[i]) - m(G.OFF_V_th, i))));
+        : sigmoid(G.NEURAL_BETA * (unchecked(this.V[i]) - unchecked(this.vTh[i]))));
     }
   }
 
@@ -1046,7 +1190,7 @@ class Worm {
       const e = mi(G.OFF_mus_ptr, r + 1);
       for (let k = mi(G.OFF_mus_ptr, r); k < e; k++) {
         const c = mi(G.OFF_mus_idx, k);
-        const gv = m(G.OFF_mus_val, k) * unchecked(sRel[c]);
+        const gv = unchecked(this.musVal[k]) * unchecked(sRel[c]);
         a1 += gv;
         a2 += gv * m(G.OFF_mus_E_pre, c);
       }
@@ -1127,7 +1271,7 @@ class Worm {
       let acc: f64 = 0.0;
       const e = mi(G.OFF_gap_ptr, r + 1);
       for (let k = mi(G.OFF_gap_ptr, r); k < e; k++) {
-        if (unchecked(this.alive[mi(G.OFF_gap_idx, k)])) acc += m(G.OFF_gap_val, k);
+        if (unchecked(this.alive[mi(G.OFF_gap_idx, k)])) acc += unchecked(this.gapVal[k]);
       }
       unchecked(this.gapTot[r] = acc);
     }
@@ -1742,7 +1886,10 @@ class Worm {
     if (this.stepEggLaying(moved, this.phFood) > 0.0) {
       const mid = G.N_LINKS >> 1;
       world.layEgg(unchecked(this.nodesX[mid]), unchecked(this.nodesY[mid]),
-                   this.id, this.t, this.genes);
+                   this.id, this.t, this.genes,
+                   this.ownWeights
+                     ? new WeightSet(this.synVal, this.synVal2, this.gapVal, this.musRaw)
+                     : null);
     }
     this.t += G.DT;
   }
@@ -2002,19 +2149,36 @@ export function resetGenes(w: i32): void { byId(w).resetGenes(); }
 // rows pairwise and this sums them sequentially, so agreement is to rounding (~1e-12),
 // not to the bit. The invariants test pins 1e-9.
 export function checkBalance(): f64 {
+  const rebuilt = rebalanceMuscles(wtMusRaw);
+  let worst: f64 = 0.0;
+  for (let k = 0; k < G.LEN_mus_val; k++) {
+    const d = Math.abs(unchecked(rebuilt[k]) - m(G.OFF_mus_val, k));
+    if (d > worst) worst = d;
+  }
+  return worst;
+}
+
+/* worm/muscle.py::_balance, as a function of an arbitrary raw matrix: row equalisation to
+ * the mean total, then a 70-iteration bisection of each cell's excitatory scale so its
+ * resting tension sits at MUS_REST_TENSION. For the wild-type raw matrix this reproduces
+ * the shipped balanced matrix to ~1e-12 (pinned via checkBalance in invariants.test.mjs);
+ * for a mutated one it is the developmental homeostasis a hatchling runs -- the same
+ * calibration the Python animal gets at construction, applied to whatever graph the
+ * animal actually inherited. */
+function rebalanceMuscles(raw: StaticArray<f64>): StaticArray<f64> {
   const M = G.N_MUSCLES;
+  const out = new StaticArray<f64>(G.LEN_mus_raw_val);
   // Row totals of the raw matrix, and their mean.
   let meanTotal: f64 = 0.0;
   const totals = new StaticArray<f64>(M);
   for (let r = 0; r < M; r++) {
     const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
     let t: f64 = 0.0;
-    for (let k = lo; k < hi; k++) t += m(G.OFF_mus_raw_val, k);
+    for (let k = lo; k < hi; k++) t += unchecked(raw[k]);
     unchecked(totals[r] = t);
     meanTotal += t;
   }
   meanTotal /= <f64>M;
-  let worst: f64 = 0.0;
   for (let r = 0; r < M; r++) {
     const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
     const s1 = meanTotal / Math.max(unchecked(totals[r]), 1e-9);
@@ -2022,7 +2186,7 @@ export function checkBalance(): f64 {
     let gExc: f64 = 0.0, gInh: f64 = 0.0;
     for (let k = lo; k < hi; k++) {
       const j = mi(G.OFF_mus_raw_idx, k);
-      const g = m(G.OFF_mus_raw_val, k) * s1 * G.MUS_S_EQ;
+      const g = unchecked(raw[k]) * s1 * G.MUS_S_EQ;
       if (m(G.OFF_mus_E_pre, j) == G.MUS_E_INH) gInh += g;
       else gExc += g;
     }
@@ -2039,17 +2203,198 @@ export function checkBalance(): f64 {
       }
       alpha = 0.5 * (blo + bhi);
     }
-    // Rebuild the balanced row and compare against the shipped one; the two CSRs share a
-    // sparsity pattern by construction, so aligned iteration is a value-for-value walk.
+    // The two CSRs share a sparsity pattern by construction, so aligned iteration is a
+    // value-for-value walk.
     for (let k = lo; k < hi; k++) {
       const j = mi(G.OFF_mus_raw_idx, k);
       const scale = m(G.OFF_mus_E_pre, j) == G.MUS_E_INH ? s1 : s1 * alpha;
-      const rebuilt = m(G.OFF_mus_raw_val, k) * scale;
-      const d = Math.abs(rebuilt - m(G.OFF_mus_val, k));
-      if (d > worst) worst = d;
+      unchecked(out[k] = unchecked(raw[k]) * scale);
     }
   }
-  return worst;
+  return out;
+}
+
+/* The resting-potential solve as a function of an animal's own matrices. Deliberately a
+ * near-duplicate of computeRestingPotentials() below rather than a refactor of it: that
+ * export is a cross-check against the exporter and must read the payload verbatim,
+ * including the exporter's own OFF_gap_total -- summing rows here instead would blur
+ * exactly the comparison it exists to make. This one sums each gap row from the array it
+ * is given, because a mutant has no exported total to read. */
+function restSolveFrom(syn: StaticArray<f64>, syn2: StaticArray<f64>,
+                       gap: StaticArray<f64>): StaticArray<f64> {
+  const n = G.N_NEURONS;
+  const sHalf: f64 = 0.5 * G.NEURAL_A_RISE / (0.5 * G.NEURAL_A_RISE + G.NEURAL_A_DECAY);
+  const m0: f64 = 0.5 * (1.0 + Math.tanh(-G.NEURAL_CA_OFFSET / G.NEURAL_CA_SLOPE));
+  const gLeak = m(G.OFF_g_leak, 0), eLeak = m(G.OFF_E_leak, 0);
+  const A = new StaticArray<f64>(n * n);
+  const b = new StaticArray<f64>(n);
+  for (let i = 0; i < n; i++) {
+    let gapTotal: f64 = 0.0;
+    const e = mi(G.OFF_gap_ptr, i + 1);
+    for (let k = mi(G.OFF_gap_ptr, i); k < e; k++) {
+      unchecked(A[i * n + mi(G.OFF_gap_idx, k)] -= unchecked(gap[k]));
+      gapTotal += unchecked(gap[k]);
+    }
+    let gs: f64 = 0.0, es: f64 = 0.0;
+    const se = mi(G.OFF_syn_ptr, i + 1);
+    for (let k = mi(G.OFF_syn_ptr, i); k < se; k++) {
+      const d = m(G.OFF_d_rest, mi(G.OFF_syn_idx, k));
+      gs += unchecked(syn[k]) * d;
+      es += unchecked(syn2[k]) * d;
+    }
+    const gA = m(G.OFF_g_adapt, i), gC = m(G.OFF_g_ca, i);
+    unchecked(A[i * n + i] += gLeak + gapTotal + sHalf * gs + G.N0 * gA + m0 * gC);
+    unchecked(b[i] = gLeak * eLeak + sHalf * es
+                     + G.N0 * gA * G.NEURAL_E_K + m0 * gC * G.NEURAL_E_CA);
+  }
+  luSolveInPlace(A, b, n);
+  return b;
+}
+
+/* ------------------------------------------------- the heritable-weights API ----------
+ * Mechanism only; every policy decision (who mutates, how often, how hard) belongs to the
+ * caller, exactly as with genes. Families: 0 = chemical synapses (one scale moves G_syn
+ * and GE_syn together -- they are one synapse), 1 = gap junctions (one scale moves both
+ * directions -- it is one resistor), 2 = raw neuron-to-muscle conductances (the balanced
+ * matrix is a product; developWorm regrows it). */
+export const WFAM_SYN: i32 = 0;
+export const WFAM_GAP: i32 = 1;
+export const WFAM_MUS: i32 = 2;
+
+export function weightCount(fam: i32): i32 {
+  if (fam == WFAM_SYN) return G.LEN_syn_val;
+  if (fam == WFAM_GAP) return G.LEN_gap_val;
+  if (fam == WFAM_MUS) return G.LEN_mus_raw_val;
+  return 0;
+}
+
+export function getWeight(w: i32, fam: i32, k: i32): f64 {
+  const wm = byId(w);
+  if (fam == WFAM_SYN && k >= 0 && k < G.LEN_syn_val) return unchecked(wm.synVal[k]);
+  if (fam == WFAM_GAP && k >= 0 && k < G.LEN_gap_val) return unchecked(wm.gapVal[k]);
+  if (fam == WFAM_MUS && k >= 0 && k < G.LEN_mus_raw_val) return unchecked(wm.musRaw[k]);
+  return NaN;
+}
+
+export function hasOwnWeights(w: i32): i32 { return byId(w).ownWeights ? 1 : 0; }
+
+/* Audit hooks, so the lockstep and symmetry contracts above are checkable from the test
+ * side rather than taken on faith. getWeight2 reads the GE view of a chemical synapse;
+ * gapMirror reports which entry scaleWeight will move along with k; getVth reads a
+ * developed threshold. */
+export function getWeight2(w: i32, k: i32): f64 {
+  const wm = byId(w);
+  return k >= 0 && k < G.LEN_syn_val2 ? unchecked(wm.synVal2[k]) : NaN;
+}
+export function gapMirror(k: i32): i32 {
+  return k >= 0 && k < G.LEN_gap_val ? unchecked(gapPair[k]) : -1;
+}
+export function getVth(w: i32, i: i32): f64 {
+  const wm = byId(w);
+  return i >= 0 && i < G.N_NEURONS ? unchecked(wm.vTh[i]) : NaN;
+}
+
+/* Lay one egg right now, bypassing the HSN/VC circuit: an instrument, not biology, in the
+ * same spirit as pokeWorm. Exists so inheritance is testable in milliseconds instead of
+ * the 90 dish-seconds the laying rate makes an honest egg cost. The arena must never call
+ * this -- there, reproduction being the whole chain is the entire point (wasm/arena.mjs).
+ * Returns the new egg's index, or -1 if the plate refused it. */
+export function forceLay(w: i32): i32 {
+  const wm = byId(w);
+  const mid = G.N_LINKS >> 1;
+  const before = world.nEggs;
+  world.layEgg(unchecked(wm.nodesX[mid]), unchecked(wm.nodesY[mid]),
+               wm.id, wm.t, wm.genes,
+               wm.ownWeights
+                 ? new WeightSet(wm.synVal, wm.synVal2, wm.gapVal, wm.musRaw)
+                 : null);
+  return world.nEggs > before ? world.nEggs - 1 : -1;
+}
+
+function ensureOwnWeights(wm: Worm): void {
+  if (wm.ownWeights) return;
+  wm.synVal = cloneF64(wm.synVal);
+  wm.synVal2 = cloneF64(wm.synVal2);
+  wm.gapVal = cloneF64(wm.gapVal);
+  wm.musRaw = cloneF64(wm.musRaw);
+  wm.ownWeights = true;
+}
+
+/* Multiply one heritable weight by `factor` (clamped at zero: a weight can shrink to
+ * deletion but never flip sign -- sign is topology, and topology is tier three). Returns
+ * the new value, NaN for a bad family or index. The caller must run developWorm() before
+ * the animal is next stepped; a mutated graph under wild-type thresholds is bookkeeping
+ * error, not phenotype. */
+export function scaleWeight(w: i32, fam: i32, k: i32, factor: f64): f64 {
+  const wm = byId(w);
+  const f = factor < 0.0 ? 0.0 : factor;
+  if (fam == WFAM_SYN) {
+    if (k < 0 || k >= G.LEN_syn_val) return NaN;
+    ensureOwnWeights(wm);
+    unchecked(wm.synVal[k] *= f);
+    unchecked(wm.synVal2[k] *= f);
+    return unchecked(wm.synVal[k]);
+  }
+  if (fam == WFAM_GAP) {
+    if (k < 0 || k >= G.LEN_gap_val) return NaN;
+    ensureOwnWeights(wm);
+    unchecked(wm.gapVal[k] *= f);
+    const p = unchecked(gapPair[k]);
+    if (p != k) unchecked(wm.gapVal[p] *= f);
+    return unchecked(wm.gapVal[k]);
+  }
+  if (fam == WFAM_MUS) {
+    if (k < 0 || k >= G.LEN_mus_raw_val) return NaN;
+    ensureOwnWeights(wm);
+    unchecked(wm.musRaw[k] *= f);
+    return unchecked(wm.musRaw[k]);
+  }
+  return NaN;
+}
+
+/* Development: regrow every product of the graph from the animal's own copy of it, then
+ * start the animal at its own rest. Mirrors what worm/nervous.py and worm/muscle.py do at
+ * construction. Returns the largest resting-potential shift from wild type in mV -- zero
+ * (to LU rounding, ~1e-13) for an unmutated animal, and a cheap scalar readout of how far
+ * a lineage has drifted for anything that logs. */
+export function developWorm(w: i32): f64 {
+  const wm = byId(w);
+  const n = G.N_NEURONS;
+  const rest = restSolveFrom(wm.synVal, wm.synVal2, wm.gapVal);
+  const vTh = new StaticArray<f64>(n);
+  const caV = new StaticArray<f64>(n);
+  const kV = new StaticArray<f64>(n);
+  let shift: f64 = 0.0;
+  for (let i = 0; i < n; i++) {
+    const r = unchecked(rest[i]);
+    unchecked(vTh[i] = r);
+    // Each half-voltage is a fixed per-cell offset from that cell's own rest
+    // (worm/nervous.py: ca_vhalf = V_th + ca_offset). The offset is recovered from the
+    // payload's own pair rather than re-exported, so the command-interneuron exception
+    // rides along without this file knowing which cells it applies to.
+    unchecked(caV[i] = r + (m(G.OFF_ca_vhalf, i) - m(G.OFF_V_th, i)));
+    unchecked(kV[i] = r + (m(G.OFF_k_vhalf, i) - m(G.OFF_V_th, i)));
+    const d = Math.abs(r - m(G.OFF_V_th, i));
+    if (d > shift) shift = d;
+  }
+  wm.vTh = vTh; wm.caVhalf = caV; wm.kVhalf = kV;
+  wm.musVal = rebalanceMuscles(wm.musRaw);
+  wm.rebuildGap();
+  // Born at rest: the same state the constructor gives a wild-type animal, relative to
+  // this animal's own resting potentials.
+  for (let i = 0; i < n; i++) {
+    unchecked(wm.V[i] = unchecked(vTh[i]));
+    unchecked(wm.sv[i] = m(G.OFF_s_init, i));
+    unchecked(wm.av[i] = m(G.OFF_a_init, i));
+    unchecked(wm.Dv[i] = m(G.OFF_d_rest, i));
+    unchecked(wm.Inoise[i] = 0.0);
+  }
+  for (let i = 0; i < G.N_MUSCLES; i++) {
+    unchecked(wm.mV[i] = G.MUS_E_LEAK);
+    unchecked(wm.mCa[i] = 0.0);
+    unchecked(wm.mTen[i] = 0.0);
+  }
+  return shift;
 }
 
 // NOTE: no default on stageTau -- an optional parameter on a raw-bindings export traps
@@ -2537,6 +2882,19 @@ export function hatchEgg(i: i32, seed: i32, heading: f64): i32 {
   const base = i * G.N_GENES;
   for (let g = 0; g < G.N_GENES; g++) {
     unchecked(wm.genes[g] = unchecked(world.eggGene[base + g]));
+  }
+  /* If the egg carries weights, the hatchling takes them and develops -- resting
+   * potentials, half-voltages and muscle balance regrown from its own graph. The
+   * arrays move rather than copy: the egg is consumed by this call, so nothing else
+   * can be holding them. Development is mechanism, not policy: an animal running
+   * inherited weights against wild-type thresholds would not be miscalibrated in an
+   * interesting way, it would be miscalibrated in a bookkeeping way. */
+  const ew = unchecked(world.eggW[i]);
+  if (ew !== null) {
+    wm.synVal = ew.syn; wm.synVal2 = ew.syn2;
+    wm.gapVal = ew.gap; wm.musRaw = ew.musRaw;
+    wm.ownWeights = true;
+    developWorm(id);
   }
   world.takeEgg(i);
   return id;

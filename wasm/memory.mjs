@@ -32,10 +32,10 @@ const at = (...p) => path.join(ROOT, ...p);
  * when they do -- the point is that the number in the documents is a measurement of the
  * runtime that shipped, not a folk memory of one that did.
  */
-const PER_WORM_MEASURED = 239360;   // bytes, ptrV stride between consecutive animals
-const PER_WORM_DECLARED = 238086;   // bytes, summed StaticArray dimensions in class Worm
+const PER_WORM_MEASURED = 239952;   // bytes, ptrV stride between consecutive animals
+const PER_WORM_DECLARED = 238486;   // bytes, summed StaticArray dimensions in class Worm
 const SHARED_SCRATCH = 140776;      // bytes, module-level per-step scratch, paid once
-const N_WORM_ARRAYS = 22;
+const N_WORM_ARRAYS = 23;
 const N_SCRATCH_ARRAYS = 37;
 
 /* Documents that quote a per-animal memory figure. Each has to contain the measured byte

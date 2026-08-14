@@ -282,13 +282,13 @@ model file went from 3.08 MB to **0.31 MB**.
 
 Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19 kB wasm.
 
-**In memory, an animal is 239,360 bytes -- 234 kB.** The 302² matrices are anatomy and
+**In memory, an animal is 239,952 bytes -- 234 kB.** The 302² matrices are anatomy and
 shared between animals, and so is the runtime's per-step scratch, so a second worm
 duplicates only state. State is not small: 210,936 of those bytes are `headHist`, the
 560-sample delay line behind `head_delay = 0.28 s`, and the other 28 kB is everything else
 the animal remembers.
 
-That is **89%** of an animal, and the figure is worth stating as a share because the share
+That is **88%** of an animal, and the figure is worth stating as a share because the share
 is what went stale. This file had the byte count right the whole time while `NEXT.md` and
 `index.ts` both carried a much smaller one -- true back when a worm cost 372 kB, before the
 per-step scratch was hoisted to module level. Hoisting shrank the animal by a third, which *raised* every
