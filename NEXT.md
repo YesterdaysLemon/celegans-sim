@@ -116,12 +116,17 @@ behavioural assay at once.
 Evolved animals are not *C. elegans*, and nothing here produces a claim about the animal —
 [`docs/project-architecture.md`](docs/project-architecture.md) §1.
 
-**1. Heritable weights and topology — the payload half is done.** The raw muscle `G`
-ships alongside the balanced matrix (2026-08-14), and `checkBalance()` in the runtime
-reruns `_balance`'s 70-iteration bisection from it, pinned below 1e-9 by the invariants
-test — the balance is recomputable and checkable browser-side. What remains is the
-architecture half: per-worm conductance matrices so a lineage can actually carry a
-mutated `G`, rebalanced through the ported bisection at birth.
+**1. Heritable weights are built (tier two); what remains is running them, then topology.**
+Per-worm conductances landed 2026-08-14: every weight consumer in the runtime reads
+through per-worm references (wild type aliases shared payload copies, bit-identical and
+free), mutation is `scaleWeight` (chemical synapse's two views in lockstep, gap junction's
+two directions together, no sign flips — sign is topology, tier three), and `developWorm()`
+regrows the products from the animal's own graph: the ported LU resting solve, the
+half-voltage offsets, the muscle rebalance, gap totals, born at rest. Eggs carry weight
+snapshots; hatch develops. Contracts pinned in `wasm/weights.test.mjs`; the arena takes
+`ARENA_WMUT`/`ARENA_WMUT_N`, default off. Next: a real weight-evolution arena run —
+watch the drift/selection balance and what the museum gains — then the topology tier
+(entries added/removed, which changes the CSR pattern the weights ride on).
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's

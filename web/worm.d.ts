@@ -105,6 +105,82 @@ declare namespace __AdaptedExports {
    * @returns `f64`
    */
   export function checkBalance(): number;
+  /** assembly/index/WFAM_SYN */
+  export const WFAM_SYN: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/WFAM_GAP */
+  export const WFAM_GAP: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /** assembly/index/WFAM_MUS */
+  export const WFAM_MUS: {
+    /** @type `i32` */
+    get value(): number
+  };
+  /**
+   * assembly/index/weightCount
+   * @param fam `i32`
+   * @returns `i32`
+   */
+  export function weightCount(fam: number): number;
+  /**
+   * assembly/index/getWeight
+   * @param w `i32`
+   * @param fam `i32`
+   * @param k `i32`
+   * @returns `f64`
+   */
+  export function getWeight(w: number, fam: number, k: number): number;
+  /**
+   * assembly/index/hasOwnWeights
+   * @param w `i32`
+   * @returns `i32`
+   */
+  export function hasOwnWeights(w: number): number;
+  /**
+   * assembly/index/getWeight2
+   * @param w `i32`
+   * @param k `i32`
+   * @returns `f64`
+   */
+  export function getWeight2(w: number, k: number): number;
+  /**
+   * assembly/index/gapMirror
+   * @param k `i32`
+   * @returns `i32`
+   */
+  export function gapMirror(k: number): number;
+  /**
+   * assembly/index/getVth
+   * @param w `i32`
+   * @param i `i32`
+   * @returns `f64`
+   */
+  export function getVth(w: number, i: number): number;
+  /**
+   * assembly/index/forceLay
+   * @param w `i32`
+   * @returns `i32`
+   */
+  export function forceLay(w: number): number;
+  /**
+   * assembly/index/scaleWeight
+   * @param w `i32`
+   * @param fam `i32`
+   * @param k `i32`
+   * @param factor `f64`
+   * @returns `f64`
+   */
+  export function scaleWeight(w: number, fam: number, k: number, factor: number): number;
+  /**
+   * assembly/index/developWorm
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function developWorm(w: number): number;
   /**
    * assembly/index/setHeadCascade
    * @param w `i32`

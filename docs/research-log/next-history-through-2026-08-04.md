@@ -10,7 +10,7 @@ of 0.125 s in series, with `head_delay = 0`, match the shipped frequency and bea
 everything else in every medium: travelling index +0.880 against +0.846 on agar and +0.761
 against +0.657 in buffer, net speed 0.369 against 0.295, net-to-path 0.94 against 0.80. It
 retires the largest fitted number in the model and takes `headHist` with it -- 210,936 B,
-**89% of an animal**. That is a good change on its own merits.
+**88% of an animal**. That is a good change on its own merits.
 
 > **The medium sweep ran and the argument for it did not survive.** The cascade was supposed
 > to fix gait modulation, because a saturating `arctan` phase should follow the mechanical
@@ -263,7 +263,7 @@ cheap, and it is worth writing down what it made possible while that is fresh.
 
 **Animals are cheap, and they are not free.** The 302×302 matrices are *anatomy*:
 read-only, identical for every worm, shared. A second animal duplicates only state -- but
-that state is **239,360 bytes, 234 kB**, measured off the allocator's own per-worm stride
+that state is **239,952 bytes, 234 kB**, measured off the allocator's own per-worm stride
 by `node wasm/memory.mjs`. This paragraph claimed a few kilobytes for a long time, and so
 did two other places; nobody had measured it, and it was out by a factor of a hundred
 (#33).
@@ -281,7 +281,7 @@ no ceiling. The real table:
 on top of a ~2.6 MB shared `World` (5 × 256² f64 grids) and whatever the canvas holds. Two
 things follow. **`memory.grow` is one-way**, so a run that peaks at 500 animals keeps that
 high-water mark for the life of the tab -- size the population for the peak, not the mean.
-And **89% of an animal is `headHist`** -- 210,936 B, the 560-sample delay line for
+And **88% of an animal is `headHist`** -- 210,936 B, the 560-sample delay line for
 `head_delay = 0.28 s`,
 which `README.md` names as one of the two fitted parameters it is least happy about
 ("nothing that slow exists in a real stretch receptor"). The single largest cost of running
@@ -402,7 +402,7 @@ worm" are different claims, and only one of them is interesting.
 >
 > ### And a number that was measured once and then quietly became wrong
 >
-> `headHist` is **89%** of an animal, 210,936 B. This file and `wasm/assembly/index.ts`
+> `headHist` is **88%** of an animal, 210,936 B. This file and `wasm/assembly/index.ts`
 > both carried a much smaller figure, and it was not invented — it was true back when a
 > worm cost 372 kB, before the per-step scratch was hoisted to module level. Hoisting
 > shrank the animal by a third, which *raised* every remaining array's share, and the two
@@ -541,7 +541,7 @@ worm" are different claims, and only one of them is interesting.
 > guards reported, and it needs the medium sweep — gait modulation is the entire reason to
 > want this and nothing here has measured it. It is also not ported to the runtime.
 >
-> If it survives those, `headHist` goes: 210,936 B, **89% of an animal**, a 560-sample ring
+> If it survives those, `headHist` goes: 210,936 B, **88% of an animal**, a 560-sample ring
 > per joint held only to look up one sample 0.28 s old. A cascade is four scalars per joint.
 > The population budget in this file — 22.8 MB for 100 animals — improves by close to an
 > order of magnitude, and `memory.grow` being one-way stops being the constraint it is.
@@ -2825,7 +2825,7 @@ table's five rows fix themselves at once.
   and five ablation phenotypes come out of it. See `worm/pharynx.py`.
 - ~~Multi-worm. The engine is one `Simulation` object; nothing prevents several.~~
   **Done with the WebAssembly port.** The connectome is read-only and shared, so a second
-  animal duplicates only state -- 239,360 bytes of it, 234 kB, measured; the viewer runs n
+  animal duplicates only state -- 239,952 bytes of it, 234 kB, measured; the viewer runs n
   of them and focuses one. This is what makes the population direction at the top of this
   file thinkable, at the budget set out there.
 

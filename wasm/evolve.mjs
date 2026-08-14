@@ -6,7 +6,10 @@
  * NEXT.md argued that a population stopped being an architectural problem once the port
  * landed, and set out three tiers of heritability. This is tier one: the fifteen scalars
  * each `Worm` now carries, mutated and selected on an energy budget -- what the animal
- * takes in, less what it spends moving. It is deliberately the cheap version -- asexual
+ * takes in, less what it spends moving. (Tier two -- per-worm synaptic weights with
+ * development regrowing the graph's products at hatch -- exists now on the runtime; see
+ * scaleWeight/developWorm in wasm/assembly/index.ts and wasm/weights.test.mjs. The arena
+ * is its driver; this file remains genes-only by design.) It is deliberately the cheap version -- asexual
  * copy-with-mutation, selection from outside the dish -- because the point of building it
  * first was to find out whether the fitness measure is any good, and that question does
  * not need the honest version to answer. It was not: see "WHAT FITNESS IS" below.
