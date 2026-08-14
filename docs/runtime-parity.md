@@ -112,7 +112,7 @@ does; see below.
 Four families. **All are off by default**, and that is what
 `tests/test_runtime_parity.py` pins.
 
-### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`) — the amine load-sensing path
+### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`, `modulator.dopamine_muscle_rate`) — the amine load-sensing path
 **Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
 
 CEP/ADE/PDE transduce the drag force the cuticle bears (`Body.drag_load`, the mean |c·v|
@@ -124,13 +124,16 @@ field pair. Biology: Vidal-Gadea et al. 2011 (dopamine holds the crawl), Korta e
 2007 (load modulates the swim); both cited with what could be verified at
 `SensoryParams.load_gain`.
 
-*Measured* (`tools/amine_gait.py`, 2026-08-13, two calibrations, both full nine-media
-locus runs): the agar end holds the shipped gait exactly at both (0.656 Hz, dopamine at
-ceiling, perp from the animal's chord −0.003 L), and the (f, λ) locus reaches **+0.786
-along the animal's crawl→swim chord against the baseline's +0.347 endpoint** — 79% of the
-way to the swim; the first calibration reached +0.595 and the pair shows what each knob
-bought. Wave-speed span 3.39× against the baseline's 1.39× (animal: 13.9×), buffer wave
-speed 71% of the animal's swim, the K ≈ 8 saturation gone, TWI ≥ +0.72 at every medium. The candidate label is earned, not
+*Measured* (`tools/amine_gait.py`, 2026-08-13/14, three calibrations, each a full
+nine-media locus): the agar end holds the shipped gait at every calibration (dopamine at
+ceiling; the third's crawl carries the best agar wave measured, TWI +0.889), and the
+(f, λ) locus reaches **+0.847 along the animal's crawl→swim chord against the baseline's
++0.347 endpoint** — 85% of the way to the swim, buffer at 89% of the animal's swim
+frequency, wave-speed span 3.72× against the baseline's 1.39× (animal: 13.9×), the K ≈ 8
+saturation gone, TWI ≥ +0.73 at every medium. The calibration sequence (+0.595 → +0.786
+→ +0.847) and its two guards — the bistability cliff above muscle coefficient ~0.5, and
+the three-tau settle a slow modulator demands of any protocol measuring it — are in the
+tool's docstring. The candidate label is earned, not
 aspirational — but adoption has named preconditions: the food/load confound on the
 dopamine scalar (stated at `load_gain`), a full behavioural scorecard (dopamine now moves
 during ordinary locomotion), runtime parity for five constants plus the cascade this path
