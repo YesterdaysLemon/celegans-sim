@@ -1,59 +1,86 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Arena — celegans-sim</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 16C7 7 12 25 16 16s6-9 13 0' fill='none' stroke='%23d9a441' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- The viewer's stylesheet, on purpose. The arena stays self-contained where it
+     matters -- it imports nothing from viewer/'s JavaScript, so the canonical viewer's
+     checked module graph is untouched -- but the chrome (stat tiles, chips, the dish
+     frame) is shared so the two dishes read as one instrument with two plates, not two
+     apps. The drawing below reimplements the digital plate's look (plate colour, fixed
+     grid, vignette, crisp rim, egg ellipses, scale bar) against the arena's own state. -->
+<link rel="stylesheet" href="style.css">
 <style>
-  /* Self-contained on purpose: this page imports nothing from viewer/, so the canonical
-     viewer's checked module graph is untouched. One dish, one script, no build step. */
-  html, body { margin: 0; height: 100%; background: #0b0e12; color: #cfd8e3;
-               font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  #wrap { display: flex; flex-direction: column; height: 100%; }
-  header { padding: 10px 14px; display: flex; gap: 18px; align-items: baseline;
-           border-bottom: 1px solid #1d2530; flex-wrap: wrap; }
-  header b { color: #e8eef6; font-size: 14px; }
-  header a { color: #7fb4ff; text-decoration: none; }
-  header .warn { color: #d9a441; }
-  canvas { flex: 1; width: 100%; height: 100%; display: block; }
-  #hud { padding: 8px 14px; border-top: 1px solid #1d2530; white-space: pre; overflow-x: auto; }
+  /* The arena has no side rail and no transport bar: header, plate, nothing else. */
+  #app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "head" "dish";
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  /* Amber is the evolution track's colour throughout (the viewer's door, this page's
+     favicon, the warning line) -- the chrome says which side of the fence you are on. */
+  .brand .warn { font-size: 12px; color: var(--warning); }
+  .arena-link { border-color: var(--border); color: var(--text-secondary); }
+  .arena-link:hover { background: rgba(255,255,255,0.08); border-color: var(--text-muted); }
 </style>
 </head>
 <body>
-<div id="wrap">
+<div id="app">
   <header>
-    <b>The Arena</b>
-    <span class="warn">Track B — nothing in this dish is a claim about <i>C. elegans</i>.</span>
-    <span>Descent with modification on a finite plate: eggs hatch, empty stores kill where
-    the body stands, every corpse becomes food where it fell, and every niche a lineage
-    finds is a measured defect of the reconstruction.</span>
-    <a href="index.html">→ the reference animal's dish</a>
+    <div class="brand">
+      <h1>The&nbsp;Arena</h1>
+      <span class="sub">descent with modification on a finite plate</span>
+      <span class="warn">Track B — nothing in this dish is a claim about <em>C.&nbsp;elegans</em></span>
+      <a class="arena-link" href="index.html" title="Back to the reference reconstruction">&larr; the reference animal</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="label">Dish time</div><div class="value" id="s-time">0<small>s</small></div></div>
+      <div class="stat"><div class="label">Population</div><div class="value" id="s-pop">0<small>/10</small></div></div>
+      <div class="stat"><div class="label">Eggs</div><div class="value" id="s-eggs">0</div></div>
+      <div class="stat"><div class="label">Born</div><div class="value" id="s-born">0</div></div>
+      <div class="stat"><div class="label">Died</div><div class="value" id="s-died">0<small>&nbsp;starved 0</small></div></div>
+      <div class="stat"><div class="label">Energy</div><div class="value" id="s-energy">&mdash;</div></div>
+      <div class="stat"><div class="label">Dynasties</div><div class="value" id="s-dyn">&mdash;</div></div>
+      <div class="stat" title="Simulated seconds per second of wall clock"><div class="label">Sim rate</div><div class="value" id="s-rate">0<small>&times;</small></div></div>
+    </div>
   </header>
-  <canvas id="dish"></canvas>
-  <div id="hud">booting…</div>
+
+  <section id="dish">
+    <canvas id="c-dish"></canvas>
+    <div class="floating tl">
+      <div class="zoomrow">
+        <button class="sq" id="b-zout" aria-label="Zoom out">&minus;</button>
+        <button class="sq" id="b-zin" aria-label="Zoom in">+</button>
+        <span class="readout" id="o-zoom">30.0 mm</span>
+      </div>
+    </div>
+    <div class="floating tr chips">
+      <button class="chip" data-layer="food" aria-pressed="true"><i class="sw" style="background:#199e70"></i>Food</button>
+      <button class="chip" data-layer="eggs" aria-pressed="true"><i class="sw" style="background:#e2dcbe"></i>Eggs</button>
+      <button class="chip" data-layer="corpses" aria-pressed="true"><i class="sw" style="background:#d9a441"></i>Corpses</button>
+      <button class="chip" data-layer="trail" aria-pressed="true"><i class="sw" style="background:#c3c2b7"></i>Trails</button>
+      <button class="chip" data-layer="grid" aria-pressed="true"><i class="sw" style="background:#2c2c2a"></i>Grid</button>
+      <button class="chip" data-layer="energy" aria-pressed="true"><i class="sw" style="background:#7a5c2e"></i>Energy</button>
+      <button class="chip" data-layer="width" aria-pressed="true"><i class="sw" style="background:#8a86d9"></i>Width</button>
+    </div>
+    <div class="dish-hint">drag to pan &middot; wheel to zoom</div>
+  </section>
 </div>
+
 <script type="module">
-/* The in-browser arena: the same policy loop as wasm/arena.mjs, drawn live.
- * Mechanism belongs to the runtime (layEgg, hatchEgg, removeWorm); the three decisions a
- * dish cannot make are policy, stated in wasm/arena.mjs's header and repeated compressed:
- * compressed incubation, mutation at hatch, death by carrying capacity. */
+/* The in-browser arena: the same policy loop as wasm/arena.mjs, drawn in the viewer's
+ * visual language. Mechanism belongs to the runtime (layEgg, hatchEgg, removeWorm,
+ * setMetabolism, setMorphology, depositFood); the decisions a dish cannot make are
+ * policy, stated in wasm/arena.mjs's header: compressed incubation, mutation at hatch,
+ * death by starvation with the cap as backstop, corpses becoming food where they fell. */
 const CAP = 10, FOUNDERS = 4, MUT = 0.10, INCUBATION = 60, SEED = 1;
-const STEPS_PER_FRAME = 200;                     // dish time per rendered frame
-/* The metabolic budget, on by default in the browser dish -- this page exists to show
- * the plate economy, and death that feeds the plate is the economy closing its loop.
- * Same invented constants as wasm/arena.mjs's defaults; contracts in
- * wasm/metabolism.test.mjs. Death is physiology here (store at zero), the cull stays
- * as the capacity backstop, and every body becomes food where it stopped. */
+const STEPS_PER_FRAME = 200;
 const METAB = 0.1, METAB_T = 240, METAB_WORKP = 2.0, METAB_FLOOR = 0.25;
 const METAB_KNEE = 0.35, METAB_HATCH = 0.6;
 const CORPSE = METAB * 0.5, CORPSE_YIELD = 0.8, CORPSE_R = 0.8;
 const BASAL = METAB / METAB_T, WORKC = BASAL / METAB_WORKP;
-/* Heritable chain morphology, on in the browser dish because it is the visible tier:
- * lognormal sigma on the twelve control points at hatch (runtime clamps [0.25, 4]).
- * The width profile is DRAWN -- each body's stroke follows its own inherited widths,
- * so fat and thin lineages diverge before your eyes. Contracts and scope (no
- * branching -- that is an engine rewrite) in wasm/morphology.test.mjs and the field
- * block in wasm/assembly/index.ts. */
 const MMUT = 0.08;
 
 const [wasmBuf, modelBuf] = await Promise.all([
@@ -66,6 +93,9 @@ const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(modelBuf, 12, he
 const payload = new Uint8Array(modelBuf, 12 + headLen);
 const GENES = meta.genes || [];
 const DT = meta.scalars.dt;
+const R_DISH = meta.scalars.world_radius;      // same plate radius the viewer draws
+const EXTENT = meta.scalars.world_extent;      // field half-width, for the food image
+const FIELD_N = 256;
 
 const inst = new WebAssembly.Instance(new WebAssembly.Module(wasmBuf), {
   env: { abort() { throw new Error('wasm abort'); } },
@@ -93,13 +123,13 @@ const normal = () => {
 const scaleOf = (name) => Math.abs(meta.scalars[name]) || 1.0;
 const clampGene = (name, v) => (name === 'sen_gate_bias' ? v : Math.max(0, v));
 
-const LAWNS = [[-8, 5, 4], [7, -4, 4], [0, 9, 3]];
 E.addFood(-8, 5, 4, 1.0, 1.0, 9.0);
 E.addFood(7, -4, 4, 1.0, 1.0, 9.0);
 E.addFood(0, 9, 3, 1.0, 0.8, 8.0);
 
 const founderOf = new Map(); const eatenAt = new Map();
-const corpses = [];                          // {x, y, worth, t} -- drawn as fading blooms
+const trails = new Map();                    // worm id -> [[x,y],...], centroid history
+const corpses = [];                          // {x, y, worth, t} death markers
 let simT = 0, births = 0, deaths = 0, starved = 0, iota = 1000;
 for (let i = 0; i < FOUNDERS; i++) {
   const a = (2 * Math.PI * i) / FOUNDERS;
@@ -109,15 +139,16 @@ for (let i = 0; i < FOUNDERS; i++) {
 }
 const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k));
 
-/* Every death feeds the plate: the body plus a yield on whatever store was left. */
 function die(id) {
-  const x = F64()[(E.ptrNodesX(id) >> 3) + 25], y = F64()[(E.ptrNodesY(id) >> 3) + 25];
+  // Node 24 is the runtime's own midpoint (G.N_LINKS >> 1), the same node layEgg uses.
+  const x = F64()[(E.ptrNodesX(id) >> 3) + 24], y = F64()[(E.ptrNodesY(id) >> 3) + 24];
   const worth = CORPSE + CORPSE_YIELD * E.getEnergy(id);
   E.depositFood(x, y, CORPSE_R, worth);
   corpses.push({ x, y, worth, t: simT });
-  E.removeWorm(id); founderOf.delete(id); eatenAt.delete(id); deaths++;
+  fieldStamp = -1;                           // the plate just changed; redraw the food
+  E.removeWorm(id); founderOf.delete(id); eatenAt.delete(id); trails.delete(id);
+  deaths++;
 }
-
 function cullTo(cap) {
   while (E.wormCount() > cap) {
     let worst = -1, low = Infinity;
@@ -128,7 +159,6 @@ function cullTo(cap) {
     die(worst);
   }
 }
-
 function reap() {
   for (const id of ids()) {
     if (E.getEnergy(id) <= 0.0) { die(id); starved++; }
@@ -155,91 +185,246 @@ function hatchDue() {
   }
 }
 
-const canvas = document.getElementById('dish');
-const hud = document.getElementById('hud');
+/* ------------------------------------------------------------------- drawing ----- */
+const canvas = document.getElementById('c-dish');
 const ctx = canvas.getContext('2d');
 const F64 = () => new Float64Array(E.memory.buffer);
 const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
-const R_DISH = 22;                                 // mm of dish shown
+const el = (id) => document.getElementById(id);
+
+const layers = { food: true, eggs: true, corpses: true, trail: true, grid: true,
+                 energy: true, width: true };
+document.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
+  layers[b.dataset.layer] = !layers[b.dataset.layer];
+  b.setAttribute('aria-pressed', String(layers[b.dataset.layer]));
+  if (b.dataset.layer === 'food') fieldStamp = -1;
+}));
+
+const view = { cx: 0, cy: 0, span: 30 };
+function setZoom(factor, ax, ay) {
+  const before = view.span;
+  view.span = Math.max(2, Math.min(2.2 * R_DISH, view.span * factor));
+  if (ax !== undefined) {
+    const k = 1 - view.span / before;
+    view.cx += (ax - view.cx) * k;
+    view.cy += (ay - view.cy) * k;
+  }
+  el('o-zoom').textContent = `${view.span.toFixed(1)} mm`;
+}
+el('b-zin').addEventListener('click', () => setZoom(1 / 1.3));
+el('b-zout').addEventListener('click', () => setZoom(1.3));
+canvas.addEventListener('wheel', (ev) => {
+  ev.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const scale = Math.min(r.width, r.height) / view.span;
+  const wx = view.cx + (ev.clientX - r.left - r.width / 2) / scale;
+  const wy = view.cy - (ev.clientY - r.top - r.height / 2) / scale;
+  setZoom(ev.deltaY > 0 ? 1.15 : 1 / 1.15, wx, wy);
+}, { passive: false });
+let drag = null;
+canvas.addEventListener('pointerdown', (ev) => {
+  drag = { x: ev.clientX, y: ev.clientY };
+  canvas.classList.add('dragging'); canvas.setPointerCapture(ev.pointerId);
+});
+canvas.addEventListener('pointermove', (ev) => {
+  if (!drag) return;
+  const r = canvas.getBoundingClientRect();
+  const scale = Math.min(r.width, r.height) / view.span;
+  view.cx -= (ev.clientX - drag.x) / scale;
+  view.cy += (ev.clientY - drag.y) / scale;
+  drag = { x: ev.clientX, y: ev.clientY };
+});
+canvas.addEventListener('pointerup', () => { drag = null; canvas.classList.remove('dragging'); });
+
+/* The REAL food field, tinted like the viewer's food channel (digital theme: green,
+ * gamma 2.1). Rebuilt only when stale -- once a second of dish time, or immediately
+ * after a corpse deposit -- because 256x256 per frame is money for a picture that
+ * barely moves. Lawns visibly deplete where lineages camp; that is the plate economy,
+ * not scenery. */
+const fieldCanvas = document.createElement('canvas');
+fieldCanvas.width = fieldCanvas.height = FIELD_N;
+let fieldStamp = -1;
+function refreshField() {
+  const fc = fieldCanvas.getContext('2d');
+  const img = fc.createImageData(FIELD_N, FIELD_N);
+  const food = F64().subarray(E.ptrFood() >> 3, (E.ptrFood() >> 3) + FIELD_N * FIELD_N);
+  for (let i = 0; i < FIELD_N * FIELD_N; i++) {
+    const row = FIELD_N - 1 - ((i / FIELD_N) | 0);        // field row 0 is y = -extent
+    const o = (row * FIELD_N + (i % FIELD_N)) * 4;
+    const a = Math.pow(Math.min(1, Math.max(0, food[i])), 2.1) * 0.8;
+    if (a <= 0.004) { img.data[o + 3] = 0; continue; }
+    img.data[o] = 25; img.data[o + 1] = 158; img.data[o + 2] = 112;
+    img.data[o + 3] = Math.min(1, a) * 235;
+  }
+  fc.putImageData(img, 0, 0);
+}
 
 function draw() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-  const s = Math.min(w, h) / (2 * R_DISH);
-  const X = (x) => w / 2 + x * s, Y = (y) => h / 2 - y * s;
-  ctx.fillStyle = '#0b0e12'; ctx.fillRect(0, 0, w, h);
-  for (const [lx, ly, lr] of LAWNS) {
-    const g = ctx.createRadialGradient(X(lx), Y(ly), 0, X(lx), Y(ly), lr * 2.2 * s);
-    g.addColorStop(0, 'rgba(70,140,60,0.35)'); g.addColorStop(1, 'rgba(70,140,60,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(X(lx), Y(ly), lr * 2.2 * s, 0, 7); ctx.fill();
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr; canvas.height = h * dpr;
   }
-  /* Corpses: a bloom where a body became food, brightest when fresh and richest,
-   * fading over ~90 dish-seconds as (visually) the plate absorbs it. The food itself
-   * is real and stays until eaten -- only the marker fades. */
-  for (let i = corpses.length - 1; i >= 0; i--) {
-    const c = corpses[i];
-    const age = simT - c.t;
-    if (age > 90) { corpses.splice(i, 1); continue; }
-    const a = 0.55 * (1 - age / 90) * Math.min(1, c.worth / METAB);
-    const g = ctx.createRadialGradient(X(c.x), Y(c.y), 0, X(c.x), Y(c.y), CORPSE_R * 2.5 * s);
-    g.addColorStop(0, `rgba(190,170,80,${a})`); g.addColorStop(1, 'rgba(190,170,80,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(X(c.x), Y(c.y), CORPSE_R * 2.5 * s, 0, 7); ctx.fill();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const scale = Math.min(w, h) / view.span;
+  const X = (x) => (x - view.cx) * scale + w / 2;
+  const Y = (y) => (view.cy - y) * scale + h / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(X(0), Y(0), R_DISH * scale, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = '#141413';
+  ctx.fillRect(0, 0, w, h);
+
+  if (layers.grid) {
+    const step = view.span > 20 ? 5 : view.span > 8 ? 2 : 1;
+    const x0 = Math.ceil((view.cx - view.span) / step) * step;
+    const y0 = Math.ceil((view.cy - view.span) / step) * step;
+    ctx.lineWidth = 1;
+    for (let x = x0; x < view.cx + view.span; x += step) {
+      ctx.strokeStyle = Math.abs(x) < 1e-9 ? 'rgba(195,194,183,0.16)' : 'rgba(195,194,183,0.055)';
+      ctx.beginPath(); ctx.moveTo(X(x), 0); ctx.lineTo(X(x), h); ctx.stroke();
+    }
+    for (let y = y0; y < view.cy + view.span; y += step) {
+      ctx.strokeStyle = Math.abs(y) < 1e-9 ? 'rgba(195,194,183,0.16)' : 'rgba(195,194,183,0.055)';
+      ctx.beginPath(); ctx.moveTo(0, Y(y)); ctx.lineTo(w, Y(y)); ctx.stroke();
+    }
   }
-  const nE = E.eggCount();
-  const ex = F64().subarray(E.ptrEggX() >> 3, (E.ptrEggX() >> 3) + nE);
-  const ey = F64().subarray(E.ptrEggY() >> 3, (E.ptrEggY() >> 3) + nE);
-  ctx.fillStyle = '#e8d9a0';
-  for (let i = 0; i < nE; i++) {
-    ctx.beginPath(); ctx.arc(X(ex[i]), Y(ey[i]), 2.2, 0, 7); ctx.fill();
+
+  if (layers.food) {
+    const stamp = Math.floor(simT);
+    if (stamp !== fieldStamp) { refreshField(); fieldStamp = stamp; }
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(fieldCanvas, X(-EXTENT), Y(EXTENT), 2 * EXTENT * scale, 2 * EXTENT * scale);
   }
+
+  if (layers.corpses) {
+    for (let i = corpses.length - 1; i >= 0; i--) {
+      const c = corpses[i];
+      const age = simT - c.t;
+      if (age > 90) { corpses.splice(i, 1); continue; }
+      const a = 0.5 * (1 - age / 90) * Math.min(1, c.worth / METAB);
+      const g = ctx.createRadialGradient(X(c.x), Y(c.y), 0, X(c.x), Y(c.y), CORPSE_R * 2.5 * scale);
+      g.addColorStop(0, `rgba(217,164,65,${a})`); g.addColorStop(1, 'rgba(217,164,65,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(X(c.x), Y(c.y), CORPSE_R * 2.5 * scale, 0, 7); ctx.fill();
+    }
+  }
+
+  if (layers.eggs) {
+    const nE = E.eggCount();
+    const ex = F64().subarray(E.ptrEggX() >> 3, (E.ptrEggX() >> 3) + nE);
+    const ey = F64().subarray(E.ptrEggY() >> 3, (E.ptrEggY() >> 3) + nE);
+    const r = Math.max(1.4, 0.025 * scale);
+    ctx.fillStyle = 'rgba(226,220,190,0.85)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = r > 3 ? 1 : 0.6;
+    for (let i = 0; i < nE; i++) {
+      ctx.beginPath();
+      ctx.ellipse(X(ex[i]), Y(ey[i]), r * 1.45, r, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (r > 2) ctx.stroke();
+    }
+  }
+
+  if (layers.trail) {
+    for (const [id, tr] of trails) {
+      if (tr.length < 2) continue;
+      ctx.strokeStyle = `hsla(${HUE(founderOf.get(id) ?? -1)} 45% 55% / 0.30)`;
+      ctx.lineWidth = 1.2;
+      ctx.lineJoin = ctx.lineCap = 'round';
+      ctx.beginPath();
+      tr.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))));
+      ctx.stroke();
+    }
+  }
+
+  // 49 nodes: N_LINKS = 48 links, nodes 0..48. Reading 51 was this page's founding
+  // bug -- the two out-of-bounds f64s are heap-neighbour bytes that decode as ~1e-306,
+  // which is (0, 0) in world space, so every body dragged a line to the dish centre.
+  // An out-of-bounds read that returns plausible garbage instead of throwing is the
+  // politest possible failure; see docs/niche-museum.md.
   for (const id of ids()) {
-    const nx = F64().subarray(E.ptrNodesX(id) >> 3, (E.ptrNodesX(id) >> 3) + 51);
-    const ny = F64().subarray(E.ptrNodesY(id) >> 3, (E.ptrNodesY(id) >> 3) + 51);
-    // Lightness follows the store: a fed animal glows, a starving one dims toward the
-    // dark of the dish -- the fade you see is the fade the muscles feel.
-    const e = Math.max(0, Math.min(1, E.getEnergy(id) / METAB));
+    const nx = F64().subarray(E.ptrNodesX(id) >> 3, (E.ptrNodesX(id) >> 3) + 49);
+    const ny = F64().subarray(E.ptrNodesY(id) >> 3, (E.ptrNodesY(id) >> 3) + 49);
+    const e = layers.energy ? Math.max(0, Math.min(1, E.getEnergy(id) / METAB)) : 1;
     ctx.strokeStyle = `hsl(${HUE(founderOf.get(id) ?? -1)} ${40 + 30 * e}% ${25 + 40 * e}%)`;
     ctx.lineCap = 'round';
-    const base = Math.max(1.5, 0.08 * s);
-    if (E.hasOwnMorphology(id)) {
-      // The inherited width profile, drawn: four control points, linear between,
-      // stroked segment by segment so the body is as fat as its drag says it is.
+    const bw = Math.max(1.5, 0.08 * scale);
+    if (layers.width && E.hasOwnMorphology(id)) {
       const cp = [E.getMorph(id, 4), E.getMorph(id, 5), E.getMorph(id, 6), E.getMorph(id, 7)];
-      for (let i = 0; i < 50; i++) {
-        const t = Math.min(2.999, ((i + 0.5) / 50) * 3), k = Math.floor(t), f = t - k;
-        ctx.lineWidth = base * (cp[k] + f * (cp[k + 1] - cp[k]));
+      for (let i = 0; i < 48; i++) {
+        const t = Math.min(2.999, ((i + 0.5) / 48) * 3), k = Math.floor(t), f = t - k;
+        ctx.lineWidth = bw * (cp[k] + f * (cp[k + 1] - cp[k]));
         ctx.beginPath(); ctx.moveTo(X(nx[i]), Y(ny[i]));
         ctx.lineTo(X(nx[i + 1]), Y(ny[i + 1])); ctx.stroke();
       }
     } else {
-      ctx.lineWidth = base;
+      ctx.lineWidth = bw;
       ctx.beginPath(); ctx.moveTo(X(nx[0]), Y(ny[0]));
-      for (let i = 1; i <= 50; i++) ctx.lineTo(X(nx[i]), Y(ny[i]));
+      for (let i = 1; i <= 48; i++) ctx.lineTo(X(nx[i]), Y(ny[i]));
       ctx.stroke();
     }
   }
+
+  // vignette, then restore out of the clip for a crisp rim
+  const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.22,
+                                      w / 2, h / 2, Math.max(w, h) * 0.72);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+
+  ctx.strokeStyle = '#383835'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(X(0), Y(0), R_DISH * scale, 0, Math.PI * 2); ctx.stroke();
+
+  // scale bar, the viewer's
+  const mm = view.span > 14 ? 5 : view.span > 4 ? 1 : 0.2;
+  ctx.strokeStyle = '#898781'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(14, h - 16); ctx.lineTo(14 + mm * scale, h - 16); ctx.stroke();
+  ctx.fillStyle = '#898781'; ctx.font = '11px system-ui';
+  ctx.fillText(mm >= 1 ? `${mm} mm` : `${mm * 1000} µm`, 14, h - 21);
 }
 
-let acc = 0;
+/* ---------------------------------------------------------------------- loop ----- */
+let acc = 0, lastWall = performance.now(), lastSim = 0;
 function frame() {
   E.stepAll(STEPS_PER_FRAME);
   simT += STEPS_PER_FRAME * DT;
   reap();
   hatchDue();
+  if ((acc & 7) === 0) {
+    for (const id of ids()) {
+      const nx = F64()[(E.ptrNodesX(id) >> 3) + 24], ny = F64()[(E.ptrNodesY(id) >> 3) + 24];
+      const tr = trails.get(id) ?? [];
+      tr.push([nx, ny]);
+      if (tr.length > 240) tr.shift();
+      trails.set(id, tr);
+    }
+  }
   if ((acc++ & 15) === 0) {
     for (const id of ids()) eatenAt.set(id, E.getEaten(id));
-    const dyn = new Map();
-    for (const id of ids()) { const f = founderOf.get(id) ?? -1; dyn.set(f, (dyn.get(f) ?? 0) + 1); }
-    const dynasties = Array.from(dyn.entries()).sort((a, b) => b[1] - a[1])
-      .map(([f, n]) => `${f < 0 ? 'orphan' : 'F' + f}:${n}`).join('  ');
     const pop = ids();
+    const dyn = new Map();
+    for (const id of pop) { const f = founderOf.get(id) ?? -1; dyn.set(f, (dyn.get(f) ?? 0) + 1); }
+    const dynasties = Array.from(dyn.entries()).sort((a, b) => b[1] - a[1])
+      .map(([f, n]) => `${f < 0 ? 'or' : 'F' + f}:${n}`).join(' ');
     const meanE = pop.length
       ? pop.reduce((a, id) => a + E.getEnergy(id), 0) / (pop.length * METAB) : 0;
-    hud.textContent = `dish ${simT.toFixed(0)} s   population ${E.wormCount()}/${CAP}`
-      + `   eggs ${E.eggCount()}   born ${births}   died ${deaths}`
-      + ` (starved ${starved})   energy ${meanE.toFixed(2)}   dynasties  ${dynasties}`;
+    const now = performance.now();
+    const rate = (simT - lastSim) / Math.max(1e-3, (now - lastWall) / 1000);
+    lastWall = now; lastSim = simT;
+    el('s-time').innerHTML = `${simT.toFixed(0)}<small>s</small>`;
+    el('s-pop').innerHTML = `${pop.length}<small>/${CAP}</small>`;
+    el('s-eggs').textContent = E.eggCount();
+    el('s-born').textContent = births;
+    el('s-died').innerHTML = `${deaths}<small>&nbsp;starved ${starved}</small>`;
+    el('s-energy').textContent = meanE.toFixed(2);
+    el('s-dyn').textContent = dynasties || '—';
+    el('s-rate').innerHTML = `${rate.toFixed(1)}<small>&times;</small>`;
   }
   draw();
   requestAnimationFrame(frame);

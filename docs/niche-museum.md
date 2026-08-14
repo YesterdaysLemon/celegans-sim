@@ -84,6 +84,22 @@ here: **any measurement downstream of a slow state settles ≥3τ or it is measu
 transient.** Pinned: `tools/flambda_locus.py` and `tools/amine_gait.py` (both carry the
 24 s settle with the disclosure comment).
 
+**II.4 — the read past the end that impersonated physics, twice.** The body has 49 nodes
+(48 links). Four files written in one sitting read 51, and the two out-of-bounds f64s
+were heap-neighbour bytes decoding as ~10⁻³⁰⁶ — which is (0, 0) in world coordinates, so
+every animal in the browser arena was drawn towing a line to the dish centre. The exhibit
+is what happened *before* the screenshot caught it: a twin-worm test failed on the
+garbage index, and the author wrote down a plausible mechanism ("co-located animals share
+evolving fields and drift at denormal scale") that a later measurement refuted outright —
+in-bounds, same-dish twins are bit-identical. The twin-engine "fix" worked *because
+identical engines allocate identically and therefore contain identical garbage*, which is
+the most polite failure in this wing: not only did the wrong read return a plausible
+number, the wrong explanation survived its own regression test. Two morals, both cheap:
+a coordinate at 10⁻³⁰⁶ is a read error, not a small number; and a causal story written
+into a comment is a claim, which means it is measurable, which means measure it. Pinned:
+the correction block in `wasm/metabolism.test.mjs`, and the 49s now carry comments at
+every read site.
+
 ## Wing III — where the reconstruction falls short of the animal
 
 The honest-gap wing: places where Track A knows it is not the animal, measured precisely
