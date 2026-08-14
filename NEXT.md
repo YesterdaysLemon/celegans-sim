@@ -56,9 +56,14 @@ are ported to `wasm/assembly/index.ts` behind per-worm setters with all-zero def
 each with its own conformance case agreeing to 5e-13 mm / 5e-11 mV and each measurably
 doing something against its off control — see `docs/runtime-parity.md`. What remains:
 the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it), and
-the behavioural gate — a full paired `tools/compare.py all` run at the amine
-configuration was started 2026-08-14 and its verdict tables are the next thing to read
-before any default moves.
+the behavioural gate — **partially run 2026-08-14, and what completed carries a flag.**
+The paired run timed out after triage and chemotaxis (the machine was oversubscribed);
+those two phases say: **reversals roughly halve under the configuration** (triage −1.5
+[−2.8, −0.3]; chemotaxis −2.8 [−5.5, −0.2] per animal), while chemotaxis index, approach
+and weathervane show no detected effect at n=12 (smallest resolvable index change 0.085).
+Halved reversals on agar is a real behavioural change that adoption has to either accept
+with eyes open or attribute (cascade vs amine arm — the config bundles both). Aerotaxis,
+thermotaxis and nociception never ran; relaunch those three before the verdict.
 
 *(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
 below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
@@ -124,9 +129,22 @@ two directions together, no sign flips — sign is topology, tier three), and `d
 regrows the products from the animal's own graph: the ported LU resting solve, the
 half-voltage offsets, the muscle rebalance, gap totals, born at rest. Eggs carry weight
 snapshots; hatch develops. Contracts pinned in `wasm/weights.test.mjs`; the arena takes
-`ARENA_WMUT`/`ARENA_WMUT_N`, default off. Next: a real weight-evolution arena run —
-watch the drift/selection balance and what the museum gains — then the topology tier
-(entries added/removed, which changes the CSR pattern the weights ride on).
+`ARENA_WMUT`/`ARENA_WMUT_N`, default off. The first full run is on the record in
+`wasm/arena.mjs`: the genes-only `proprio_gain` climb did not appear under weight
+mutation — drowned signal or selection moved into the weights; a weight-drift readout
+in the arena reports would distinguish them. Then the topology tier (entries
+added/removed, which changes the CSR pattern the weights ride on).
+
+**1b. The dish has a metabolism now — run it until it bites.** Death by physiology
+landed 2026-08-14 (runtime: `setMetabolism`/`getEnergy`/`depositFood`, drag-power work
+cost, muscle fade; contracts in `wasm/metabolism.test.mjs`; every constant invented, all
+defaults off, off is bit-identical). Every death — starvation or cull — now feeds the
+plate where the body stopped, a yield on the store included, so a culled well-fed animal
+outfeeds a starved husk. The first shakedown selected *feeding harder* instead of dying
+(record in `wasm/arena.mjs`): zero starvations at the default constants. Next: a dish
+poor enough that the tax bites (smaller lawns, shorter `ARENA_METAB_T`), replication,
+and the museum watch — scavenging lineages, corpse-camping, and whether laying-near-food
+becomes a heritable strategy once eggs hatch onto their parent's grave.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's

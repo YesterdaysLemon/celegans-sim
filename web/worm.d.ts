@@ -33,6 +33,15 @@ declare namespace __AdaptedExports {
    */
   export function addFood(x: number, y: number, r: number, d: number, att: number, ls: number): void;
   /**
+   * assembly/index/depositFood
+   * @param x `f64`
+   * @param y `f64`
+   * @param r `f64`
+   * @param amount `f64`
+   * @returns `f64`
+   */
+  export function depositFood(x: number, y: number, r: number, amount: number): number;
+  /**
    * assembly/index/foodPatchCount
    * @returns `i32`
    */
@@ -200,6 +209,35 @@ declare namespace __AdaptedExports {
    * @param muscleRate `f64`
    */
   export function setAminePath(w: number, loadGain: number, loadHalf: number, headLag: number, reachBlend: number, muscleRate: number): void;
+  /**
+   * assembly/index/setMetabolism
+   * @param w `i32`
+   * @param cap `f64`
+   * @param basal `f64`
+   * @param work `f64`
+   * @param floor `f64`
+   * @param fadeFrac `f64`
+   * @param initialFrac `f64`
+   */
+  export function setMetabolism(w: number, cap: number, basal: number, work: number, floor: number, fadeFrac: number, initialFrac: number): void;
+  /**
+   * assembly/index/getEnergy
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getEnergy(w: number): number;
+  /**
+   * assembly/index/getMetabFade
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getMetabFade(w: number): number;
+  /**
+   * assembly/index/getDragPower
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getDragPower(w: number): number;
   /**
    * assembly/index/clearWorms
    */

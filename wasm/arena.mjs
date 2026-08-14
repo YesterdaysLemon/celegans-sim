@@ -71,10 +71,53 @@ const MUT = env('ARENA_MUT', 0.10);
  * Shakedown (2026-08-14, seed 7, WMUT=0.15 N=4, 240 s): 37 births, the whole population
  * weighted by t=180 s, no drops, no physics failures -- and the scalar-gene spreads ran
  * visibly wider than any genes-only run (proprio_gain +-6.6 against the usual +-3.3),
- * which is what mutated wiring underneath the same genes should do. One run, one seed:
- * the machinery works; nothing here is yet a result. */
+ * which is what mutated wiring underneath the same genes should do. First full run
+ * (2026-08-14, seed 21, 600 s): the genes-only proprio_gain climb DID NOT APPEAR --
+ * final 31.8 +- 2.8 against 39.8 (seed 1) and 33.9 (seed 2) without weight mutation.
+ * Either wiring variance drowns the gene-level signal or selection moved into the
+ * weights where these reports cannot see it; distinguishing those needs a weight-drift
+ * readout, and one seed decides nothing. Patterns, not findings. */
 const WMUT = env('ARENA_WMUT', 0.0);
 const WMUT_N = env('ARENA_WMUT_N', 3);
+/* The metabolic budget (runtime mechanism: setMetabolism / getEnergy / depositFood;
+ * contracts in wasm/metabolism.test.mjs). ARENA_METAB is the store capacity in food
+ * units; 0 -- the default -- is the old dish exactly: no fading, no starvation, death
+ * only by the cull. With it on, death becomes PHYSIOLOGY: the store drains at a basal
+ * rate (a full store lasts ARENA_METAB_T seconds idle) plus the body's real drag
+ * dissipation (scaled so that drag power ARENA_METAB_WORKP matches the basal rate),
+ * the muscles fade below ARENA_METAB_KNEE of capacity toward the ARENA_METAB_FLOOR,
+ * and an animal whose store hits zero dies where it stands. Every constant is invented
+ * for dish timescales -- calibration in the commit: a feeding animal banks ~1e-2
+ * units/s against a default burn of ~8e-4/s, so eating sustains easily and idleness
+ * kills in ~ARENA_METAB_T seconds.
+ *
+ * AND THE PLATE GETS THE BODY BACK. Any death -- starvation or cull -- deposits food
+ * where the animal stopped: ARENA_CORPSE units for the body itself plus
+ * ARENA_CORPSE_YIELD of whatever store was left, so a culled well-fed animal is a
+ * richer find than a starved husk, which is as it should be. Deposits conserve food
+ * exactly (the runtime returns what the plate took). A corpse has no attractant plume
+ * -- findable by the local food sense, not smellable across the dish; the runtime
+ * states that first-cut honestly at depositFood.
+ *
+ * Shakedown (2026-08-14, seed 13, METAB=0.1, 240 s): ZERO starvation deaths -- and that
+ * is the observation, not a disappointment. Mean store dipped to 0.64 by t=90 and then
+ * the dish drove it back to the cap and held it there, while proprio_gain jumped to
+ * 44.5 +- 7.6 and food_gain to 14.0 -- higher and faster than any run without the
+ * budget. Under an energy tax the plate did not select animals that die less; it
+ * selected animals that eat hard enough for death to never arrive. One run, one seed,
+ * compressed incubation: a pattern. What would make it a finding is replication, and a
+ * dish poor enough (smaller lawns, lower METAB_T) that the tax actually bites. */
+const METAB = env('ARENA_METAB', 0.0);
+const METAB_T = env('ARENA_METAB_T', 240);
+const METAB_WORKP = env('ARENA_METAB_WORKP', 2.0);
+const METAB_FLOOR = env('ARENA_METAB_FLOOR', 0.25);
+const METAB_KNEE = env('ARENA_METAB_KNEE', 0.35);
+const METAB_HATCH = env('ARENA_METAB_HATCH', 0.6);   // hatchling starting fill fraction
+const CORPSE = env('ARENA_CORPSE', METAB * 0.5);
+const CORPSE_YIELD = env('ARENA_CORPSE_YIELD', 0.8);
+const CORPSE_R = 0.8;                                // mm; roughly a curled body
+const BASAL = METAB > 0 ? METAB / METAB_T : 0;
+const WORKC = METAB > 0 ? BASAL / METAB_WORKP : 0;
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
@@ -97,15 +140,36 @@ const eatenAt = new Map();               // worm id -> intake at the last policy
 let simT = 0.0;
 let births = 0, deaths = 0, seedIota = 1000;
 
+const metabolise = (id, fill) => {
+  if (METAB > 0) E.setMetabolism(id, METAB, BASAL, WORKC, METAB_FLOOR, METAB_KNEE, fill);
+};
+
 for (let i = 0; i < FOUNDERS; i++) {
   const a = (2 * Math.PI * i) / FOUNDERS;
   const id = E.createWorm(SEED + i, 6.0 * Math.cos(a), 6.0 * Math.sin(a), a + Math.PI / 2);
+  metabolise(id, 1.0);                      // founders arrive fed
   founderOf.set(id, i);
   born.set(id, 0.0);
   eatenAt.set(id, 0.0);
 }
 
 const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k));
+
+/* Every death routes through here, so every death feeds the plate. The mid-body node is
+ * where the animal stopped; the deposit is the body plus a yield on whatever store was
+ * left. With metabolism off the corpse is CORPSE alone (default 0), and the dish is the
+ * one it always was. */
+function die(id) {
+  if (CORPSE > 0 || METAB > 0) {
+    const f64 = new Float64Array(E.memory.buffer);
+    const x = f64[(E.ptrNodesX(id) >> 3) + 25], y = f64[(E.ptrNodesY(id) >> 3) + 25];
+    const worth = CORPSE + (METAB > 0 ? CORPSE_YIELD * E.getEnergy(id) : 0);
+    if (worth > 0) E.depositFood(x, y, CORPSE_R, worth);
+  }
+  E.removeWorm(id);
+  founderOf.delete(id); born.delete(id); eatenAt.delete(id);
+  deaths++;
+}
 
 function cullTo(cap) {
   while (E.wormCount() > cap) {
@@ -114,9 +178,18 @@ function cullTo(cap) {
       const recent = E.getEaten(id) - (eatenAt.get(id) ?? 0);
       if (recent < worstIntake) { worstIntake = recent; worstId = id; }
     }
-    E.removeWorm(worstId);
-    founderOf.delete(worstId); born.delete(worstId); eatenAt.delete(worstId);
-    deaths++;
+    die(worstId);
+  }
+}
+
+/* Death by physiology: a store at zero is a body that stopped. Distinguished in the
+ * ledger because the two death modes mean different things -- starvation is the plate
+ * economy speaking, the cull is the policy backstop. */
+let starved = 0;
+function reap() {
+  if (METAB <= 0) return;
+  for (const id of ids()) {
+    if (E.getEnergy(id) <= 0.0) { die(id); starved++; }
   }
 }
 
@@ -142,6 +215,7 @@ function hatchDue() {
       }
       E.developWorm(id);
     }
+    metabolise(id, METAB_HATCH);            // hatchlings start part-stocked: policy
     founderOf.set(id, founderOf.get(parent) ?? -1);   // -1: parent already culled
     born.set(id, simT);
     eatenAt.set(id, 0.0);
@@ -169,10 +243,18 @@ function report() {
     .map((g) => [g, GENES.indexOf(g)]).filter(([, s]) => s >= 0);
   const carriers = WMUT > 0
     ? `  weighted ${pop.filter((id) => E.hasOwnWeights(id)).length}/${pop.length}` : '';
+  let metab = '';
+  if (METAB > 0 && pop.length) {
+    const es = pop.map((id) => E.getEnergy(id) / METAB);
+    const mean = es.reduce((a, b) => a + b, 0) / es.length;
+    metab = `  energy ${mean.toFixed(2)} [${Math.min(...es).toFixed(2)}`
+      + `..${Math.max(...es).toFixed(2)}]  starved ${starved}`;
+  }
   console.log(`t=${simT.toFixed(0).padStart(5)}s  pop ${pop.length}  eggs ${E.eggCount()}`
     + `  births ${births}  deaths ${deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
-    + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('') + carriers);
+    + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('')
+    + carriers + metab);
 }
 
 console.log(`ARENA -- ${FOUNDERS} founders, cap ${CAP}, ${SECONDS} s of dish time,`
@@ -184,6 +266,7 @@ let nextReport = REPORT;
 while (simT < SECONDS) {
   E.stepAll(Math.round(CHUNK / DT));
   simT += CHUNK;
+  reap();
   hatchDue();
   if (simT >= nextReport) {
     for (const id of ids()) eatenAt.set(id, E.getEaten(id));
