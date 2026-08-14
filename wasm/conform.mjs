@@ -327,6 +327,59 @@ console.log(`  channel actually did something ${mod1Effect.toExponential(3)} mV 
 const mod1Ok = mXY < 1e-6 && mV < 1e-6 && mGate === 0 && mod1Effect > 1e-3;
 console.log(mod1Ok ? '  PASS' : '  FAIL');
 
+// --- the head cascade -------------------------------------------------------------------
+/* The stage chain shipped with the 2026-08-14 port and, at the canonical stages = 1, is a
+ * branch the default animal never takes -- and a branch never taken is not being checked,
+ * which is the same argument the MOD-1 case above carries. The Python reference is built
+ * at head_cascade.py's configuration (4 stages of 0.125 s, no transport delay); the
+ * runtime is handed the exact floats the Python computed, through setHeadCascade, so a
+ * disagreement is the chain and not a rounding of exp(-dt/tau). */
+const cc = ref.cascade;
+if (!cc) { console.error('reference has no `cascade` case -- regenerate it'); process.exit(1); }
+if (!cc.cascade) { console.error('cascade case carries no config -- regenerate it'); process.exit(1); }
+E.resetWorld();
+E.clearWorms();
+E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+const w5 = E.createWorm(0, 0.0, 0.0, 0.0);
+E.setHeadCascade(w5, cc.cascade.head_stages, cc.cascade.head_stage_decay,
+                 cc.cascade.head_delay_n);
+let cXY = 0, cV = 0, cGate = 0;
+prev = 0;
+for (const f of cc.frames) {
+  E.step(w5, f.step - prev);
+  prev = f.step;
+  const nx = F64().subarray(E.ptrNodesX(w5) >> 3, (E.ptrNodesX(w5) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(w5) >> 3, (E.ptrNodesY(w5) >> 3) + f.y.length);
+  const vv = F64().subarray(E.ptrV(w5) >> 3, (E.ptrV(w5) >> 3) + f.V.length);
+  for (let i = 0; i < f.x.length; i++)
+    cXY = Math.max(cXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  for (let i = 0; i < f.V.length; i++) cV = Math.max(cV, Math.abs(vv[i] - f.V[i]));
+  if (E.getGateForward(w5) !== f.gate) cGate++;
+}
+/* And the chain has to have DONE something, or this is a comparison over a branch that
+ * never moved: same seed, same plate, single-lag reflex against the cascade. */
+E.resetWorld(); E.clearWorms(); E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+const wSingle = E.createWorm(0, 0.0, 0.0, 0.0);
+E.step(wSingle, cc.steps);
+const singleV = Array.from(F64().subarray(E.ptrV(wSingle) >> 3, (E.ptrV(wSingle) >> 3) + 302));
+const cLastV = cc.frames[cc.frames.length - 1].V;
+let cascadeEffect = 0;
+for (let i = 0; i < 302; i++) cascadeEffect = Math.max(cascadeEffect, Math.abs(singleV[i] - cLastV[i]));
+
+console.log(`\nHEAD CASCADE -- ${cc.cascade.head_stages} stages, no transport delay, ${cc.steps} steps, noise off`);
+console.log(`  worst node disagreement       ${cXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${cV.toExponential(3)} mV`);
+console.log(`  direction gate disagreed on   ${cGate} of ${cc.frames.length} samples`);
+console.log(`  cascade actually did something ${cascadeEffect.toExponential(3)} mV against the single-lag reflex`);
+const cascadeOk = cXY < 1e-6 && cV < 1e-6 && cGate === 0 && cascadeEffect > 1e-3;
+console.log(cascadeOk ? '  PASS' : '  FAIL');
+
 // --- the path the browser actually runs ----------------------------------------------
 // Everything above drives `step(w, n)`. The viewer drives `stepAll(n)`, which is a
 // different function with its own loop and its own world advance, and nothing had ever
@@ -577,7 +630,7 @@ const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph
   && plateLost > 0 && relGap < 1e-9 && flat.length === 0;
 console.log(multiOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && allOk && multiOk;
+const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && cascadeOk && allOk && multiOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 // Only a completed numeric comparison may use the dedicated finding code. Missing or

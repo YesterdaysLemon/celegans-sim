@@ -783,6 +783,15 @@ class Worm {
   propAdapt: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   headHist: StaticArray<f64> = new StaticArray<f64>((G.HEAD_DELAY_N + 1) * G.N_JOINTS);
   headHistI: i32 = 0;
+  // The head cascade (worm/senses.py `_head_chain`): N first-order stages in series, so
+  // phase adds instead of averaging. Per-worm rather than G-baked so conformance can
+  // exercise stages > 1 against the same payload -- see setHeadCascade. At the exported
+  // defaults (stages 1) the chain is empty and the step below takes the single-lag path
+  // unchanged, byte for byte.
+  headStages: i32 = G.HEAD_STAGES;
+  headStageDecay: f64 = G.HEAD_STAGE_DECAY;
+  headDelayN: i32 = G.HEAD_DELAY_N;
+  headChain: StaticArray<f64> = new StaticArray<f64>(0);
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
   repAdapt: f64 = 0.0;
   adaptReady: bool = false;
@@ -1457,12 +1466,12 @@ class Worm {
     // -- the head reflex. It runs whichever way the animal is going: it is what keeps the
     //    nose sweeping, and the sweep is what steering acts on.
     let headOff: i32 = 0;
-    if (G.HEAD_DELAY_N > 0) {
+    if (this.headDelayN > 0) {
       // Buffer the curvature, not the reduced signal, so the delay sits where a
       // transduction delay physically would -- between strain and receptor.
       const wslot = this.headHistI * J;
       for (let j = 0; j < J; j++) unchecked(this.headHist[wslot + j] = unchecked(sKn[j]));
-      this.headHistI = (this.headHistI + 1) % (G.HEAD_DELAY_N + 1);
+      this.headHistI = (this.headHistI + 1) % (this.headDelayN + 1);
       headOff = this.headHistI * J;
     }
     let headGain = this.gene(G.GENE_SEN_HEAD_PROPRIO_GAIN);
@@ -1471,21 +1480,51 @@ class Worm {
       headGain *= f > 0.0 ? f : 0.0;
     }
     for (let j = 0; j < J; j++) {
-      unchecked(sKh[j] = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j])
-                                            : unchecked(sKn[j]));
+      unchecked(sKh[j] = this.headDelayN > 0 ? unchecked(this.headHist[headOff + j])
+                                             : unchecked(sKn[j]));
     }
     if (G.HEAD_DISTRIBUTED) {
       spmv(G.OFF_whead_ptr, G.OFF_whead_idx, G.OFF_whead_val, n, sKh, sWhv);
-      for (let r = 0; r < n; r++) {
-        const raw = unchecked(sWhv[r]);
-        unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
-        unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
-                  * m(G.OFF_g_scale_head, r));
+      if (this.headStages > 1) {
+        // The cascade: each stage sees the previous stage's output, which is what makes
+        // the phase add rather than average (worm/senses.py). Per-neuron elements are
+        // independent, so the neuron-outer loop is numerically identical to the
+        // stage-outer vector form the Python uses.
+        const a = 1.0 - this.headStageDecay;
+        const S = this.headStages - 1;
+        for (let r = 0; r < n; r++) {
+          let raw = unchecked(sWhv[r]);
+          for (let s = 0; s < S; s++) {
+            const idx = s * n + r;
+            unchecked(this.headChain[idx] += (raw - unchecked(this.headChain[idx])) * a);
+            raw = unchecked(this.headChain[idx]);
+          }
+          unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * a);
+          unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+                    * m(G.OFF_g_scale_head, r));
+        }
+      } else {
+        for (let r = 0; r < n; r++) {
+          const raw = unchecked(sWhv[r]);
+          unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
+          unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+                    * m(G.OFF_g_scale_head, r));
+        }
       }
     } else {
       let raw: f64 = 0.0;
       for (let j = 0; j < J; j++) raw += m(G.OFF_head_window, j) * unchecked(sKh[j]);
-      unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
+      if (this.headStages > 1) {
+        const a = 1.0 - this.headStageDecay;
+        const S = this.headStages - 1;
+        for (let s = 0; s < S; s++) {
+          unchecked(this.headChain[s] += (raw - unchecked(this.headChain[s])) * a);
+          raw = unchecked(this.headChain[s]);
+        }
+        unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * a);
+      } else {
+        unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
+      }
       const v = Math.tanh(unchecked(this.headSignal[0])) * headGain;
       for (let r = 0; r < n; r++) {
         unchecked(sIext[r] += m(G.OFF_W_head_sign, r) * m(G.OFF_g_scale_head, r) * v);
@@ -1846,6 +1885,80 @@ export function getGene(w: i32, slot: i32): f64 {
 }
 // Put an animal back to the unmutated model, which is also what a fresh worm starts as.
 export function resetGenes(w: i32): void { byId(w).resetGenes(); }
+// Configure the head cascade per worm: stage count, per-stage decay exp(-dt/stage_tau),
+// and the transport-delay length in steps. Exists so conformance can exercise the
+// cascade against the same payload the canonical animal ships with; the exported
+// defaults (G.HEAD_STAGES = 1) leave the single-lag reflex byte-identical. delayN is
+// clamped to the ring the worm was built with -- it can be shortened at runtime but not
+// lengthened past the payload's allocation.
+// Recompute the per-cell muscle balance from the RAW conductances in the payload and
+// report the worst absolute deviation from the shipped balanced matrix. This is
+// worm/muscle.py::_balance ported line for line -- row equalisation, then a 70-iteration
+// bisection of each cell's excitatory scale over [1e-4, 5e3] -- and it exists so the
+// payload is self-checking: with only the balanced G aboard, the calibration could be
+// neither recomputed nor verified from the browser's side, which was the blocker on
+// heritable weights and topology. Exactness caveat, stated rather than hidden: numpy sums
+// rows pairwise and this sums them sequentially, so agreement is to rounding (~1e-12),
+// not to the bit. The invariants test pins 1e-9.
+export function checkBalance(): f64 {
+  const M = G.N_MUSCLES;
+  // Row totals of the raw matrix, and their mean.
+  let meanTotal: f64 = 0.0;
+  const totals = new StaticArray<f64>(M);
+  for (let r = 0; r < M; r++) {
+    const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
+    let t: f64 = 0.0;
+    for (let k = lo; k < hi; k++) t += m(G.OFF_mus_raw_val, k);
+    unchecked(totals[r] = t);
+    meanTotal += t;
+  }
+  meanTotal /= <f64>M;
+  let worst: f64 = 0.0;
+  for (let r = 0; r < M; r++) {
+    const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
+    const s1 = meanTotal / Math.max(unchecked(totals[r]), 1e-9);
+    // Resting conductance split by column class, after the row equalisation.
+    let gExc: f64 = 0.0, gInh: f64 = 0.0;
+    for (let k = lo; k < hi; k++) {
+      const j = mi(G.OFF_mus_raw_idx, k);
+      const g = m(G.OFF_mus_raw_val, k) * s1 * G.MUS_S_EQ;
+      if (m(G.OFF_mus_E_pre, j) == G.MUS_E_INH) gInh += g;
+      else gExc += g;
+    }
+    let alpha: f64 = 1.0;
+    if (gExc > 1e-9) {
+      let blo: f64 = 1e-4, bhi: f64 = 5e3;
+      for (let it = 0; it < 70; it++) {
+        const mid = 0.5 * (blo + bhi);
+        const ge = gExc * mid;
+        const gTot = G.MUS_G_LEAK + ge + gInh;
+        const V = (G.MUS_G_LEAK * G.MUS_E_LEAK + ge * G.MUS_E_EXC + gInh * G.MUS_E_INH) / gTot;
+        if (sigmoid(G.MUS_BETA * (V - G.MUS_V_HALF)) < G.MUS_REST_TENSION) blo = mid;
+        else bhi = mid;
+      }
+      alpha = 0.5 * (blo + bhi);
+    }
+    // Rebuild the balanced row and compare against the shipped one; the two CSRs share a
+    // sparsity pattern by construction, so aligned iteration is a value-for-value walk.
+    for (let k = lo; k < hi; k++) {
+      const j = mi(G.OFF_mus_raw_idx, k);
+      const scale = m(G.OFF_mus_E_pre, j) == G.MUS_E_INH ? s1 : s1 * alpha;
+      const rebuilt = m(G.OFF_mus_raw_val, k) * scale;
+      const d = Math.abs(rebuilt - m(G.OFF_mus_val, k));
+      if (d > worst) worst = d;
+    }
+  }
+  return worst;
+}
+
+export function setHeadCascade(w: i32, stages: i32, stageDecay: f64, delayN: i32): void {
+  const worm = byId(w);
+  worm.headStages = stages < 1 ? 1 : stages;
+  worm.headStageDecay = stageDecay;
+  worm.headDelayN = delayN < 0 ? 0 : (delayN > G.HEAD_DELAY_N ? G.HEAD_DELAY_N : delayN);
+  const S = worm.headStages - 1;
+  worm.headChain = new StaticArray<f64>(S * (G.HEAD_DISTRIBUTED ? G.N_NEURONS : 1));
+}
 export function clearWorms(): void { worms = []; wormById = new Map<i32, Worm>(); }
 /* Remove one animal, whoever it is. Returns 1 if it was there.
  *

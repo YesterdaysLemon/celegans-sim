@@ -44,6 +44,11 @@ class Muscles:
 
         self.dorsal = conn.muscle_side > 0
         self.excitatory_pre = ~conn.inhibitory
+        # The reconstructed conductances before any calibration. Kept so the exporter can
+        # carry them alongside the balanced matrix: with only the balanced G in the
+        # payload, the per-cell balance could be neither recomputed nor checked from it,
+        # which was the one blocker on heritable weights and topology (NEXT.md, Track B).
+        self.G_raw = self.G.copy()
         if p.normalise_nmj:
             self._balance(conn)
 

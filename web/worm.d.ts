@@ -101,6 +101,19 @@ declare namespace __AdaptedExports {
    */
   export function resetGenes(w: number): void;
   /**
+   * assembly/index/checkBalance
+   * @returns `f64`
+   */
+  export function checkBalance(): number;
+  /**
+   * assembly/index/setHeadCascade
+   * @param w `i32`
+   * @param stages `i32`
+   * @param stageDecay `f64`
+   * @param delayN `i32`
+   */
+  export function setHeadCascade(w: number, stages: number, stageDecay: number, delayN: number): void;
+  /**
    * assembly/index/clearWorms
    */
   export function clearWorms(): void;

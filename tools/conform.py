@@ -98,7 +98,7 @@ def folded_case():
     return out
 
 
-def full_case(serotonin_mod1=0.0):
+def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau=0.0):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
     Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
@@ -119,6 +119,14 @@ def full_case(serotonin_mod1=0.0):
     if serotonin_mod1:
         p = dataclasses.replace(
             p, modulator=dataclasses.replace(p.modulator, serotonin_mod1=serotonin_mod1))
+    # The head cascade, same argument as MOD-1 above: at the shipped stages = 1 the chain
+    # code in the runtime is a branch never taken, and a branch never taken is not being
+    # checked. The cascade case runs the configuration head_cascade.py measured
+    # (4 x 0.125 s, no transport delay) so every stage of the chain moves.
+    if head_stages:
+        p = dataclasses.replace(p, sensory=dataclasses.replace(
+            p.sensory, head_stages=head_stages, head_stage_tau=head_stage_tau,
+            **({"head_delay": head_delay} if head_delay is not None else {})))
     # A plate with something on it. A bare world leaves most of the sensory layer reading
     # zero -- and a term that is only ever multiplied by zero is not being checked. The
     # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
@@ -137,6 +145,12 @@ def full_case(serotonin_mod1=0.0):
     sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     steps = 4000
     out = {"steps": steps, "sample": 200, "frames": []}
+    if head_stages:
+        # The exact constants the Python side computed, so the runtime is configured with
+        # the same floats rather than recomputing them and eating a rounding difference.
+        out["cascade"] = {"head_stages": int(sim.senses._head_stages),
+                          "head_stage_decay": float(sim.senses._head_stage_decay),
+                          "head_delay_n": int(sim.senses._head_delay_n)}
     for i in range(steps):
         sim.step()
         if (i + 1) % 200 == 0:
@@ -423,6 +437,10 @@ def main():
                # adopted-then-shipped-at-zero. Running the reference there is the only way
                # this path gets compared at all.
                "mod1": full_case(serotonin_mod1=0.30),
+               # The cascade at head_cascade.py's configuration -- 4 stages of 0.125 s,
+               # no transport delay -- so the ported chain is exercised stage by stage
+               # rather than sitting behind a branch the default never takes.
+               "cascade": full_case(head_stages=4, head_delay=0.0, head_stage_tau=0.125),
                # Several animals on one plate. Everything above is one animal, and one
                # animal cannot reach the batch settlement or the shared world advance.
                "multi": multi_case()},
