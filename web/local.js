@@ -392,12 +392,24 @@ export class LocalEngine {
     };
   }
 
-  /* The chemical fields, downsampled to the same 128x128 RGB the server used to send, so
-   * the viewer's field rendering works unchanged. */
-  fieldImage(size = 128) {
+  /* The chemical fields as one RGB image, at the world grid's own resolution.
+   *
+   * This used to downsample to the 128x128 the server historically sent, by taking
+   * every second cell -- skip-sampling, not averaging. Nobody noticed for as long as
+   * the reference dish was the only dish: its lawns are 5-7 mm across and mostly
+   * looked at from inside at 6.5 mm span, where a halved field grid still blurs into
+   * gradient under the canvas's bilinear scaling. The arena broke the disguise -- small
+   * 3-4 mm lawns, the whole plate in frame -- and its lawn edges came out staircased,
+   * because the ~1 mm smoothstep skirt of a lawn is barely one cell wide at 128. Same
+   * inherited code path in both dishes; a resolution choice that was only ever tested
+   * against one of them. Native resolution doubles the cells across that skirt and the
+   * bilinear upscale has enough to work with; the rebuild is cached behind
+   * S.field.stamp at about once a second, so the cost of the larger image is nothing
+   * per frame. `size` remains for callers that genuinely want the old thumbnail. */
+  fieldImage(size) {
     const E = this.E, buf = E.memory.buffer;
     const g = this.head.ints.world_grid;
-    const step = Math.max(1, Math.ceil(g / size));
+    const step = Math.max(1, Math.ceil(g / (size || g)));
     const n = Math.ceil(g / step);
     const att = new Float64Array(buf, E.ptrAttractant(), g * g);
     const food = new Float64Array(buf, E.ptrFood(), g * g);
