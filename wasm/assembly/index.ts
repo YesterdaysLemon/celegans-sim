@@ -364,9 +364,14 @@ class World {
    * WeightSet constructor clones, so a parent mutated after laying cannot reach back
    * into its eggs, exactly the genome's contract. */
   eggW: StaticArray<WeightSet | null> = new StaticArray<WeightSet | null>(G.MAX_EGGS);
+  /* And heritable morphology rides the same contract: a snapshot of the parent's twelve
+   * clamped control points at laying, or null for a reference-shaped parent. Cloned
+   * here, not referenced -- the parent mutating after laying cannot reach its eggs. */
+  eggM: StaticArray<StaticArray<f64> | null> =
+    new StaticArray<StaticArray<f64> | null>(G.MAX_EGGS);
 
   layEgg(x: f64, y: f64, parent: i32, t: f64, genes: StaticArray<f64>,
-         w: WeightSet | null): void {
+         w: WeightSet | null, morph: StaticArray<f64> | null): void {
     /* Eggs used to live in a ring that silently dropped the oldest when it filled. That is
      * right for a picture and wrong for a record, and it does not survive eggs being
      * hatchable either: removing one from the middle of a ring leaves the write head
@@ -388,6 +393,13 @@ class World {
       unchecked(this.eggGene[base + g] = unchecked(genes[g]));
     }
     unchecked(this.eggW[at] = w);
+    if (morph !== null) {
+      const mc = new StaticArray<f64>(12);
+      for (let i = 0; i < 12; i++) unchecked(mc[i] = unchecked(morph[i]));
+      unchecked(this.eggM[at] = mc);
+    } else {
+      unchecked(this.eggM[at] = null);
+    }
   }
 
   /* Take an egg off the plate, leaving the array dense. Swap-with-last, the same shape as
@@ -406,8 +418,10 @@ class World {
         unchecked(this.eggGene[a + g] = unchecked(this.eggGene[b + g]));
       }
       unchecked(this.eggW[i] = unchecked(this.eggW[last]));
+      unchecked(this.eggM[i] = unchecked(this.eggM[last]));
     }
-    unchecked(this.eggW[last] = null);   // release the reference so the GC can have it
+    unchecked(this.eggW[last] = null);   // release the references so the GC can have them
+    unchecked(this.eggM[last] = null);
     return true;
   }
 
@@ -989,6 +1003,41 @@ class Worm {
   metabE: f64 = 0.0;           // the store itself
   metabPrevIngested: f64 = 0.0;
   metabFade: f64 = 1.0;        // applied to the muscle moment; 1.0 when off
+  /* Chain morphology: TRACK B, tier four confined to the shape the solver can afford.
+   * The body stays one unbranched serial chain of N_LINKS rigid links -- branching tails
+   * and appendages are a different physics engine (the drag metric, the masks, the
+   * contact geometry all assume a chain) and are deliberately NOT attempted here. What
+   * IS heritable is the chain's own anatomy, three smooth profiles along the body, each
+   * four control points linearly interpolated and clamped to [0.25, 4]:
+   *
+   *   * STIFFNESS -- scales the per-joint bending stiffness K_j and internal damping
+   *     gamma_j together (both come from the same local geometry in worm/body.py), and
+   *     the dense K_mat/B_mat are rebuilt per worm from the same Dif^T diag Dif stencil
+   *     the reference builds them with.
+   *   * WIDTH -- scales the per-segment drag weighting rho_k, exactly where the
+   *     reference folds radius into drag: the rho array and all three precomputed masks
+   *     (mask_rho by w_k, mask_sqrt by sqrt(w_k), rho_max_off by w at the rearmost
+   *     joint). Width here means drag, not contact: self-contact radii stay reference
+   *     (a fat lineage does not get a bigger collision body -- a stated first cut), and
+   *     dragLoad()/dragPower() keep the reference coefficients, so the amine sense and
+   *     the metabolic work cost read the unscaled cuticle for now.
+   *   * MUSCLE -- scales the joint gain profile the muscle moments map through.
+   *
+   * The clamp floor of 0.25 is the negative-EI lesson (docs/niche-museum.md II.1) made
+   * structural: every profile stays positive, K_mat stays positive semi-definite, and a
+   * mutant can be bad at being a worm but cannot stop being one. All-null default is the
+   * canonical animal reading the payload untouched; the on-path costs ~93 kB per worm
+   * (five dense n x n arrays), which is why these are built on demand, not per worm. */
+  ownMorph: bool = false;
+  morphCtl: StaticArray<f64> = new StaticArray<f64>(12);   // clamped control points
+  mRho: StaticArray<f64> | null = null;        // n           scaled drag weights
+  mMaskRho: StaticArray<f64> | null = null;    // n*n
+  mMaskSqrt: StaticArray<f64> | null = null;   // n*n
+  mRhoMax: StaticArray<f64> | null = null;     // n*n
+  mK: StaticArray<f64> | null = null;          // J           scaled joint stiffness
+  mKmat: StaticArray<f64> | null = null;       // n*n         rebuilt Dif^T K Dif
+  mBmat: StaticArray<f64> | null = null;       // n*n         rebuilt Dif^T gamma Dif
+  mMusGain: StaticArray<f64> | null = null;    // J           muscle gain scale
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
   repAdapt: f64 = 0.0;
   adaptReady: bool = false;
@@ -1316,7 +1365,11 @@ class Worm {
       // metabFade is 1.0 whenever metabolism is off, and x * 1.0 is bit-identical -- the
       // canonical animal's moment is untouched. A fading animal's muscles pull weaker
       // everywhere at once, which is starvation as physics rather than as bookkeeping.
-      unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj) * this.metabFade);
+      // A morphology worm's heritable muscle profile multiplies on top; the null arm is
+      // the exact reference expression.
+      const base = m(G.OFF_mus_joint_gain, j) * (dj - vj) * this.metabFade;
+      const wMus = this.mMusGain;
+      unchecked(this.moment[j] = wMus !== null ? base * unchecked(wMus[j]) : base);
     }
   }
 
@@ -1357,6 +1410,10 @@ class Worm {
   dragMatrix(): void {
     const n = G.N_LINKS, l = G.BODY_L, N = n + 2;
     const cT = this.cT, cN = this.cN;
+    // Morphology-scaled drag arrays, or null for the payload originals. The branches
+    // below are per-read but constant per worm, and the null arm is the untouched
+    // reference arithmetic -- off is bit-identical.
+    const wRho = this.mRho, wMR = this.mMaskRho, wMS = this.mMaskSqrt, wMX = this.mRhoMax;
     const D = sDm;
     for (let i = 0; i < N * N; i++) unchecked(D[i] = 0.0);
 
@@ -1377,15 +1434,16 @@ class Worm {
         // The rotational block multiplies two lever arms that must *share* one factor of
         // rho_k between them, so it uses the square-root mask -- (A A^T)[m,p] then sums
         // rho_k rather than rho_k^2.
-        unchecked(sAs[idx] = p * m(G.OFF_body_mask_sqrt, idx));
-        unchecked(sBs[idx] = q * m(G.OFF_body_mask_sqrt, idx));
+        const msq = wMS !== null ? unchecked(wMS[idx]) : m(G.OFF_body_mask_sqrt, idx);
+        unchecked(sAs[idx] = p * msq);
+        unchecked(sBs[idx] = q * msq);
       }
     }
 
     // translation / translation
     let txx: f64 = 0.0, txy: f64 = 0.0, tyy: f64 = 0.0;
     for (let k = 0; k < n; k++) {
-      const rho = m(G.OFF_body_rho, k);
+      const rho = wRho !== null ? unchecked(wRho[k]) : m(G.OFF_body_rho, k);
       const ux = unchecked(sUx[k]), uy = unchecked(sUy[k]);
       const nx = unchecked(sNxv[k]), ny = unchecked(sNyv[k]);
       txx += cT * rho * ux * ux + cN * rho * nx * nx;
@@ -1401,13 +1459,13 @@ class Worm {
       let cx: f64 = 0.0, cy: f64 = 0.0;
       for (let k = 0; k < n; k++) {
         const idx = mm * n + k;
-        const mr = m(G.OFF_body_mask_rho, idx);
+        const mr = wMR !== null ? unchecked(wMR[idx]) : m(G.OFF_body_mask_rho, idx);
         const a = unchecked(sPm[idx]) * mr;
         const b2 = unchecked(sQm[idx]) * mr;
         cx += cT * a * unchecked(sUx[k]) + cN * b2 * unchecked(sNxv[k]);
         cy += cT * a * unchecked(sUy[k]) + cN * b2 * unchecked(sNyv[k]);
       }
-      const rho = m(G.OFF_body_rho, mm);
+      const rho = wRho !== null ? unchecked(wRho[mm]) : m(G.OFF_body_rho, mm);
       cx = l2 * (cx + 0.5 * cN * rho * unchecked(sNxv[mm]));
       cy = l2 * (cy + 0.5 * cN * rho * unchecked(sNyv[mm]));
       unchecked(D[(2 + mm) * N + 0] = cx);
@@ -1425,8 +1483,9 @@ class Worm {
           acc += cT * unchecked(sAs[a * n + k]) * unchecked(sAs[b2 * n + k])
                + cN * unchecked(sBs[a * n + k]) * unchecked(sBs[b2 * n + k]);
         }
-        acc += cN * 0.5 * unchecked(sQm[a * n + b2]) * m(G.OFF_body_rho_max_off, a * n + b2);
-        if (a == b2) acc += cN * m(G.OFF_body_rho, a) / 3.0;
+        acc += cN * 0.5 * unchecked(sQm[a * n + b2])
+             * (wMX !== null ? unchecked(wMX[a * n + b2]) : m(G.OFF_body_rho_max_off, a * n + b2));
+        if (a == b2) acc += cN * (wRho !== null ? unchecked(wRho[a]) : m(G.OFF_body_rho, a)) / 3.0;
         const v = l3 * acc;
         unchecked(D[(2 + a) * N + (2 + b2)] = v);
         unchecked(D[(2 + b2) * N + (2 + a)] = v);
@@ -1444,10 +1503,13 @@ class Worm {
     const Q = sQv;
     for (let i = 0; i < N; i++) unchecked(Q[i] = 0.0);
 
-    // Elastic restoring torque plus the active moment, mapped through Dif^T.
+    // Elastic restoring torque plus the active moment, mapped through Dif^T. A
+    // morphology-carrying worm reads its own scaled joint stiffness.
+    const wK = this.mK;
     for (let j = 0; j < J; j++) {
       const joint = unchecked(this.theta[j + 1]) - unchecked(this.theta[j]);
-      const tq = -m(G.OFF_body_K, j) * joint + unchecked(this.moment[j]);
+      const kj = wK !== null ? unchecked(wK[j]) : m(G.OFF_body_K, j);
+      const tq = -kj * joint + unchecked(this.moment[j]);
       unchecked(Q[2 + j] -= tq);
       unchecked(Q[2 + j + 1] += tq);
     }
@@ -1463,11 +1525,15 @@ class Worm {
       unchecked(Q[2 + mm] += l * (unchecked(sNxv[mm]) * sx + unchecked(sNyv[mm]) * sy));
     }
 
+    // The rebuilt per-worm matrices keep the same B + dt*K arithmetic per cell, so the
+    // subdivided-dt path (BODY_SUBSTEPS) works for a morphology worm unchanged.
+    const wKm = this.mKmat, wBm = this.mBmat;
     for (let a = 0; a < n; a++) {
       for (let b2 = 0; b2 < n; b2++) {
         const idx = a * n + b2;
-        unchecked(sDm[(2 + a) * N + (2 + b2)] +=
-          m(G.OFF_body_B_mat, idx) + dt * m(G.OFF_body_K_mat, idx));
+        unchecked(sDm[(2 + a) * N + (2 + b2)] += wKm !== null
+          ? unchecked(wBm![idx]) + dt * unchecked(wKm[idx])
+          : m(G.OFF_body_B_mat, idx) + dt * m(G.OFF_body_K_mat, idx));
       }
     }
     if (!solveInPlace(sDm, Q, N)) return;
@@ -1997,7 +2063,8 @@ class Worm {
                    this.id, this.t, this.genes,
                    this.ownWeights
                      ? new WeightSet(this.synVal, this.synVal2, this.gapVal, this.musRaw)
-                     : null);
+                     : null,
+                   this.ownMorph ? this.morphCtl : null);
     }
     this.stepMetabolism();
     this.t += G.DT;
@@ -2429,7 +2496,8 @@ export function forceLay(w: i32): i32 {
                wm.id, wm.t, wm.genes,
                wm.ownWeights
                  ? new WeightSet(wm.synVal, wm.synVal2, wm.gapVal, wm.musRaw)
-                 : null);
+                 : null,
+               wm.ownMorph ? wm.morphCtl : null);
   return world.nEggs > before ? world.nEggs - 1 : -1;
 }
 
@@ -2566,6 +2634,120 @@ export function setMetabolism(w: i32, cap: f64, basal: f64, work: f64,
 export function getEnergy(w: i32): f64 { return byId(w).metabE; }
 export function getMetabFade(w: i32): f64 { return byId(w).metabFade; }
 export function getDragPower(w: i32): f64 { return byId(w).dragPower(); }
+
+/* ---------------------------------------------------------------- chain morphology --
+ * See the field block in class Worm for what is and is not heritable here, and why the
+ * chain itself is not. */
+
+// Piecewise-linear profile over four control points pinned at s = 0, 1/3, 2/3, 1.
+// "Development" in this dish is a spline, and saying so is the honesty the museum asks.
+function morphProfile(ctl: StaticArray<f64>, base: i32, s: f64): f64 {
+  let t = s * 3.0;
+  if (t < 0.0) t = 0.0;
+  if (t > 3.0) t = 3.0;
+  let seg = <i32>Math.floor(t);
+  if (seg > 2) seg = 2;
+  const f = t - <f64>seg;
+  const a = unchecked(ctl[base + seg]), b = unchecked(ctl[base + seg + 1]);
+  return a + f * (b - a);
+}
+
+/* Build every per-worm morphology array from twelve clamped control points:
+ * [0..3] stiffness, [4..7] width, [8..11] muscle. Scaling happens exactly where the
+ * reference folds the corresponding anatomy into the mechanics (worm/body.py):
+ * stiffness multiplies K_j and gamma_j together and the dense matrices are rebuilt
+ * from the Dif^T diag Dif stencil (each joint j contributes +L at (j,j) and (j+1,j+1),
+ * -L at the off-diagonal pair); width multiplies rho_k, mask_rho by w_k, mask_sqrt by
+ * sqrt(w_k) -- the mask that shares ONE factor of rho between two lever arms -- and
+ * rho_max_off by the width at the rearmost of the two joints, mirroring
+ * Body._precompute_masks line for line. */
+function applyMorphology(wm: Worm, ctl: StaticArray<f64>): void {
+  const n = G.N_LINKS, J = G.N_JOINTS;
+  for (let i = 0; i < 12; i++) {
+    unchecked(wm.morphCtl[i] = clamp(unchecked(ctl[i]), 0.25, 4.0));
+  }
+  const c = wm.morphCtl;
+
+  const rho = new StaticArray<f64>(n);
+  const maskRho = new StaticArray<f64>(n * n);
+  const maskSqrt = new StaticArray<f64>(n * n);
+  const rhoMax = new StaticArray<f64>(n * n);
+  const kArr = new StaticArray<f64>(J);
+  const kMat = new StaticArray<f64>(n * n);
+  const bMat = new StaticArray<f64>(n * n);
+  const musGain = new StaticArray<f64>(J);
+
+  const wSeg = new StaticArray<f64>(n);
+  for (let k = 0; k < n; k++) {
+    unchecked(wSeg[k] = morphProfile(c, 4, (<f64>k + 0.5) / <f64>n));
+    unchecked(rho[k] = m(G.OFF_body_rho, k) * unchecked(wSeg[k]));
+  }
+  for (let a = 0; a < n; a++) {
+    for (let k = 0; k < n; k++) {
+      const idx = a * n + k;
+      unchecked(maskRho[idx] = m(G.OFF_body_mask_rho, idx) * unchecked(wSeg[k]));
+      unchecked(maskSqrt[idx] = m(G.OFF_body_mask_sqrt, idx) * Math.sqrt(unchecked(wSeg[k])));
+      const later = a > k ? a : k;
+      unchecked(rhoMax[idx] = m(G.OFF_body_rho_max_off, idx) * unchecked(wSeg[later]));
+    }
+  }
+  for (let j = 0; j < J; j++) {
+    const s = <f64>(j + 1) / <f64>n;              // Body.joint_s
+    const st = morphProfile(c, 0, s);
+    const kj = m(G.OFF_body_K, j) * st;
+    const gj = m(G.OFF_body_gamma, j) * st;
+    unchecked(kArr[j] = kj);
+    unchecked(musGain[j] = morphProfile(c, 8, s));
+    // Dif[j, j] = -1, Dif[j, j+1] = +1, so Dif^T diag Dif gets a 2x2 stencil per joint.
+    unchecked(kMat[j * n + j] += kj);
+    unchecked(kMat[j * n + (j + 1)] -= kj);
+    unchecked(kMat[(j + 1) * n + j] -= kj);
+    unchecked(kMat[(j + 1) * n + (j + 1)] += kj);
+    unchecked(bMat[j * n + j] += gj);
+    unchecked(bMat[j * n + (j + 1)] -= gj);
+    unchecked(bMat[(j + 1) * n + j] -= gj);
+    unchecked(bMat[(j + 1) * n + (j + 1)] += gj);
+  }
+
+  wm.mRho = rho; wm.mMaskRho = maskRho; wm.mMaskSqrt = maskSqrt; wm.mRhoMax = rhoMax;
+  wm.mK = kArr; wm.mKmat = kMat; wm.mBmat = bMat; wm.mMusGain = musGain;
+  wm.ownMorph = true;
+}
+
+/* Give one animal a heritable chain morphology. Twelve control points, three profiles
+ * of four (stiffness, width, muscle), each clamped to [0.25, 4]; all-ones is the
+ * reference shape rebuilt through the same formulas (agreement pinned by
+ * wasm/morphology.test.mjs, to tolerance rather than to the bit -- the payload's dense
+ * matrices came through BLAS, whose summation order is its own). No optional
+ * parameters -- raw bindings trap on them (see setHeadCascade). */
+export function setMorphology(w: i32,
+    st0: f64, st1: f64, st2: f64, st3: f64,
+    wd0: f64, wd1: f64, wd2: f64, wd3: f64,
+    mu0: f64, mu1: f64, mu2: f64, mu3: f64): void {
+  const ctl = new StaticArray<f64>(12);
+  unchecked(ctl[0] = st0); unchecked(ctl[1] = st1);
+  unchecked(ctl[2] = st2); unchecked(ctl[3] = st3);
+  unchecked(ctl[4] = wd0); unchecked(ctl[5] = wd1);
+  unchecked(ctl[6] = wd2); unchecked(ctl[7] = wd3);
+  unchecked(ctl[8] = mu0); unchecked(ctl[9] = mu1);
+  unchecked(ctl[10] = mu2); unchecked(ctl[11] = mu3);
+  applyMorphology(byId(w), ctl);
+}
+export function clearMorphology(w: i32): void {
+  const wm = byId(w);
+  wm.ownMorph = false;
+  wm.mRho = null; wm.mMaskRho = null; wm.mMaskSqrt = null; wm.mRhoMax = null;
+  wm.mK = null; wm.mKmat = null; wm.mBmat = null; wm.mMusGain = null;
+}
+export function hasOwnMorphology(w: i32): i32 { return byId(w).ownMorph ? 1 : 0; }
+/* Clamped control point i (0..11), or the reference 1.0 for a worm with none -- so a
+ * mutation driver can treat every animal uniformly. */
+export function getMorph(w: i32, i: i32): f64 {
+  const wm = byId(w);
+  if (!wm.ownMorph) return 1.0;
+  if (i < 0 || i >= 12) return 1.0;
+  return unchecked(wm.morphCtl[i]);
+}
 
 export function clearWorms(): void { worms = []; wormById = new Map<i32, Worm>(); }
 /* Remove one animal, whoever it is. Returns 1 if it was there.
@@ -3040,6 +3222,10 @@ export function hatchEgg(i: i32, seed: i32, heading: f64): i32 {
     wm.ownWeights = true;
     developWorm(id);
   }
+  /* Inherited morphology develops the same way: the egg's control points are rebuilt
+   * into the hatchling's own mechanics through the one builder every path uses. */
+  const em = unchecked(world.eggM[i]);
+  if (em !== null) applyMorphology(wm, em);
   world.takeEgg(i);
   return id;
 }

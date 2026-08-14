@@ -48,6 +48,13 @@ const METAB = 0.1, METAB_T = 240, METAB_WORKP = 2.0, METAB_FLOOR = 0.25;
 const METAB_KNEE = 0.35, METAB_HATCH = 0.6;
 const CORPSE = METAB * 0.5, CORPSE_YIELD = 0.8, CORPSE_R = 0.8;
 const BASAL = METAB / METAB_T, WORKC = BASAL / METAB_WORKP;
+/* Heritable chain morphology, on in the browser dish because it is the visible tier:
+ * lognormal sigma on the twelve control points at hatch (runtime clamps [0.25, 4]).
+ * The width profile is DRAWN -- each body's stroke follows its own inherited widths,
+ * so fat and thin lineages diverge before your eyes. Contracts and scope (no
+ * branching -- that is an engine rewrite) in wasm/morphology.test.mjs and the field
+ * block in wasm/assembly/index.ts. */
+const MMUT = 0.08;
 
 const [wasmBuf, modelBuf] = await Promise.all([
   fetch('worm.wasm').then((r) => r.arrayBuffer()),
@@ -136,6 +143,11 @@ function hatchDue() {
     for (let s = 0; s < GENES.length; s++) {
       E.setGene(id, s, clampGene(GENES[s], E.getGene(id, s) + normal() * MUT * scaleOf(GENES[s])));
     }
+    if (MMUT > 0) {
+      const ctl = Array.from({ length: 12 }, (_, j) =>
+        E.getMorph(id, j) * Math.exp(normal() * MMUT));
+      E.setMorphology(id, ...ctl);
+    }
     E.setMetabolism(id, METAB, BASAL, WORKC, METAB_FLOOR, METAB_KNEE, METAB_HATCH);
     founderOf.set(id, founderOf.get(parent) ?? -1);
     eatenAt.set(id, 0); births++;
@@ -189,11 +201,24 @@ function draw() {
     // dark of the dish -- the fade you see is the fade the muscles feel.
     const e = Math.max(0, Math.min(1, E.getEnergy(id) / METAB));
     ctx.strokeStyle = `hsl(${HUE(founderOf.get(id) ?? -1)} ${40 + 30 * e}% ${25 + 40 * e}%)`;
-    ctx.lineWidth = Math.max(1.5, 0.08 * s);
     ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(X(nx[0]), Y(ny[0]));
-    for (let i = 1; i <= 50; i++) ctx.lineTo(X(nx[i]), Y(ny[i]));
-    ctx.stroke();
+    const base = Math.max(1.5, 0.08 * s);
+    if (E.hasOwnMorphology(id)) {
+      // The inherited width profile, drawn: four control points, linear between,
+      // stroked segment by segment so the body is as fat as its drag says it is.
+      const cp = [E.getMorph(id, 4), E.getMorph(id, 5), E.getMorph(id, 6), E.getMorph(id, 7)];
+      for (let i = 0; i < 50; i++) {
+        const t = Math.min(2.999, ((i + 0.5) / 50) * 3), k = Math.floor(t), f = t - k;
+        ctx.lineWidth = base * (cp[k] + f * (cp[k + 1] - cp[k]));
+        ctx.beginPath(); ctx.moveTo(X(nx[i]), Y(ny[i]));
+        ctx.lineTo(X(nx[i + 1]), Y(ny[i + 1])); ctx.stroke();
+      }
+    } else {
+      ctx.lineWidth = base;
+      ctx.beginPath(); ctx.moveTo(X(nx[0]), Y(ny[0]));
+      for (let i = 1; i <= 50; i++) ctx.lineTo(X(nx[i]), Y(ny[i]));
+      ctx.stroke();
+    }
   }
 }
 

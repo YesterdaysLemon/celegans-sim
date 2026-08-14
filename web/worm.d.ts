@@ -239,6 +239,41 @@ declare namespace __AdaptedExports {
    */
   export function getDragPower(w: number): number;
   /**
+   * assembly/index/setMorphology
+   * @param w `i32`
+   * @param st0 `f64`
+   * @param st1 `f64`
+   * @param st2 `f64`
+   * @param st3 `f64`
+   * @param wd0 `f64`
+   * @param wd1 `f64`
+   * @param wd2 `f64`
+   * @param wd3 `f64`
+   * @param mu0 `f64`
+   * @param mu1 `f64`
+   * @param mu2 `f64`
+   * @param mu3 `f64`
+   */
+  export function setMorphology(w: number, st0: number, st1: number, st2: number, st3: number, wd0: number, wd1: number, wd2: number, wd3: number, mu0: number, mu1: number, mu2: number, mu3: number): void;
+  /**
+   * assembly/index/clearMorphology
+   * @param w `i32`
+   */
+  export function clearMorphology(w: number): void;
+  /**
+   * assembly/index/hasOwnMorphology
+   * @param w `i32`
+   * @returns `i32`
+   */
+  export function hasOwnMorphology(w: number): number;
+  /**
+   * assembly/index/getMorph
+   * @param w `i32`
+   * @param i `i32`
+   * @returns `f64`
+   */
+  export function getMorph(w: number, i: number): number;
+  /**
    * assembly/index/clearWorms
    */
   export function clearWorms(): void;
