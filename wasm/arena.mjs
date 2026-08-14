@@ -37,6 +37,17 @@
  * lawn, a gate bias that turns circling into lawn-holding -- every exploit that shows up
  * here is a measured defect or degeneracy of the reconstruction, found by creatures with
  * no incentive to be polite about it. Log them; they are the product.
+ *
+ * THE FIRST FULL RUN (2026-08-14, defaults, seed 1, 600 dish-seconds): first hatches at
+ * t = 90 s; dynasty F0 swept to fixation by t = 150 s; 124 born, 118 died, no eggs
+ * dropped. And one gene moved directionally and stayed moved: sen_proprio_gain climbed
+ * from the wild-type 30.0 to a stable 39.8 +- 3.3 by t = 450 s while gate_bias and
+ * food_gain barely drifted -- the dish, with no scorer, selected a stronger body reflex.
+ * WHY is a hypothesis, not a result (stronger drive between depleting lawns is the
+ * obvious story; a gain interaction nobody has looked for is the interesting one), and
+ * per the header above it is a fact about this reconstruction's fitness landscape, never
+ * about the animal. Laying also shut down in pulses as camped lawns ran dry -- the plate
+ * economy is a real constraint, not scenery. One run, one seed: patterns, not findings.
  */
 
 import {
