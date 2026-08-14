@@ -56,14 +56,18 @@ are ported to `wasm/assembly/index.ts` behind per-worm setters with all-zero def
 each with its own conformance case agreeing to 5e-13 mm / 5e-11 mV and each measurably
 doing something against its off control — see `docs/runtime-parity.md`. What remains:
 the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it), and
-the behavioural gate — **partially run 2026-08-14, and what completed carries a flag.**
-The paired run timed out after triage and chemotaxis (the machine was oversubscribed);
-those two phases say: **reversals roughly halve under the configuration** (triage −1.5
-[−2.8, −0.3]; chemotaxis −2.8 [−5.5, −0.2] per animal), while chemotaxis index, approach
-and weathervane show no detected effect at n=12 (smallest resolvable index change 0.085).
-Halved reversals on agar is a real behavioural change that adoption has to either accept
-with eyes open or attribute (cascade vs amine arm — the config bundles both). Aerotaxis,
-thermotaxis and nociception never ran; relaunch those three before the verdict.
+the behavioural gate — **now fully run (2026-08-14, five assay families), and its one
+finding is coherent: the configuration suppresses reversals globally.** Triage −1.5
+[−2.8, −0.3] per 60 s; chemotaxis −2.8 [−5.5, −0.2] per animal; nociception −1.37
+[−2.53, −0.21] reversals/min while clear (the tool scores that arm "better", but fewer
+spontaneous reversals is the same suppression wearing a flattering assay). Everything
+else: chemotaxis index/approach/weathervane no effect at n=12 (resolution 0.085);
+thermotaxis no effect at n=3 (resolution 16 mm — uninformative, honestly); aerotaxis "O2
+lowest reached" nominally worse at +1.47 [+0.06, +2.88] but n=2 and the CI grazes zero —
+thin. **What adoption needs now is attribution:** the config bundles the cascade and the
+amine arm, and a halved reversal rate must be assigned to one, the other, or their
+interaction before any default moves. The paired attribution runs (cascade-only and
+amine-only, triage + chemotaxis) were launched 2026-08-14; read those tables next.
 
 *(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
 below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
