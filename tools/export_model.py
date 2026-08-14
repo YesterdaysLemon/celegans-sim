@@ -35,6 +35,13 @@ import numpy as np
 from worm.body import Body
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
+from worm.senses import _receptive_fields
+
+# The swim-end proprioceptive reach carried in the payload for the amine load-sensing
+# path -- the third-calibration value from tools/amine_gait.py. A different calibration
+# means a re-export, which is the right coupling: the matrices are construction-time
+# data, exactly like every other precomputed map aboard.
+AMINE_REACH_SWIM = 0.48
 
 OUT = "web/worm.model"
 
@@ -210,16 +217,10 @@ OPTIONAL_SCALARS = frozenset()
 # tools/conform.py and wasm/conform.mjs to cover both sides, rebuild the pair, then delete
 # the line here in the same commit.
 RUNTIME_UNSUPPORTED = {
-    # The head-reflex cascade. Read in Senses.__init__, but what it builds is a step-time
-    # branch (`_head_chain`) rather than an array the payload could carry, so re-exporting
-    # cannot help. `head_stages = 1` is the single-lag reflex the runtime implements.
-    "sensory.head_stages": 1,
-    # Redundant while head_stages == 1: with one stage `_head_chain` is None and
-    # `_head_stage_decay` is never read, so any value of head_stage_tau gives an identical
-    # animal (measured: 0.11 moves nothing over 1200 steps). Kept belt-and-braces, but note
-    # that the assertion's "the runtime implements only 0.0" is imprecise for this one entry
-    # -- with a single stage the runtime is equivalent to every value of it.
-    "sensory.head_stage_tau": 0.0,
+    # The head-reflex cascade left this registry with the 2026-08-14 port: HEAD_STAGES
+    # and HEAD_STAGE_DECAY are exported scalars, wasm/assembly/index.ts implements the
+    # stage chain in both reflex forms, and conformance runs a stages = 4 case through
+    # setHeadCascade. Route 2 now; see docs/runtime-parity.md.
     # Muscle force-velocity. Measured under tools/force_velocity.py and not adopted: it
     # narrows the gait-modulation span instead of widening it, and it costs the crawl.
     # `fv_vmax = 0.0` disables the whole term, including the rate low-pass in engine.py,
@@ -406,6 +407,15 @@ def export(path=OUT, params=None):
 
     # -- muscle -------------------------------------------------------------------------
     b.csr("mus", mus.G)
+    # The raw, pre-balance conductances, and the two reversal potentials that let the
+    # runtime tell an excitatory column from an inhibitory one. Together with the
+    # constants already exported these make the per-cell balance recomputable from the
+    # payload -- checkBalance() in wasm/assembly/index.ts runs the same 70-iteration
+    # bisection worm/muscle.py::_balance does and reports the worst deviation from the
+    # shipped balanced matrix. Same sparsity pattern as "mus" by construction.
+    b.csr("mus_raw", mus.G_raw)
+    b.f("mus_E_exc", p.muscle.E_exc)
+    b.f("mus_E_inh", p.muscle.E_inh)
     b.arr("mus_E_pre", mus.E_pre)
     b.arr("mus_G_gap", mus.G_gap).arr("mus_gap_total", mus.gap_total)
     b.arr("mus_phasic_gain", mus.phasic_gain)
@@ -448,6 +458,29 @@ def export(path=OUT, params=None):
     b.arr("g_scale_prop", sen.g_scale_prop).arr("g_scale_head", sen.g_scale_head)
     b.i("head_delay_n", sen._head_delay_n)
     b.f("head_decay", sen._head_decay)
+    # The cascade (Route 2 as of the 2026-08-14 port). At the canonical defaults this is
+    # stages = 1 and the runtime takes its single-lag path unchanged; conformance
+    # exercises stages = 4 through setHeadCascade against this same payload.
+    b.i("head_stages", sen._head_stages)
+    b.f("head_stage_decay", sen._head_stage_decay)
+    # The taus behind the decays, for the amine path: dopamine rescales the reflex and
+    # muscle time constants at run time, so the runtime recomputes the decays from tau
+    # and scale the same way worm/senses.py and worm/muscle.py do. At scale 1 the
+    # precomputed decays are used and these are never read.
+    b.f("head_stage_tau", sen._head_stage_tau)
+    b.f("head_tau", p.sensory.head_tau)
+    b.f("mus_tau_ca", p.muscle.tau_calcium)
+    b.f("mus_tau_te", p.muscle.tau_tension)
+    # The swim-end receptive fields, at the reach the amine research configuration was
+    # calibrated to (tools/amine_gait.py, third calibration). Auxiliary payload in the
+    # same sense as mus_raw: the canonical step never reads them, and setAminePath turns
+    # them on per worm. Built with the same _receptive_fields the live matrices use, so
+    # the Python conformance side constructs bit-identical values.
+    swim_joint_s = np.arange(1, p.body.n_links) / p.body.n_links
+    b.csr("wbs", _receptive_fields(conn, sen.db, sen.vb, swim_joint_s,
+                                   AMINE_REACH_SWIM, +1))
+    b.csr("was", _receptive_fields(conn, sen.da, sen.va, swim_joint_s,
+                                   AMINE_REACH_SWIM, -1))
     b.f("prop_adapt_rate", sen._prop_adapt_rate)
     b.f("chem_decay", sen._chem_decay).f("odour_decay", sen._odour_decay)
     b.f("odour_rate", sen._odour_rate).f("therm_decay", sen._therm_decay)

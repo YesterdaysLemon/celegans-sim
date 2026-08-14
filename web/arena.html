@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Arena — celegans-sim</title>
+<style>
+  /* Self-contained on purpose: this page imports nothing from viewer/, so the canonical
+     viewer's checked module graph is untouched. One dish, one script, no build step. */
+  html, body { margin: 0; height: 100%; background: #0b0e12; color: #cfd8e3;
+               font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #wrap { display: flex; flex-direction: column; height: 100%; }
+  header { padding: 10px 14px; display: flex; gap: 18px; align-items: baseline;
+           border-bottom: 1px solid #1d2530; flex-wrap: wrap; }
+  header b { color: #e8eef6; font-size: 14px; }
+  header a { color: #7fb4ff; text-decoration: none; }
+  header .warn { color: #d9a441; }
+  canvas { flex: 1; width: 100%; height: 100%; display: block; }
+  #hud { padding: 8px 14px; border-top: 1px solid #1d2530; white-space: pre; overflow-x: auto; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <b>The Arena</b>
+    <span class="warn">Track B — nothing in this dish is a claim about <i>C. elegans</i>.</span>
+    <span>Descent with modification on a finite plate: eggs hatch, the least-fed starve at
+    the cap, and every niche a lineage finds is a measured defect of the reconstruction.</span>
+    <a href="index.html">→ the reference animal's dish</a>
+  </header>
+  <canvas id="dish"></canvas>
+  <div id="hud">booting…</div>
+</div>
+<script type="module">
+/* The in-browser arena: the same policy loop as wasm/arena.mjs, drawn live.
+ * Mechanism belongs to the runtime (layEgg, hatchEgg, removeWorm); the three decisions a
+ * dish cannot make are policy, stated in wasm/arena.mjs's header and repeated compressed:
+ * compressed incubation, mutation at hatch, death by carrying capacity. */
+const CAP = 10, FOUNDERS = 4, MUT = 0.10, INCUBATION = 60, SEED = 1;
+const STEPS_PER_FRAME = 200;                     // dish time per rendered frame
+
+const [wasmBuf, modelBuf] = await Promise.all([
+  fetch('worm.wasm').then((r) => r.arrayBuffer()),
+  fetch('worm.model').then((r) => r.arrayBuffer()),
+]);
+const dv = new DataView(modelBuf);
+const headLen = dv.getUint32(8, true);
+const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(modelBuf, 12, headLen)));
+const payload = new Uint8Array(modelBuf, 12 + headLen);
+const GENES = meta.genes || [];
+const DT = meta.scalars.dt;
+
+const inst = new WebAssembly.Instance(new WebAssembly.Module(wasmBuf), {
+  env: { abort() { throw new Error('wasm abort'); } },
+});
+const E = inst.exports;
+const raw = E.alloc(payload.length + 8);
+const base = (raw + 7) & ~7;
+new Uint8Array(E.memory.buffer).set(payload, base);
+E.setPayload(base);
+E.initWorld();
+E.setNoise(1);
+
+/* Seeded PRNG + gaussian, mirroring wasm/evolve.mjs so a seeded dish replays. */
+let rs = SEED >>> 0;
+const rand = () => {
+  rs = (rs + 0x6D2B79F5) >>> 0;
+  let t = Math.imul(rs ^ (rs >>> 15), 1 | rs);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+const normal = () => {
+  const u = Math.max(rand(), 1e-12), v = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+};
+const scaleOf = (name) => Math.abs(meta.scalars[name]) || 1.0;
+const clampGene = (name, v) => (name === 'sen_gate_bias' ? v : Math.max(0, v));
+
+const LAWNS = [[-8, 5, 4], [7, -4, 4], [0, 9, 3]];
+E.addFood(-8, 5, 4, 1.0, 1.0, 9.0);
+E.addFood(7, -4, 4, 1.0, 1.0, 9.0);
+E.addFood(0, 9, 3, 1.0, 0.8, 8.0);
+
+const founderOf = new Map(); const eatenAt = new Map();
+let simT = 0, births = 0, deaths = 0, iota = 1000;
+for (let i = 0; i < FOUNDERS; i++) {
+  const a = (2 * Math.PI * i) / FOUNDERS;
+  const id = E.createWorm(SEED + i, 6 * Math.cos(a), 6 * Math.sin(a), a + Math.PI / 2);
+  founderOf.set(id, i); eatenAt.set(id, 0);
+}
+const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k));
+
+function cullTo(cap) {
+  while (E.wormCount() > cap) {
+    let worst = -1, low = Infinity;
+    for (const id of ids()) {
+      const recent = E.getEaten(id) - (eatenAt.get(id) ?? 0);
+      if (recent < low) { low = recent; worst = id; }
+    }
+    E.removeWorm(worst); founderOf.delete(worst); eatenAt.delete(worst); deaths++;
+  }
+}
+function hatchDue() {
+  for (let i = E.eggCount() - 1; i >= 0; i--) {
+    if (simT - E.eggTime(i) < INCUBATION) continue;
+    const parent = E.eggParent(i);
+    const id = E.hatchEgg(i, SEED + iota++, rand() * 2 * Math.PI);
+    if (id < 0) continue;
+    for (let s = 0; s < GENES.length; s++) {
+      E.setGene(id, s, clampGene(GENES[s], E.getGene(id, s) + normal() * MUT * scaleOf(GENES[s])));
+    }
+    founderOf.set(id, founderOf.get(parent) ?? -1);
+    eatenAt.set(id, 0); births++;
+    cullTo(CAP);
+  }
+}
+
+const canvas = document.getElementById('dish');
+const hud = document.getElementById('hud');
+const ctx = canvas.getContext('2d');
+const F64 = () => new Float64Array(E.memory.buffer);
+const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
+const R_DISH = 22;                                 // mm of dish shown
+
+function draw() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const s = Math.min(w, h) / (2 * R_DISH);
+  const X = (x) => w / 2 + x * s, Y = (y) => h / 2 - y * s;
+  ctx.fillStyle = '#0b0e12'; ctx.fillRect(0, 0, w, h);
+  for (const [lx, ly, lr] of LAWNS) {
+    const g = ctx.createRadialGradient(X(lx), Y(ly), 0, X(lx), Y(ly), lr * 2.2 * s);
+    g.addColorStop(0, 'rgba(70,140,60,0.35)'); g.addColorStop(1, 'rgba(70,140,60,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(X(lx), Y(ly), lr * 2.2 * s, 0, 7); ctx.fill();
+  }
+  const nE = E.eggCount();
+  const ex = F64().subarray(E.ptrEggX() >> 3, (E.ptrEggX() >> 3) + nE);
+  const ey = F64().subarray(E.ptrEggY() >> 3, (E.ptrEggY() >> 3) + nE);
+  ctx.fillStyle = '#e8d9a0';
+  for (let i = 0; i < nE; i++) {
+    ctx.beginPath(); ctx.arc(X(ex[i]), Y(ey[i]), 2.2, 0, 7); ctx.fill();
+  }
+  for (const id of ids()) {
+    const nx = F64().subarray(E.ptrNodesX(id) >> 3, (E.ptrNodesX(id) >> 3) + 51);
+    const ny = F64().subarray(E.ptrNodesY(id) >> 3, (E.ptrNodesY(id) >> 3) + 51);
+    ctx.strokeStyle = `hsl(${HUE(founderOf.get(id) ?? -1)} 70% 62%)`;
+    ctx.lineWidth = Math.max(1.5, 0.08 * s);
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(X(nx[0]), Y(ny[0]));
+    for (let i = 1; i <= 50; i++) ctx.lineTo(X(nx[i]), Y(ny[i]));
+    ctx.stroke();
+  }
+}
+
+let acc = 0;
+function frame() {
+  E.stepAll(STEPS_PER_FRAME);
+  simT += STEPS_PER_FRAME * DT;
+  hatchDue();
+  if ((acc++ & 15) === 0) {
+    for (const id of ids()) eatenAt.set(id, E.getEaten(id));
+    const dyn = new Map();
+    for (const id of ids()) { const f = founderOf.get(id) ?? -1; dyn.set(f, (dyn.get(f) ?? 0) + 1); }
+    const dynasties = Array.from(dyn.entries()).sort((a, b) => b[1] - a[1])
+      .map(([f, n]) => `${f < 0 ? 'orphan' : 'F' + f}:${n}`).join('  ');
+    hud.textContent = `dish ${simT.toFixed(0)} s   population ${E.wormCount()}/${CAP}`
+      + `   eggs ${E.eggCount()}   born ${births}   died ${deaths}   dynasties  ${dynasties}`;
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

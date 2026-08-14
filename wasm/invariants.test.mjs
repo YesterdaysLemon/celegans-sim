@@ -43,6 +43,19 @@ E.initWorld();
 const OK = E.INVARIANT_OK.valueOf();
 const CURVATURE = E.INVARIANT_CURVATURE_OVER_LIMIT.valueOf();
 
+test('the muscle balance is recomputable from the raw payload', () => {
+  // checkBalance() reruns worm/muscle.py::_balance -- row equalisation plus the
+  // 70-iteration per-cell bisection -- from the RAW conductances the exporter now
+  // carries, and reports the worst deviation from the shipped balanced matrix. The
+  // tolerance is rounding (numpy sums pairwise, the runtime sequentially), not slack:
+  // anything past 1e-9 is a wrong balance, not an imprecise one. This is what makes
+  // heritable weights auditable -- an evolved matrix can be rebalanced and *checked*
+  // browser-side, with no Python in the loop.
+  const worst = E.checkBalance();
+  assert.ok(worst < 1e-9, `balance deviates by ${worst}`);
+  assert.ok(worst > 0, 'a literal zero would mean the comparison compared nothing');
+});
+
 test('a healthy animal passes', () => {
   const w = E.createWorm(0, 0.0, 0.0, 0.0);
   assert.equal(E.checkInvariants(w), OK, 'a fresh animal must be physical');

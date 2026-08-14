@@ -783,6 +783,27 @@ class Worm {
   propAdapt: StaticArray<f64> = new StaticArray<f64>(G.N_NEURONS);
   headHist: StaticArray<f64> = new StaticArray<f64>((G.HEAD_DELAY_N + 1) * G.N_JOINTS);
   headHistI: i32 = 0;
+  // The head cascade (worm/senses.py `_head_chain`): N first-order stages in series, so
+  // phase adds instead of averaging. Per-worm rather than G-baked so conformance can
+  // exercise stages > 1 against the same payload -- see setHeadCascade. At the exported
+  // defaults (stages 1) the chain is empty and the step below takes the single-lag path
+  // unchanged, byte for byte.
+  headStages: i32 = G.HEAD_STAGES;
+  headStageDecay: f64 = G.HEAD_STAGE_DECAY;
+  headStageTau: f64 = G.HEAD_STAGE_TAU;
+  headDelayN: i32 = G.HEAD_DELAY_N;
+  headChain: StaticArray<f64> = new StaticArray<f64>(0);
+  // The amine load-sensing path (worm/params.py, the provenance at load_gain). All five
+  // coefficients default to zero, which is the canonical animal untouched -- the same
+  // off-is-identical contract the Python side proves by bit-identity. setAminePath turns
+  // them on per worm; the swim receptive fields ride in the payload as wbs/was.
+  amLoadGain: f64 = 0.0;
+  amLoadHalf: f64 = 1.0;
+  amHeadLag: f64 = 0.0;
+  amReachBlend: f64 = 0.0;
+  amMuscleRate: f64 = 0.0;
+  amLoad: f64 = 0.0;
+  qdotSave: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
   repAdapt: f64 = 0.0;
   adaptReady: bool = false;
@@ -1048,12 +1069,18 @@ class Worm {
       }
       for (let r = 0; r < mm; r++) unchecked(sMVn[r] = unchecked(sMgap[r]));
     }
+    // The amine path's third effect: dopamine's withdrawal speeds the EC cascade
+    // (worm/muscle.py step, rate_scale). At scale 1 the precomputed decays are used
+    // unchanged; the np.exp form matches worm/muscle.py exactly.
+    const mrScale = this.amMuscleRateScale();
+    const decCa = mrScale == 1.0 ? G.MUS_DECAY_CA : Math.exp(-G.DT / (G.MUS_TAU_CA * mrScale));
+    const decTe = mrScale == 1.0 ? G.MUS_DECAY_TE : Math.exp(-G.DT / (G.MUS_TAU_TE * mrScale));
     for (let i = 0; i < mm; i++) {
       unchecked(this.mV[i] = unchecked(sMVn[i]));
       const target = sigmoid(G.MUS_BETA * (unchecked(this.mV[i]) - G.MUS_V_HALF));
-      unchecked(this.mCa[i] = target + (unchecked(this.mCa[i]) - target) * G.MUS_DECAY_CA);
+      unchecked(this.mCa[i] = target + (unchecked(this.mCa[i]) - target) * decCa);
       unchecked(this.mTen[i] = unchecked(this.mCa[i])
-                + (unchecked(this.mTen[i]) - unchecked(this.mCa[i])) * G.MUS_DECAY_TE);
+                + (unchecked(this.mTen[i]) - unchecked(this.mCa[i])) * decTe);
     }
   }
 
@@ -1244,7 +1271,56 @@ class Worm {
     this.bx += unchecked(Q[0]) * dt;
     this.by += unchecked(Q[1]) * dt;
     for (let i = 0; i < n; i++) unchecked(this.theta[i] += unchecked(Q[2 + i]) * dt);
+    // The amine path reads the drag force the cuticle bore, which needs the qdot that
+    // produced this step's positions -- the same pairing worm/body.py::drag_load uses.
+    // Only kept when the path is on; the canonical animal skips the copy.
+    if (this.amLoadGain != 0.0) {
+      for (let i = 0; i < N; i++) unchecked(this.qdotSave[i] = unchecked(Q[i]));
+    }
     this.updateNodes();
+  }
+
+  /* Mean drag force per unit length on the cuticle, uN/mm: worm/body.py::drag_load
+   * ported term for term. Segment-midpoint velocities from the saved qdot, tangential
+   * and normal components against the current link frames, |c x v| averaged along the
+   * body. The one gait signal measured to survive below the K ~ 8 knee. */
+  dragLoad(): f64 {
+    const n = G.N_LINKS, l = G.BODY_L;
+    let cumX: f64 = 0.0, cumY: f64 = 0.0;   // accumulated rotational contribution
+    let sum: f64 = 0.0;
+    for (let i = 0; i < n; i++) {
+      const th = unchecked(this.theta[i]);
+      const ux = Math.cos(th), uy = Math.sin(th);
+      const nx = -uy, ny = ux;
+      const cx = l * nx * unchecked(this.qdotSave[2 + i]);
+      const cy = l * ny * unchecked(this.qdotSave[2 + i]);
+      const vx = unchecked(this.qdotSave[0]) + cumX + 0.5 * cx;
+      const vy = unchecked(this.qdotSave[1]) + cumY + 0.5 * cy;
+      cumX += cx; cumY += cy;
+      const vt = vx * ux + vy * uy;
+      const vn = vx * nx + vy * ny;
+      sum += Math.sqrt(this.cT * vt * (this.cT * vt) + this.cN * vn * (this.cN * vn));
+    }
+    return sum / <f64>n;
+  }
+
+  /* The three amine effects, mirroring worm/modulators.py exactly: floors 0.4 and 0.5,
+   * engagement as dopamine falls below its 0.5 ceiling, coefficient zero returning the
+   * exact neutral value so the off state is the canonical step. */
+  amHeadLagScale(): f64 {
+    if (this.amHeadLag == 0.0) return 1.0;
+    const d = 0.5 - this.modDA;
+    return clamp(1.0 - this.amHeadLag * (d > 0.0 ? d : 0.0), 0.4, 1.0);
+  }
+  amMuscleRateScale(): f64 {
+    if (this.amMuscleRate == 0.0) return 1.0;
+    const d = 0.5 - this.modDA;
+    return clamp(1.0 - this.amMuscleRate * (d > 0.0 ? d : 0.0), 0.5, 1.0);
+  }
+  amSwimBlend(): f64 {
+    if (this.amReachBlend == 0.0) return 0.0;
+    const d = 0.5 - this.modDA;
+    return clamp(this.amReachBlend * (d > 0.0 ? d : 0.0), 0.0, 1.0);
   }
 
   /* --------------------------------------------------------------------- modulators --
@@ -1371,6 +1447,13 @@ class Worm {
 
     // -- food, sensed by the dopaminergic mechanoreceptors and tasted by NSM
     this.addTo(G.OFF_idx_dopaminergic, G.LEN_idx_dopaminergic, this.gene(G.GENE_SEN_FOOD_GAIN) * food);
+    // The same mechanoreceptors also feel the substrate pushing back -- the amine
+    // load-sensing path's transduction, saturating because the raw force spans four
+    // decades across the media (worm/senses.py).
+    if (this.amLoadGain != 0.0 && this.amLoad > 0.0) {
+      this.addTo(G.OFF_idx_dopaminergic, G.LEN_idx_dopaminergic,
+                 this.amLoadGain * (this.amLoad / (this.amLoad + this.amLoadHalf)));
+    }
     this.addTo(G.OFF_idx_nsm, G.LEN_idx_nsm, this.gene(G.GENE_SEN_FOOD_GAIN) * food);
 
     // -- locomotory command bias: a bias, not a clamp
@@ -1446,6 +1529,18 @@ class Worm {
         unchecked(sWav[r] = (1.0 - short) * unchecked(sWav[r]) + short * unchecked(sWaf[r]));
       }
     }
+    // The amine path lengthens the wave as dopamine falls: blend toward the swim-end
+    // fields the payload carries as wbs/was, after the food blend, mirroring
+    // worm/senses.py's ordering exactly.
+    const swim = this.amSwimBlend();
+    if (swim > 1e-6) {
+      spmv(G.OFF_wbs_ptr, G.OFF_wbs_idx, G.OFF_wbs_val, n, sKn, sWbf);
+      spmv(G.OFF_was_ptr, G.OFF_was_idx, G.OFF_was_val, n, sKn, sWaf);
+      for (let r = 0; r < n; r++) {
+        unchecked(sWbv[r] = (1.0 - swim) * unchecked(sWbv[r]) + swim * unchecked(sWbf[r]));
+        unchecked(sWav[r] = (1.0 - swim) * unchecked(sWav[r]) + swim * unchecked(sWaf[r]));
+      }
+    }
     for (let r = 0; r < n; r++) {
       const wb = unchecked(sWbv[r]), wa = unchecked(sWav[r]);
       const raw = wb * fwd + wa * bwd;
@@ -1457,12 +1552,12 @@ class Worm {
     // -- the head reflex. It runs whichever way the animal is going: it is what keeps the
     //    nose sweeping, and the sweep is what steering acts on.
     let headOff: i32 = 0;
-    if (G.HEAD_DELAY_N > 0) {
+    if (this.headDelayN > 0) {
       // Buffer the curvature, not the reduced signal, so the delay sits where a
       // transduction delay physically would -- between strain and receptor.
       const wslot = this.headHistI * J;
       for (let j = 0; j < J; j++) unchecked(this.headHist[wslot + j] = unchecked(sKn[j]));
-      this.headHistI = (this.headHistI + 1) % (G.HEAD_DELAY_N + 1);
+      this.headHistI = (this.headHistI + 1) % (this.headDelayN + 1);
       headOff = this.headHistI * J;
     }
     let headGain = this.gene(G.GENE_SEN_HEAD_PROPRIO_GAIN);
@@ -1471,21 +1566,63 @@ class Worm {
       headGain *= f > 0.0 ? f : 0.0;
     }
     for (let j = 0; j < J; j++) {
-      unchecked(sKh[j] = G.HEAD_DELAY_N > 0 ? unchecked(this.headHist[headOff + j])
-                                            : unchecked(sKn[j]));
+      unchecked(sKh[j] = this.headDelayN > 0 ? unchecked(this.headHist[headOff + j])
+                                             : unchecked(sKn[j]));
     }
     if (G.HEAD_DISTRIBUTED) {
       spmv(G.OFF_whead_ptr, G.OFF_whead_idx, G.OFF_whead_val, n, sKh, sWhv);
-      for (let r = 0; r < n; r++) {
-        const raw = unchecked(sWhv[r]);
-        unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * (1.0 - G.HEAD_DECAY));
-        unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
-                  * m(G.OFF_g_scale_head, r));
+      if (this.headStages > 1) {
+        // The cascade: each stage sees the previous stage's output, which is what makes
+        // the phase add rather than average (worm/senses.py). Per-neuron elements are
+        // independent, so the neuron-outer loop is numerically identical to the
+        // stage-outer vector form the Python uses. The amine path quickens the stages as
+        // dopamine falls; at scale 1 the precomputed decay is used unchanged, and the
+        // -expm1 form matches worm/senses.py exactly.
+        const lagScale = this.amHeadLagScale();
+        const a = lagScale == 1.0 ? 1.0 - this.headStageDecay
+                : -Math.expm1(-G.DT / (this.headStageTau * lagScale));
+        const S = this.headStages - 1;
+        for (let r = 0; r < n; r++) {
+          let raw = unchecked(sWhv[r]);
+          for (let s = 0; s < S; s++) {
+            const idx = s * n + r;
+            unchecked(this.headChain[idx] += (raw - unchecked(this.headChain[idx])) * a);
+            raw = unchecked(this.headChain[idx]);
+          }
+          unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * a);
+          unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+                    * m(G.OFF_g_scale_head, r));
+        }
+      } else {
+        const lagScale = this.amHeadLagScale();
+        const a1 = lagScale == 1.0 ? 1.0 - G.HEAD_DECAY
+                 : -Math.expm1(-G.DT / (G.HEAD_TAU * lagScale));
+        for (let r = 0; r < n; r++) {
+          const raw = unchecked(sWhv[r]);
+          unchecked(this.headSignal[r] += (raw - unchecked(this.headSignal[r])) * a1);
+          unchecked(sIext[r] += Math.tanh(unchecked(this.headSignal[r])) * headGain
+                    * m(G.OFF_g_scale_head, r));
+        }
       }
     } else {
       let raw: f64 = 0.0;
       for (let j = 0; j < J; j++) raw += m(G.OFF_head_window, j) * unchecked(sKh[j]);
-      unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * (1.0 - G.HEAD_DECAY));
+      if (this.headStages > 1) {
+        const lagScale = this.amHeadLagScale();
+        const a = lagScale == 1.0 ? 1.0 - this.headStageDecay
+                : -Math.expm1(-G.DT / (this.headStageTau * lagScale));
+        const S = this.headStages - 1;
+        for (let s = 0; s < S; s++) {
+          unchecked(this.headChain[s] += (raw - unchecked(this.headChain[s])) * a);
+          raw = unchecked(this.headChain[s]);
+        }
+        unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * a);
+      } else {
+        const lagScale = this.amHeadLagScale();
+        const a1 = lagScale == 1.0 ? 1.0 - G.HEAD_DECAY
+                 : -Math.expm1(-G.DT / (G.HEAD_TAU * lagScale));
+        unchecked(this.headSignal[0] += (raw - unchecked(this.headSignal[0])) * a1);
+      }
       const v = Math.tanh(unchecked(this.headSignal[0])) * headGain;
       for (let r = 0; r < n; r++) {
         unchecked(sIext[r] += m(G.OFF_W_head_sign, r) * m(G.OFF_g_scale_head, r) * v);
@@ -1574,6 +1711,9 @@ class Worm {
     // wireless layer is one step behind the wired one -- the same consistent unit delay
     // used everywhere else in this model.
     this.stepModulators();
+    // The amine path reads the drag force the cuticle bore on the previous step -- the
+    // same unit delay every other sensory quantity carries (worm/engine.py).
+    this.amLoad = this.amLoadGain != 0.0 ? this.dragLoad() : 0.0;
     this.sense();
     this.stepNervous();
     this.stepMuscle();
@@ -1846,6 +1986,98 @@ export function getGene(w: i32, slot: i32): f64 {
 }
 // Put an animal back to the unmutated model, which is also what a fresh worm starts as.
 export function resetGenes(w: i32): void { byId(w).resetGenes(); }
+// Configure the head cascade per worm: stage count, per-stage decay exp(-dt/stage_tau),
+// and the transport-delay length in steps. Exists so conformance can exercise the
+// cascade against the same payload the canonical animal ships with; the exported
+// defaults (G.HEAD_STAGES = 1) leave the single-lag reflex byte-identical. delayN is
+// clamped to the ring the worm was built with -- it can be shortened at runtime but not
+// lengthened past the payload's allocation.
+// Recompute the per-cell muscle balance from the RAW conductances in the payload and
+// report the worst absolute deviation from the shipped balanced matrix. This is
+// worm/muscle.py::_balance ported line for line -- row equalisation, then a 70-iteration
+// bisection of each cell's excitatory scale over [1e-4, 5e3] -- and it exists so the
+// payload is self-checking: with only the balanced G aboard, the calibration could be
+// neither recomputed nor verified from the browser's side, which was the blocker on
+// heritable weights and topology. Exactness caveat, stated rather than hidden: numpy sums
+// rows pairwise and this sums them sequentially, so agreement is to rounding (~1e-12),
+// not to the bit. The invariants test pins 1e-9.
+export function checkBalance(): f64 {
+  const M = G.N_MUSCLES;
+  // Row totals of the raw matrix, and their mean.
+  let meanTotal: f64 = 0.0;
+  const totals = new StaticArray<f64>(M);
+  for (let r = 0; r < M; r++) {
+    const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
+    let t: f64 = 0.0;
+    for (let k = lo; k < hi; k++) t += m(G.OFF_mus_raw_val, k);
+    unchecked(totals[r] = t);
+    meanTotal += t;
+  }
+  meanTotal /= <f64>M;
+  let worst: f64 = 0.0;
+  for (let r = 0; r < M; r++) {
+    const lo = mi(G.OFF_mus_raw_ptr, r), hi = mi(G.OFF_mus_raw_ptr, r + 1);
+    const s1 = meanTotal / Math.max(unchecked(totals[r]), 1e-9);
+    // Resting conductance split by column class, after the row equalisation.
+    let gExc: f64 = 0.0, gInh: f64 = 0.0;
+    for (let k = lo; k < hi; k++) {
+      const j = mi(G.OFF_mus_raw_idx, k);
+      const g = m(G.OFF_mus_raw_val, k) * s1 * G.MUS_S_EQ;
+      if (m(G.OFF_mus_E_pre, j) == G.MUS_E_INH) gInh += g;
+      else gExc += g;
+    }
+    let alpha: f64 = 1.0;
+    if (gExc > 1e-9) {
+      let blo: f64 = 1e-4, bhi: f64 = 5e3;
+      for (let it = 0; it < 70; it++) {
+        const mid = 0.5 * (blo + bhi);
+        const ge = gExc * mid;
+        const gTot = G.MUS_G_LEAK + ge + gInh;
+        const V = (G.MUS_G_LEAK * G.MUS_E_LEAK + ge * G.MUS_E_EXC + gInh * G.MUS_E_INH) / gTot;
+        if (sigmoid(G.MUS_BETA * (V - G.MUS_V_HALF)) < G.MUS_REST_TENSION) blo = mid;
+        else bhi = mid;
+      }
+      alpha = 0.5 * (blo + bhi);
+    }
+    // Rebuild the balanced row and compare against the shipped one; the two CSRs share a
+    // sparsity pattern by construction, so aligned iteration is a value-for-value walk.
+    for (let k = lo; k < hi; k++) {
+      const j = mi(G.OFF_mus_raw_idx, k);
+      const scale = m(G.OFF_mus_E_pre, j) == G.MUS_E_INH ? s1 : s1 * alpha;
+      const rebuilt = m(G.OFF_mus_raw_val, k) * scale;
+      const d = Math.abs(rebuilt - m(G.OFF_mus_val, k));
+      if (d > worst) worst = d;
+    }
+  }
+  return worst;
+}
+
+// NOTE: no default on stageTau -- an optional parameter on a raw-bindings export traps
+// on the arguments-length check. Pass 0.0 to keep the exported G.HEAD_STAGE_TAU.
+export function setHeadCascade(w: i32, stages: i32, stageDecay: f64, delayN: i32,
+                               stageTau: f64): void {
+  const worm = byId(w);
+  worm.headStages = stages < 1 ? 1 : stages;
+  worm.headStageDecay = stageDecay;
+  worm.headStageTau = stageTau > 0.0 ? stageTau : G.HEAD_STAGE_TAU;
+  worm.headDelayN = delayN < 0 ? 0 : (delayN > G.HEAD_DELAY_N ? G.HEAD_DELAY_N : delayN);
+  const S = worm.headStages - 1;
+  worm.headChain = new StaticArray<f64>(S * (G.HEAD_DISTRIBUTED ? G.N_NEURONS : 1));
+}
+
+// Turn on the amine load-sensing path for one worm: transduction gain and
+// half-saturation, then the three effect coefficients (head lag, reach blend toward the
+// payload's swim fields, muscle EC rate). All-zero is the canonical animal; the research
+// calibration is in tools/amine_gait.py and the provenance at SensoryParams.load_gain.
+export function setAminePath(w: i32, loadGain: f64, loadHalf: f64, headLag: f64,
+                             reachBlend: f64, muscleRate: f64): void {
+  const worm = byId(w);
+  worm.amLoadGain = loadGain;
+  worm.amLoadHalf = loadHalf;
+  worm.amHeadLag = headLag;
+  worm.amReachBlend = reachBlend;
+  worm.amMuscleRate = muscleRate;
+}
 export function clearWorms(): void { worms = []; wormById = new Map<i32, Worm>(); }
 /* Remove one animal, whoever it is. Returns 1 if it was there.
  *

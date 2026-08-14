@@ -233,7 +233,7 @@ const headLen = dv.getUint32(8, true);
 const head = JSON.parse(new TextDecoder().decode(modelBuf.subarray(12, 12 + headLen)));
 const payload = modelBuf.subarray(12 + headLen);
 const compiled = new WebAssembly.Module(wasmBuf);
-const GENES = head.genes || [];
+export const GENES = head.genes || [];
 if (!GENES.length) {
   bail('this model declares no genes; export it from a tree that has them');
 }
@@ -302,8 +302,8 @@ const BOUNDS = {
   sen_gate_hysteresis: [0.005, 0.5],   // zero is a latch with no window at all
   mod_serotonin_mod1: [0.0, 2.0],
 };
-const scaleOf = (name) => SCALE[name] ?? (Math.abs(head.scalars[name]) || 1.0);
-const clampGene = (name, v) => {
+export const scaleOf = (name) => SCALE[name] ?? (Math.abs(head.scalars[name]) || 1.0);
+export const clampGene = (name, v) => {
   const b = BOUNDS[name];
   if (b) return Math.min(b[1], Math.max(b[0], v));
   // Everything else is a gain or a drive. Negative would invert a pathway rather than
@@ -313,7 +313,7 @@ const clampGene = (name, v) => {
 
 /* A seeded PRNG, so a run is reproducible from EVO_SEED. Math.random would make every
  * result a story rather than a measurement. */
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6D2B79F5) >>> 0;
@@ -322,7 +322,7 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function normalFrom(rand) {                // Box-Muller
+export function normalFrom(rand) {                // Box-Muller
   return () => {
     const u = Math.max(rand(), 1e-12), v = rand();
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
