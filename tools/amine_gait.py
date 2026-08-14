@@ -139,6 +139,7 @@ LOAD_HALF = float(os.environ.get("AMINE_LOAD_HALF", 1.0))
 HEAD_LAG = float(os.environ.get("AMINE_HEAD_LAG", 1.30))
 REACH_SWIM = float(os.environ.get("AMINE_REACH_SWIM", 0.48))
 REACH_BLEND = float(os.environ.get("AMINE_REACH_BLEND", 2.0))
+MUSCLE_RATE = float(os.environ.get("AMINE_MUSCLE_RATE", 0.9))
 
 # The shipped model's locus on the same protocol (tools/flambda_locus.py, 2026-08-12),
 # for the side-by-side: (K, freq, wavelength).
@@ -155,7 +156,8 @@ def amine_params(med) -> Params:
             p.sensory, head_stages=4, head_delay=0.0, head_stage_tau=0.125,
             load_gain=LOAD_GAIN, load_half=LOAD_HALF, proprio_reach_swim=REACH_SWIM),
         modulator=dataclasses.replace(
-            p.modulator, dopamine_head_lag=HEAD_LAG, dopamine_reach_swim=REACH_BLEND))
+            p.modulator, dopamine_head_lag=HEAD_LAG, dopamine_reach_swim=REACH_BLEND,
+            dopamine_muscle_rate=MUSCLE_RATE))
 
 
 def _job(job):
@@ -203,7 +205,8 @@ def main():
     print("AMINE GAIT -- the load-sensing path against the shipped locus, %d media x %d seeds"
           % (len(sweep), len(SEEDS)))
     print("  config: load_gain %.0f, load_half %.2f, head_lag %.2f, reach_swim %.2f, "
-          "blend %.1f" % (LOAD_GAIN, LOAD_HALF, HEAD_LAG, REACH_SWIM, REACH_BLEND))
+          "blend %.1f, muscle_rate %.2f"
+          % (LOAD_GAIN, LOAD_HALF, HEAD_LAG, REACH_SWIM, REACH_BLEND, MUSCLE_RATE))
     if rows:
         print("  resuming: %d of %d cached" % (len(rows), total))
     print(flush=True)

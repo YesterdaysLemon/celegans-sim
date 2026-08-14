@@ -198,6 +198,18 @@ class Modulators:
             return 0.0
         return float(np.clip(c * max(0.5 - self.level["dopamine"], 0.0), 0.0, 1.0))
 
+    def muscle_rate_scale(self) -> float:
+        """Multiplier on the muscle EC cascade's time constants: 1 at full dopamine.
+
+        The third effect of the amine load-sensing path, and the seat of the serotonin
+        arm's function -- see ModulatorParams.dopamine_muscle_rate for why it rides
+        dopamine's withdrawal rather than the serotonin scalar. Floored at 0.5.
+        """
+        c = self.p.dopamine_muscle_rate
+        if c == 0.0:
+            return 1.0
+        return float(np.clip(1.0 - c * max(0.5 - self.level["dopamine"], 0.0), 0.5, 1.0))
+
     def turn_bias(self) -> float:
         """Added to the direction gate's 50/50 point.
 

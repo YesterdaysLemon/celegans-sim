@@ -2090,6 +2090,23 @@ class ModulatorParams:
     # against 0.65 crawling (Fang-Yen et al. 2010) -- and reach is the one knob measured
     # to move wavelength without moving frequency (tools/wave_speed.py).
     dopamine_reach_swim: float = 0.0
+    # `dopamine_muscle_rate` speeds the muscle excitation-contraction cascade as dopamine
+    # falls: rate scale = clip(1 - coeff * max(0.5 - DA, 0), 0.5, 1), applied to
+    # tau_calcium and tau_tension. **This is where the serotonin arm of Vidal-Gadea et
+    # al. 2011 points** -- serotonin is necessary and sufficient to enter the swim -- and
+    # why it is implemented off the dopamine withdrawal instead is stated so nobody
+    # repeats the dead end: driving the serotonin *scalar* from low load would fire its
+    # live food effects backwards (serotonin_turning = 0.6 ships hot, so a swimming
+    # animal would gain a dwelling turn bias), entangling a second amine in the same
+    # food/load confound already named at SensoryParams.load_gain. Separating the
+    # serotonin scalar's roles is part of that same adoption precondition; until then the
+    # swim-side muscle effect rides the one load signal the path already has. The
+    # *target* is a modelling choice, made because the crossover measurements left the
+    # EC cascade as the largest remaining fixed time once the head lag floors: measured
+    # at the swim end, scaling it 0.6x moves the gait 1.500 -> 1.667 Hz and 1.30 ->
+    # 1.44 L with the travelling index improving, +0.723 -> +0.794. The 0.5 floor keeps
+    # the cascade's lag from vanishing outright.
+    dopamine_muscle_rate: float = 0.0
     serotonin_turning: float = 0.6
     # Implemented, wired, and left at zero: not calibrated against anything. PDF in
     # particular is sourced from AVB, so a non-zero coefficient closes a positive feedback

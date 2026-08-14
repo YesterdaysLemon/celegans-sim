@@ -188,8 +188,15 @@ class Muscles:
                    float(lo_t[unreachable].min()), float(hi_t[unreachable].max())))
         self.G[:, exc] *= scale[:, None]
 
-    def step(self, s_pre: np.ndarray, dt: float | None = None) -> None:
-        """Advance the muscles given the presynaptic activation of every neuron."""
+    def step(self, s_pre: np.ndarray, dt: float | None = None,
+             rate_scale: float = 1.0) -> None:
+        """Advance the muscles given the presynaptic activation of every neuron.
+
+        `rate_scale` scales the EC cascade's two time constants -- the amine
+        load-sensing path's third effect (ModulatorParams.dopamine_muscle_rate). At
+        exactly 1.0 the precomputed decays are used unchanged, so the shipped
+        configuration is bit-identical.
+        """
         if dt is None:
             dt = self.dt
         p = self.p
@@ -211,8 +218,13 @@ class Muscles:
         self.V = V_new
 
         target = _sigmoid(p.beta * (self.V - p.v_half))
-        self.calcium = target + (self.calcium - target) * self._decay_ca
-        self.tension = self.calcium + (self.tension - self.calcium) * self._decay_te
+        if rate_scale == 1.0:
+            decay_ca, decay_te = self._decay_ca, self._decay_te
+        else:
+            decay_ca = np.exp(-dt / (p.tau_calcium * rate_scale))
+            decay_te = np.exp(-dt / (p.tau_tension * rate_scale))
+        self.calcium = target + (self.calcium - target) * decay_ca
+        self.tension = self.calcium + (self.tension - self.calcium) * decay_te
 
     # ------------------------------------------------------------------------- coupling
     def row_tension(self) -> tuple:
