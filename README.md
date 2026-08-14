@@ -17,7 +17,9 @@ The worm is the project. The web app is a media player for it.
 > repository serves two tracks, a *C. elegans* reconstruction and a digital-life laboratory,
 > and they must not be confused for one another. Then [`NEXT.md`](NEXT.md) for what is
 > actually being worked on, and [`docs/runtime-parity.md`](docs/runtime-parity.md) before
-> changing any model default.
+> changing any model default. The measured ways the reconstruction falls short — and the
+> niches evolution finds in them — are catalogued in
+> [`docs/niche-museum.md`](docs/niche-museum.md).
 
 ```bash
 python3 -m venv .venv                      # Python 3.10 or newer

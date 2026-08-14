@@ -36,7 +36,9 @@
  * what NEXT.md warns evolution finds: niches. A lineage that stops swimming to camp the
  * lawn, a gate bias that turns circling into lawn-holding -- every exploit that shows up
  * here is a measured defect or degeneracy of the reconstruction, found by creatures with
- * no incentive to be polite about it. Log them; they are the product.
+ * no incentive to be polite about it. Log them; they are the product. The log has a
+ * building now: docs/niche-museum.md, whose accession rules (measured, pinned, Track B)
+ * are the bar an observation must clear before it is called an exhibit.
  *
  * THE FIRST FULL RUN (2026-08-14, defaults, seed 1, 600 dish-seconds): first hatches at
  * t = 90 s; dynasty F0 swept to fixation by t = 150 s; 124 born, 118 died, no eggs
