@@ -9,7 +9,7 @@ import { S, el } from './state.js';
 import { drawDish, follow } from './dish.js';
 import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
          invalidateLayout } from './panels.js';
-import { updateFreq, updateStats, updatePump, updateEggs } from './stats.js';
+import { updateFreq, updateStats, updatePump, updateEggs, updateDishStats } from './stats.js';
 import { buildWormSel, clampFocus, syncScrub } from './controls.js';
 import { record, at as historyAt } from './history.js';
 
@@ -53,6 +53,14 @@ function localTick(now) {
     tension: f0.tension, kappa: f0.kappa, running: f0.running,
   };
 
+  /* Trails follow the ANIMAL, not the slot. The reference dish's population only
+   * changes from the +/- buttons, so a positional S.trails[i] was safe; the arena
+   * hatches and buries animals between any two frames, and a positional trail would
+   * jump from a dead worm onto whoever inherited its index. Frames that carry an `id`
+   * (the arena's do) get their trail from a persistent per-id map; frames that do not
+   * keep the old positional behaviour, byte for byte. */
+  const byId = S.worms.length && S.worms[0].id !== undefined;
+  if (byId && !S._trailById) S._trailById = new Map();
   for (let i = 0; i < S.worms.length; i++) {
     const fi = S.worms[i];
     let cx = 0, cy = 0;
@@ -60,13 +68,29 @@ function localTick(now) {
     for (let k = 0; k < nn; k++) { cx += fi.nodes[k * 2]; cy += fi.nodes[k * 2 + 1]; }
     cx /= nn; cy /= nn;
     fi.cx = cx; fi.cy = cy;
-    const tr = S.trails[i] || (S.trails[i] = []);
+    let tr;
+    if (byId) {
+      tr = S._trailById.get(fi.id);
+      if (!tr) S._trailById.set(fi.id, tr = []);
+      S.trails[i] = tr;
+    } else {
+      tr = S.trails[i] || (S.trails[i] = []);
+    }
     const last = tr[tr.length - 1];
     if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {
       tr.push([cx, cy]);
       if (tr.length > 2200) tr.shift();
     }
     if (i === S.focus) follow(cx, cy);
+  }
+  if (byId) {
+    S.trails.length = S.worms.length;
+    // Buried animals take their trails with them, eventually: prune on population
+    // change rather than every frame.
+    if (S._trailById.size > S.worms.length) {
+      const live = new Set(S.worms.map((w) => w.id));
+      for (const k of S._trailById.keys()) if (!live.has(k)) S._trailById.delete(k);
+    }
   }
 
   // Speed of the focused animal, over a window of *simulated* time. Dividing by anything
@@ -111,6 +135,12 @@ function localTick(now) {
   });
   updateFreq(f0.kappa[Math.floor(f0.kappa.length / 2)], f0.t);
   updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running, eng.computeRate);
+
+  // The dish's own tiles and overlays, for an engine that has them -- the arena's
+  // population, births, deaths and energy. The reference engine has neither method and
+  // pays nothing.
+  if (eng.dishStats) updateDishStats(eng.dishStats());
+  S.corpses = eng.corpses ? eng.corpses() : null;
 
   // Eggs arrive a handful an hour, so this is cheap, but it is read every frame anyway
   // because the alternative -- caching it on a clock like the fields -- would make a newly

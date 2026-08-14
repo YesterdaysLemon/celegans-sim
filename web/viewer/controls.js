@@ -251,6 +251,16 @@ export function wire() {
     S.meta.world.patches.push({ x, y, r: 2.5, kind: 'food' });
   });
 
+  // The dish tabs. The actual switch lives in app.js (it owns the engines); the wiring
+  // lives here with every other listener. S.switchDish is absent in ?server mode, where
+  // the tabs are hidden and there is nothing to switch to.
+  document.querySelectorAll('[data-dish]').forEach((b) => b.addEventListener('click', () => {
+    if (!S.switchDish) return;
+    document.querySelectorAll('[data-dish]').forEach((o) =>
+      o.setAttribute('aria-pressed', String(o === b)));
+    S.switchDish(b.dataset.dish);
+  }));
+
   document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('[data-view]').forEach((o) =>
       o.setAttribute('aria-pressed', String(o === b)));

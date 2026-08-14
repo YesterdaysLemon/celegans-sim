@@ -13,8 +13,12 @@ import { div } from './scales.js';
 
 // Shared geometry: screen-space centreline, outward normals and radii. Every painter
 // works from this, so the three modes are guaranteed to draw the same animal.
+//
+// `f.widthScale`, when present, is a per-node multiplier on the anatomy's radius
+// profile -- the arena's heritable width made visible. Absent (every reference animal),
+// the radii are exactly what they always were.
 export function geometry(f, X, Y, scale) {
-  const nodes = f.nodes, rad = S.meta.radius;
+  const nodes = f.nodes, rad = S.meta.radius, ws = f.widthScale;
   const n = nodes.length / 2;
   const px = new Float32Array(n), py = new Float32Array(n);
   const nx = new Float32Array(n), ny = new Float32Array(n), r = new Float32Array(n);
@@ -27,8 +31,28 @@ export function geometry(f, X, Y, scale) {
     const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
     nx[i] = -ty; ny[i] = tx;                      // screen-space normal
     r[i] = (i < rad.length ? rad[i] : rad[rad.length - 1]) * scale;
+    if (ws) r[i] *= i < ws.length ? ws[i] : 1;
   }
   return { n, px, py, nx, ny, r, kappa: f.kappa };
+}
+
+/* Dynasty identity, drawn UNDER the body: a soft halo along the centreline in the
+ * lineage's hue, dimmed with the animal's energy store. Under rather than over, so all
+ * three painters keep their own look and the halo reads as light on the plate around
+ * the animal -- at arena zoom it is what makes ten small bodies tell apart at a
+ * glance. */
+export function identityHalo(ctx, G, style) {
+  ctx.save();
+  ctx.globalAlpha = 0.28 + 0.30 * (style.dim ?? 1);
+  ctx.strokeStyle = `hsl(${style.hue} 75% 60%)`;
+  ctx.lineCap = ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(3, G.r[Math.floor(G.n / 2)] * 2.6);
+  ctx.beginPath();
+  for (let i = 0; i < G.n; i++) {
+    (i ? ctx.lineTo(G.px[i], G.py[i]) : ctx.moveTo(G.px[i], G.py[i]));
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 function bodyPath(ctx, G, swell = 1) {

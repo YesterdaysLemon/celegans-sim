@@ -6,7 +6,7 @@
 
 import { S, C, el, fitCanvas } from './state.js';
 import { theme, getNoise } from './themes.js';
-import { geometry, PAINTERS } from './worm.js';
+import { geometry, PAINTERS, identityHalo } from './worm.js';
 
 let fieldCanvas = null;
 
@@ -47,6 +47,23 @@ export function drawDish() {
   // drawn over the worm that laid it reads as something the worm is carrying.
   if (S.layers.eggs && S.eggs && S.eggs.n) drawEggs(ctx, X, Y, scale);
 
+  // Corpse markers, arena only: a fading amber bloom where a body became food. The food
+  // itself is real and stays in the food field until eaten -- only the marker fades.
+  if (S.layers.corpses && S.corpses && S.corpses.length) {
+    const now = S.frame ? S.frame.t : 0;
+    for (const c of S.corpses) {
+      const age = now - c.t;
+      if (age < 0 || age > 90) continue;
+      const a = 0.5 * (1 - age / 90);
+      const R = 2.0 * scale;
+      const g = ctx.createRadialGradient(X(c.x), Y(c.y), 0, X(c.x), Y(c.y), R);
+      g.addColorStop(0, `rgba(217,164,65,${a})`);
+      g.addColorStop(1, 'rgba(217,164,65,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(X(c.x), Y(c.y), R, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   if (S.layers.trail) {
     for (const tr of S.trails) {
       if (!tr || tr.length < 2) continue;
@@ -72,10 +89,24 @@ export function drawDish() {
   // differs, which is why a second one costs almost nothing. The focused animal is drawn
   // last so it is never hidden under another, and carries a ring: with more than one
   // worm on the plate the panels have to say *which* worm they are about.
+  // A worm with `style` (the arena's) gets its dynasty halo under the body and its
+  // energy as body alpha -- the fade you see is the fade the muscles feel. Reference
+  // animals carry no style and paint exactly as before.
+  const paintOne = (o, G) => {
+    if (o.style) {
+      identityHalo(ctx, G, o.style);
+      ctx.save();
+      if (S.layers.energy !== false) ctx.globalAlpha = 0.40 + 0.60 * (o.style.dim ?? 1);
+      paint(ctx, G, o, scale);
+      ctx.restore();
+    } else {
+      paint(ctx, G, o, scale);
+    }
+  };
   for (let i = 0; i < S.worms.length; i++) {
     if (i === S.focus) continue;
     const o = S.worms[i];
-    if (o) paint(ctx, geometry(o, X, Y, scale), o, scale);
+    if (o) paintOne(o, geometry(o, X, Y, scale));
   }
   const fw = S.worms[S.focus];
   if (fw) {
@@ -90,7 +121,7 @@ export function drawDish() {
       ctx.beginPath(); ctx.arc(cx, cy, 0.62 * scale, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
     }
-    paint(ctx, Gf, fw, scale);
+    paintOne(fw, Gf);
   }
   if (T.vignette) drawVignette(ctx, w, h);
   ctx.restore();

@@ -24,8 +24,10 @@ belongs on `S` instead.
 | `viewer/transport.js` | the WebSocket feed, and `send()` — the command seam | state, panels, stats, dish, history |
 | `viewer/controls.js` | every event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, stats, transport, history |
 | `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls, history |
-| `app.js` | bootstrap: pick a transport, wire, start | all of the above |
+| `app.js` | bootstrap: pick a transport, wire, start; the dish tabs and `S.switchDish` | all of the above |
 | `local.js` | the WASM engine itself — model loading, stepping budget, the two rate readouts, frame extraction | — |
+| `arena-policy.js` | the arena's decisions — incubation, mutation at hatch, starvation and the cull, corpses becoming food. ONE home, imported by the browser engine and by `wasm/arena.mjs` alike | *nothing* |
+| `arena-engine.js` | the arena as a second engine: `ArenaEngine extends LocalEngine`, own WebAssembly instance, policy wired in, per-worm style and dish stats | local, arena-policy |
 
 ## Where a fix goes
 

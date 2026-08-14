@@ -18,11 +18,16 @@
   <header>
     <div class="brand">
       <h1>celegans&#8209;sim</h1>
-      <span class="sub"><em>C.&nbsp;elegans</em> &mdash; 302 neurons, 95 muscles, one dish</span>
-      <!-- The second dish. A plain link, not a router: the arena page is deliberately
-           self-contained (it imports nothing from viewer/), so the two dishes stay two
-           documents and this stays an <a>. -->
-      <a class="arena-link" href="arena.html" title="The other dish: descent with modification on a finite plate. Track B &mdash; nothing there is a claim about C. elegans.">The Arena &rarr;</a>
+      <span class="sub" id="brand-sub"><em>C.&nbsp;elegans</em> &mdash; 302 neurons, 95 muscles, one dish</span>
+      <!-- One instrument, two plates. The tabs swap which engine feeds the loop; the
+           chrome, the panels and the painters are shared, which is the entire point --
+           clicking an evolved animal lights up the same 302 neurons. Hidden in ?server
+           mode, where there is only the socket's one animal. -->
+      <span class="seg" id="dish-tabs" role="group" aria-label="Which dish">
+        <button data-dish="animal" aria-pressed="true">The Animal</button>
+        <button data-dish="arena" aria-pressed="false" title="Descent with modification on a finite plate. Track B &mdash; nothing in that dish is a claim about C. elegans.">The Arena</button>
+      </span>
+      <span class="warn arena-only">Track B &mdash; nothing here is a claim about <em>C.&nbsp;elegans</em></span>
     </div>
     <div class="stats">
       <div class="stat"><div class="label">Time</div><div class="value" id="s-time">0.0<small>s</small></div></div>
@@ -32,6 +37,13 @@
       <div class="stat pump"><div class="label">Pumping <i id="pump-dot"></i></div><div class="value" id="s-pump">0<small>/min</small></div></div>
       <div class="stat"><div class="label">Eaten</div><div class="value" id="s-food">0</div></div>
       <div class="stat pump"><div class="label">Eggs <i id="egg-dot"></i></div><div class="value" id="s-eggs">0<small>&nbsp;held 3</small></div></div>
+      <!-- The arena's dish-level tiles: numbers a single animal does not have. Hidden on
+           the reference dish by the app's data-dish attribute. -->
+      <div class="stat arena-only"><div class="label">Population</div><div class="value" id="s-pop">0<small>/10</small></div></div>
+      <div class="stat arena-only"><div class="label">Born</div><div class="value" id="s-born">0</div></div>
+      <div class="stat arena-only"><div class="label">Died</div><div class="value" id="s-died">0<small>&nbsp;starved 0</small></div></div>
+      <div class="stat arena-only"><div class="label">Energy</div><div class="value" id="s-denergy">&mdash;</div></div>
+      <div class="stat arena-only"><div class="label">Dynasties</div><div class="value" id="s-dyn">&mdash;</div></div>
       <!-- Two rates, and they are different numbers: Sim rate is simulated seconds per
            second of *your* clock -- stepping, drawing, waiting for the next frame and all
            -- so it is the one that says whether the animal is keeping up with real time.
@@ -63,6 +75,8 @@
         <button class="chip" data-layer="eggs" aria-pressed="true"><i class="sw egg"></i>Eggs</button>
         <button class="chip" data-layer="grid" aria-pressed="true"><i class="sw grid"></i>Grid</button>
         <button class="chip" data-layer="trail" aria-pressed="true"><i class="sw trail"></i>Trail</button>
+        <button class="chip arena-only" data-layer="corpses" aria-pressed="true"><i class="sw" style="background:#d9a441"></i>Corpses</button>
+        <button class="chip arena-only" data-layer="energy" aria-pressed="true"><i class="sw" style="background:#7a5c2e"></i>Energy</button>
       </div>
     </div>
 
