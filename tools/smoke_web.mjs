@@ -152,9 +152,12 @@ try {
     //
     // Counted against however many the page declares, not against a fixed number. The
     // invariant is "none of them is hidden", and hardcoding the count meant that adding a
-    // layer failed the check for the one reason it is not looking for.
+    // layer failed the check for the one reason it is not looking for. Chips scoped to
+    // the other dish (.arena-only, hidden by data-dish) are excluded here and asserted
+    // in the arena pass below -- hidden-on-purpose and hidden-by-regression must not be
+    // conflated, in either direction.
     const layers = await page.evaluate(() => {
-      const all = [...document.querySelectorAll('[data-layer]')];
+      const all = [...document.querySelectorAll('[data-layer]:not(.arena-only)')];
       return { total: all.length, shown: all.filter((e) => e.getBoundingClientRect().width > 0).length };
     });
     check(vp.name, layers.total > 0, 'no layer toggles in the page at all');
@@ -470,6 +473,57 @@ try {
       const dupes = [...seen.entries()].filter(([, ids]) => ids.length > 1)
         .map(([n, ids]) => `"${n}" x${ids.length} (${ids.join('/')})`);
       check(vp.name, dupes.length === 0, `controls sharing an accessible name: ${dupes.join('; ')}`);
+
+      /* The second dish. One instrument, two plates: the arena tab must swap engines
+       * without a reload, show its own chrome (the Track B tiles and chips this file
+       * excludes from the animal-dish count above), feed the dish styled, identified
+       * worms -- and hand back a reference dish that RESUMED rather than restarted,
+       * because held state is the entire promise of the tabs. Desktop only: the arena
+       * engine is a second WebAssembly instance and one build of it answers the
+       * question. */
+      if (vp.name === 'desktop') {
+        const arena = await page.evaluate(async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+          const S = window.__sim;
+          const tab = document.querySelector('[data-dish="arena"]');
+          if (!tab || !S.switchDish) return { skipped: true };
+          const tBefore = S.frame ? S.frame.t : 0;
+          tab.click();
+          for (let i = 0; i < 120 && !(S.meta && S.meta.arena); i++) await sleep(250);
+          await sleep(3000);
+          const out = {
+            skipped: false,
+            dish: document.getElementById('app').dataset.dish,
+            chips: [...document.querySelectorAll('[data-layer].arena-only')]
+              .filter((e) => e.getBoundingClientRect().width > 0).length,
+            chipsTotal: document.querySelectorAll('[data-layer].arena-only').length,
+            tiles: document.getElementById('s-pop').getBoundingClientRect().width > 0,
+            pop: S.engine && S.engine.worms ? S.engine.worms.length : 0,
+            styled: S.worms.length > 0
+              && S.worms.every((w) => w.style && w.id !== undefined),
+            tArena: S.frame ? S.frame.t : 0,
+            tBefore,
+          };
+          document.querySelector('[data-dish="animal"]').click();
+          for (let i = 0; i < 40 && !S.meta; i++) await sleep(250);
+          await sleep(1200);
+          out.tBack = S.frame ? S.frame.t : 0;
+          out.backDish = document.getElementById('app').dataset.dish;
+          return out;
+        });
+        if (!arena.skipped) {
+          check(vp.name, arena.dish === 'arena', `the tab left data-dish at "${arena.dish}"`);
+          check(vp.name, arena.chips === arena.chipsTotal && arena.chipsTotal > 0,
+                `${arena.chips} of ${arena.chipsTotal} arena chips visible on the arena dish`);
+          check(vp.name, arena.tiles, 'the arena stat tiles are not visible on the arena dish');
+          check(vp.name, arena.pop > 0 && arena.tArena > 0,
+                `the arena dish is not running: pop ${arena.pop}, t ${arena.tArena}`);
+          check(vp.name, arena.styled,
+                'arena worms arrived without style/id -- dynasty and trails are broken');
+          check(vp.name, arena.backDish === 'animal' && arena.tBack >= arena.tBefore,
+                `switching back restarted the animal dish: t ${arena.tBefore} -> ${arena.tBack}`);
+        }
+      }
     }
 
     /* The scrubber shows the past, and not an alias of the present.

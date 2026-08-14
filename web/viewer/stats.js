@@ -108,6 +108,20 @@ export function updateEggs(laid, held, active) {
   if (dot) dot.classList.toggle('on', active > 0.5);
 }
 
+/* The arena's own header tiles: the dish-level numbers a single animal does not have.
+ * Only called when the engine on stage has dishStats() -- the reference dish never pays
+ * for these lookups, and the tiles themselves are hidden by the app's data-dish
+ * attribute. */
+export function updateDishStats(d) {
+  const pop = el('s-pop');
+  if (!pop) return;
+  pop.innerHTML = `${d.population}<small>/${d.cap}</small>`;
+  el('s-born').textContent = String(d.births);
+  el('s-died').innerHTML = `${d.deaths}<small>&nbsp;starved ${d.starved}</small>`;
+  el('s-denergy').textContent = d.meanE.toFixed(2);
+  el('s-dyn').textContent = d.dynasties || '—';
+}
+
 // The legend explains whatever the dish is currently saying, which is different in each
 // mode: digital colours the body by curvature, the other two do not.
 export function buildLegend() {

@@ -53,8 +53,9 @@
  */
 
 import {
-  engine, GENES, clampGene, scaleOf, rng, normalFrom, DT,
+  engine, GENES, scaleOf, rng, normalFrom, DT,
 } from './evolve.mjs';
+import { makeArena } from '../web/arena-policy.js';
 
 const env = (k, d) => (process.env[k] !== undefined ? Number(process.env[k]) : d);
 const SECONDS = env('ARENA_SECONDS', 900);
@@ -129,129 +130,42 @@ const METAB_KNEE = env('ARENA_METAB_KNEE', 0.35);
 const METAB_HATCH = env('ARENA_METAB_HATCH', 0.6);   // hatchling starting fill fraction
 const CORPSE = env('ARENA_CORPSE', METAB * 0.5);
 const CORPSE_YIELD = env('ARENA_CORPSE_YIELD', 0.8);
-const CORPSE_R = 0.8;                                // mm; roughly a curled body
-const BASAL = METAB > 0 ? METAB / METAB_T : 0;
-const WORKC = METAB > 0 ? BASAL / METAB_WORKP : 0;
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
 const CHUNK = 0.5;                       // seconds of simulation per policy pass
 
+/* The policy itself lives in web/arena-policy.js -- ONE home, shared with the in-viewer
+ * ArenaEngine, because it used to live twice and the copies had to be edited in
+ * lockstep by hand. This driver keeps what a headless run owns: the env knobs above,
+ * the seeded rng (evolve.mjs's, so recorded runs keep replaying), the report cadence
+ * and the closing ledger. */
 const rand = rng(SEED);
 const normal = normalFrom(rand);
 
 const E = engine();
 E.setNoise(1);
 
-/* Three lawns, never restocked. The plate is the whole economy. */
-E.addFood(-8.0, 5.0, 4.0, 1.0, 1.0, 9.0);
-E.addFood(7.0, -4.0, 4.0, 1.0, 1.0, 9.0);
-E.addFood(0.0, 9.0, 3.0, 1.0, 0.8, 8.0);
-
-const founderOf = new Map();             // worm id -> founder index, for dynasty stats
-const born = new Map();                  // worm id -> sim time of hatch/creation
-const eatenAt = new Map();               // worm id -> intake at the last policy pass
+const arena = makeArena(E, { genes: GENES, scaleOf }, {
+  cap: CAP, founders: FOUNDERS, mut: MUT, incubation: INCUBATION,
+  wmut: WMUT, wmutN: WMUT_N, mmut: MMUT,
+  metab: METAB, metabT: METAB_T, metabWorkP: METAB_WORKP,
+  metabFloor: METAB_FLOOR, metabKnee: METAB_KNEE, metabHatch: METAB_HATCH,
+  corpse: CORPSE, corpseYield: CORPSE_YIELD, seed: SEED,
+}, rand, normal, (id) => {
+  const f64 = new Float64Array(E.memory.buffer);
+  return [f64[(E.ptrNodesX(id) >> 3) + 24], f64[(E.ptrNodesY(id) >> 3) + 24]];
+});
 let simT = 0.0;
-let births = 0, deaths = 0, seedIota = 1000;
 
-const metabolise = (id, fill) => {
-  if (METAB > 0) E.setMetabolism(id, METAB, BASAL, WORKC, METAB_FLOOR, METAB_KNEE, fill);
-};
+arena.seedPlate();
+arena.spawnFounders();
 
-for (let i = 0; i < FOUNDERS; i++) {
-  const a = (2 * Math.PI * i) / FOUNDERS;
-  const id = E.createWorm(SEED + i, 6.0 * Math.cos(a), 6.0 * Math.sin(a), a + Math.PI / 2);
-  metabolise(id, 1.0);                      // founders arrive fed
-  founderOf.set(id, i);
-  born.set(id, 0.0);
-  eatenAt.set(id, 0.0);
-}
-
-const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k));
-
-/* Every death routes through here, so every death feeds the plate. The mid-body node is
- * where the animal stopped; the deposit is the body plus a yield on whatever store was
- * left. With metabolism off the corpse is CORPSE alone (default 0), and the dish is the
- * one it always was. */
-function die(id) {
-  if (CORPSE > 0 || METAB > 0) {
-    const f64 = new Float64Array(E.memory.buffer);
-    // Node 24 is the runtime's own midpoint (G.N_LINKS >> 1), the node layEgg uses.
-    const x = f64[(E.ptrNodesX(id) >> 3) + 24], y = f64[(E.ptrNodesY(id) >> 3) + 24];
-    const worth = CORPSE + (METAB > 0 ? CORPSE_YIELD * E.getEnergy(id) : 0);
-    if (worth > 0) E.depositFood(x, y, CORPSE_R, worth);
-  }
-  E.removeWorm(id);
-  founderOf.delete(id); born.delete(id); eatenAt.delete(id);
-  deaths++;
-}
-
-function cullTo(cap) {
-  while (E.wormCount() > cap) {
-    let worstId = -1, worstIntake = Infinity;
-    for (const id of ids()) {
-      const recent = E.getEaten(id) - (eatenAt.get(id) ?? 0);
-      if (recent < worstIntake) { worstIntake = recent; worstId = id; }
-    }
-    die(worstId);
-  }
-}
-
-/* Death by physiology: a store at zero is a body that stopped. Distinguished in the
- * ledger because the two death modes mean different things -- starvation is the plate
- * economy speaking, the cull is the policy backstop. */
-let starved = 0;
-function reap() {
-  if (METAB <= 0) return;
-  for (const id of ids()) {
-    if (E.getEnergy(id) <= 0.0) { die(id); starved++; }
-  }
-}
-
-function hatchDue() {
-  // Walk backwards: hatchEgg swap-pops the egg array.
-  for (let i = E.eggCount() - 1; i >= 0; i--) {
-    if (simT - E.eggTime(i) < INCUBATION) continue;
-    const parent = E.eggParent(i);
-    const id = E.hatchEgg(i, SEED + seedIota++, rand() * 2 * Math.PI);
-    if (id < 0) continue;
-    for (let s = 0; s < GENES.length; s++) {
-      const v = E.getGene(id, s) + normal() * MUT * scaleOf(GENES[s]);
-      E.setGene(id, s, clampGene(GENES[s], v));
-    }
-    if (WMUT > 0) {
-      const counts = [E.weightCount(0), E.weightCount(1), E.weightCount(2)];
-      const total = counts[0] + counts[1] + counts[2];
-      for (let j = 0; j < WMUT_N; j++) {
-        let k = Math.floor(rand() * total);
-        let fam = 0;
-        while (k >= counts[fam]) { k -= counts[fam]; fam++; }
-        E.scaleWeight(id, fam, k, Math.exp(normal() * WMUT));
-      }
-      E.developWorm(id);
-    }
-    if (MMUT > 0) {
-      const ctl = Array.from({ length: 12 }, (_, j) =>
-        E.getMorph(id, j) * Math.exp(normal() * MMUT));
-      E.setMorphology(id, ...ctl);
-    }
-    metabolise(id, METAB_HATCH);            // hatchlings start part-stocked: policy
-    founderOf.set(id, founderOf.get(parent) ?? -1);   // -1: parent already culled
-    born.set(id, simT);
-    eatenAt.set(id, 0.0);
-    births++;
-    cullTo(CAP);
-  }
-}
+const ids = arena.ids;
 
 function report() {
   const pop = ids();
-  const dyn = new Map();
-  for (const id of pop) {
-    const f = founderOf.get(id) ?? -1;
-    dyn.set(f, (dyn.get(f) ?? 0) + 1);
-  }
-  const dynasties = Array.from(dyn.entries()).sort((a, b) => b[1] - a[1])
+  const dynasties = arena.dynasties()
     .map(([f, n]) => `${f < 0 ? 'orphan' : 'F' + f}:${n}`).join(' ');
   const spread = (slot) => {
     const vs = pop.map((id) => E.getGene(id, slot));
@@ -275,10 +189,10 @@ function report() {
     const es = pop.map((id) => E.getEnergy(id) / METAB);
     const mean = es.reduce((a, b) => a + b, 0) / es.length;
     metab = `  energy ${mean.toFixed(2)} [${Math.min(...es).toFixed(2)}`
-      + `..${Math.max(...es).toFixed(2)}]  starved ${starved}`;
+      + `..${Math.max(...es).toFixed(2)}]  starved ${arena.starved}`;
   }
   console.log(`t=${simT.toFixed(0).padStart(5)}s  pop ${pop.length}  eggs ${E.eggCount()}`
-    + `  births ${births}  deaths ${deaths}  dropped ${E.eggsDropped()}`
+    + `  births ${arena.births}  deaths ${arena.deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
     + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('')
     + carriers + shaped + metab);
@@ -293,10 +207,9 @@ let nextReport = REPORT;
 while (simT < SECONDS) {
   E.stepAll(Math.round(CHUNK / DT));
   simT += CHUNK;
-  reap();
-  hatchDue();
+  arena.tick(simT);
   if (simT >= nextReport) {
-    for (const id of ids()) eatenAt.set(id, E.getEaten(id));
+    arena.markIntake();
     report();
     nextReport += REPORT;
   }
@@ -304,9 +217,9 @@ while (simT < SECONDS) {
 
 const wall = (Date.now() - t0) / 1000;
 console.log(`\ndish closed after ${SECONDS} s simulated in ${wall.toFixed(0)} s of wall`
-  + ` clock: ${births} born, ${deaths} died, ${E.eggCount()} eggs still waiting,`
-  + ` population ${E.wormCount()}.`);
-if (births === 0) {
+  + ` clock: ${arena.births} born, ${arena.deaths} died, ${E.eggCount()} eggs still`
+  + ` waiting, population ${E.wormCount()}.`);
+if (arena.births === 0) {
   console.log('No lineage reproduced. Either the dish was too short for the laying rate'
     + ' (11 eggs/hour/animal), the plate starved everyone first, or reproduction is'
     + ' broken -- distinguish before believing anything else this printed.');

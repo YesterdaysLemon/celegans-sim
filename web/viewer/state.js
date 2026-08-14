@@ -14,7 +14,11 @@ export const SERIES = [C('--series-1'), C('--series-2'), C('--series-3'),
 export const S = {
   meta: null, frame: null, field: null,
   theme: 'digital',
-  layers: { food: true, attractant: true, repellent: true, eggs: true, grid: true, trail: true },
+  // corpses and energy belong to the arena dish; their chips only show there, but the
+  // flags live here like every other layer so dish.js has one switchboard.
+  layers: { food: true, attractant: true, repellent: true, eggs: true, grid: true,
+            trail: true, corpses: true, energy: true },
+  corpses: null,       // the arena's death markers, when that dish is on stage
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
   cam: 'follow',                        // 'follow' | 'free'
   trail: [],
