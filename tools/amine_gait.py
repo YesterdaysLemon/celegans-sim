@@ -108,8 +108,47 @@ at ~0.42, essentially the floor), then ran the full nine-media locus, 27/27:
 No cliff appears at any intermediate medium -- every TWI is +0.72 or better -- and the
 one distortion is a bulge above the chord peaking at +0.15 L around K = 5.3, the
 wavelength getting ahead of the frequency mid-continuum, closing again at both ends. The
-tool's default configuration is this calibration; the first calibration's table above is
-kept because the pair shows what each knob bought.
+first calibration's table above is kept because the pair shows what each knob bought.
+
+THE THIRD CALIBRATION (2026-08-14): the muscle-rate effect, its cliff, and the settle
+lesson. The remaining frequency gap pointed at the EC cascade (the largest fixed time
+once the head lag floors), a static probe confirmed it (taus at 0.6x: 1.500 -> 1.667 Hz
+with the wave improving), and the effect went in as dopamine_muscle_rate -- the serotonin
+arm's function, carried by dopamine's withdrawal for the reason recorded at the
+parameter. Three findings on the way to the table:
+
+  * **The dose has a cliff.** At muscle coefficients 0.7-0.9 the swim end is genuinely
+    bistable, fully settled: one or two of three seeds fall into a broken slow mode
+    (0.17 Hz, TWI ~0.2) while the others swim beautifully. At 0.5 it is 3/3 stable.
+    Both routes into the fast regime -- lag and muscle -- hit an attractor boundary, and
+    the calibration target is the fastest *stable* cell, not the fastest cell.
+  * **Six seconds of settle lied at mid-continuum.** The first three-effect locus
+    recorded K = 3.54 broken (0.956 +-0.534 Hz); per-seed probes with a long settle
+    found every seed healthy on the chord. Dopamine's tau is 6 s and the settle was 6 s,
+    so the window caught three coefficients still sliding. The protocol now settles
+    24 s (the comment at the sim.run call carries the reasoning), and the rerun's
+    standard deviations collapsed to +-0.016 or less everywhere -- the settle was noise
+    as well as bias.
+  * **The settled locus is clean at all nine media** (27/27, muscle 0.5):
+
+        K 40:   0.667 +-0.000 Hz  0.85 L   TWI +0.889   (the best agar wave measured)
+        K 7.94: 0.911            1.11     +0.761
+        K 3.54: 1.322 +-0.016    1.40     +0.731
+        K 1.58: 1.567 +-0.000    1.35     +0.777
+
+        along-chord +0.245 -> +0.847 (two effects +0.786, baseline +0.347)
+        spans: f 2.35x, lambda 1.64x, v = 0.570 -> 2.120 L/s, 3.72x
+        (animal: 5.87x, 2.37x, 13.9x; buffer f at 89% of the swim, v at 78%)
+
+    One soft spot, kept in the table: net/path dips to 0.29 at K = 5.3 -- the
+    mid-continuum trajectories are turn-heavy -- and net speed there is half the
+    two-effect configuration's. The wave is healthy; the *track* wanders.
+
+The environment defaults are the settled three-effect calibration (muscle_rate 0.5 via
+AMINE_MUSCLE_RATE, others per the second calibration). What separates this from the
+animal is now: the last 11% of swim frequency, a wavelength ceiling near 1.40 L against
+1.54, and the mid-continuum wander -- and every remaining knob change would need the
+stability grid re-run first, because the cliff is close.
 
 Run:  PYTHONPATH=. .venv/bin/python tools/amine_gait.py
 """
@@ -139,6 +178,7 @@ LOAD_HALF = float(os.environ.get("AMINE_LOAD_HALF", 1.0))
 HEAD_LAG = float(os.environ.get("AMINE_HEAD_LAG", 1.30))
 REACH_SWIM = float(os.environ.get("AMINE_REACH_SWIM", 0.48))
 REACH_BLEND = float(os.environ.get("AMINE_REACH_BLEND", 2.0))
+MUSCLE_RATE = float(os.environ.get("AMINE_MUSCLE_RATE", 0.5))
 
 # The shipped model's locus on the same protocol (tools/flambda_locus.py, 2026-08-12),
 # for the side-by-side: (K, freq, wavelength).
@@ -155,7 +195,8 @@ def amine_params(med) -> Params:
             p.sensory, head_stages=4, head_delay=0.0, head_stage_tau=0.125,
             load_gain=LOAD_GAIN, load_half=LOAD_HALF, proprio_reach_swim=REACH_SWIM),
         modulator=dataclasses.replace(
-            p.modulator, dopamine_head_lag=HEAD_LAG, dopamine_reach_swim=REACH_BLEND))
+            p.modulator, dopamine_head_lag=HEAD_LAG, dopamine_reach_swim=REACH_BLEND,
+            dopamine_muscle_rate=MUSCLE_RATE))
 
 
 def _job(job):
@@ -163,7 +204,15 @@ def _job(job):
     med = media_sweep()[u_index]
     p = amine_params(med)
     sim = Simulation(p, seed=seed, world=bare_world(p))
-    sim.run(6.0)
+    # 24 s, not the baseline protocol's 6: dopamine's time constant is 6 s, so a 6 s
+    # settle measures the path's *transient* -- three coefficients still sliding -- and
+    # at mid-continuum media that transient can trip into the broken mode the stability
+    # grid mapped, which is exactly what the first three-effect locus recorded at
+    # K = 3.54 (0.956 +-0.534 Hz) while per-seed probes with a long settle found every
+    # seed healthy on the chord. The baseline has no slow state and is settle-insensitive
+    # by construction, so the pairing against flambda_locus.py survives; the protocol
+    # difference is this comment.
+    sim.run(24.0)
     start = sim.body.centroid().copy()
     t0 = sim.t
     prev, path = start.copy(), 0.0
@@ -203,7 +252,8 @@ def main():
     print("AMINE GAIT -- the load-sensing path against the shipped locus, %d media x %d seeds"
           % (len(sweep), len(SEEDS)))
     print("  config: load_gain %.0f, load_half %.2f, head_lag %.2f, reach_swim %.2f, "
-          "blend %.1f" % (LOAD_GAIN, LOAD_HALF, HEAD_LAG, REACH_SWIM, REACH_BLEND))
+          "blend %.1f, muscle_rate %.2f"
+          % (LOAD_GAIN, LOAD_HALF, HEAD_LAG, REACH_SWIM, REACH_BLEND, MUSCLE_RATE))
     if rows:
         print("  resuming: %d of %d cached" % (len(rows), total))
     print(flush=True)

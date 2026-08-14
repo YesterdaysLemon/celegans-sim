@@ -234,6 +234,7 @@ RUNTIME_UNSUPPORTED = {
     "sensory.proprio_reach_swim": 0.0,
     "modulator.dopamine_head_lag": 0.0,
     "modulator.dopamine_reach_swim": 0.0,
+    "modulator.dopamine_muscle_rate": 0.0,
     # Omega wave suppression -- stands the body wave down during a turn. Distinct from
     # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.
     #

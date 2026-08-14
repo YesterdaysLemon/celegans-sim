@@ -27,15 +27,28 @@ locus to **+0.786 along the chord — 79% of the way to the animal's swim** — 
 (reach 0.48 at lag 1.0 breaks the wave outright); the effective lag now bottoms at the
 0.4 floor in buffer. What remains:
 
-- **The serotonin arm is untouched.** Vidal-Gadea's result is two amines; everything so
-  far is dopamine's withdrawal alone. Serotonin actively promoting the swim (it already
-  exists in the wireless layer) is the unexplored half, and the natural owner of the
-  remaining frequency gap (1.48 against 1.76 Hz) now that the lag floor is reached.
-- **The mid-continuum bulge.** The locus arcs +0.15 L above the chord around K = 5.3 —
-  wavelength ahead of frequency — closing at both ends. Small, but it is the one shape
-  error left.
-- **The lag floor itself** (0.4 in `Modulators.head_lag_scale`) encodes lag_span.py's
-  fast-but-degraded regime; loosening it is a measured trade, not a sweep.
+The serotonin arm's function is measured and folded in (2026-08-14, the third
+calibration): dopamine's withdrawal also speeds the muscle EC cascade
+(`dopamine_muscle_rate`, with the note at the parameter on why it rides dopamine — the
+serotonin *scalar* ships with a hot food effect that would fire backwards in liquid).
+The settled locus is clean at all nine media: **+0.847 along the chord, buffer at 89% of
+the animal's swim frequency**, crawl untouched with its best measured wave. Two guards
+now bound further calibration:
+
+- **The cliff.** Muscle coefficients ≥ 0.7 make the swim end genuinely bistable (a
+  broken 0.17 Hz mode coexists with the fast gait; 1–2 of 3 seeds fall in, fully
+  settled). 0.5 is 3/3 stable. Any knob change now needs the stability grid re-run
+  first.
+- **Slow-state protocols.** Measuring the amine path with a settle shorter than ~3
+  dopamine taus measures its transient, not its attractor — the K = 3.54 lesson,
+  recorded in the tool. Any future assay of an enabled-amine configuration inherits
+  this.
+
+What separates the path from the animal: the last 11% of swim frequency, a wavelength
+ceiling near 1.40 L against 1.54, and mid-continuum trajectories that wander (net/path
+0.29 at K = 5.3). The literal serotonin route (a second load-driven scalar with its own
+effects) stays gated on separating the serotonin scalar's food roles — the same
+confound-class precondition as adoption.
 
 **Adoption is a separate decision from calibration, with preconditions already named:**
 the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it —

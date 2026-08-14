@@ -160,7 +160,8 @@ class Simulation:
                                   self.modulators, load=load)
 
         self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
-        self.muscles.step(self.nervous.s)
+        self.muscles.step(self.nervous.s,
+                          rate_scale=self.modulators.muscle_rate_scale())
 
         # The dish pushes back, and so does the body's own far side. Both are node forces
         # in the same units and at the same stiffness, so they simply add.

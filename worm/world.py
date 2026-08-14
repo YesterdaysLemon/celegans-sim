@@ -98,6 +98,11 @@ class World:
         # density, for the reason in `oxygen`.
         self.o2_deficit = np.zeros((g, g))
         self.food_initial_total = 0.0
+        # The sampling fast paths -- see `sample` and `_field_is_zero`.
+        self._field_epoch = 0
+        self._zero_memo: dict = {}
+        self._zero_memo_epoch = 0
+        self._valid_memo = None
 
         # What the standing bacteria are emitting right now: sum_p f_p * shape_p. Zero
         # until a lawn is added, which is what makes an empty dish step to the same bits it
@@ -133,6 +138,7 @@ class World:
                        density: float = 1.0, attractant: float = 1.0,
                        length_scale: float = 9.0) -> None:
         """A bacterial lawn, with the chemical gradient it has had time to establish."""
+        self._field_epoch += 1   # writes fields; see _field_is_zero
         # The same ceiling the runtime enforces, for the same reason and by the same rule:
         # a patch now carries two cached field shapes, so lawns are not free and the plate
         # refuses rather than growing without bound. Refusing here as well is what keeps the
@@ -263,6 +269,7 @@ class World:
         accumulates the same two sums cell by cell in the same order and the two have to
         agree bit for bit.
         """
+        self._field_epoch += 1   # writes fields; see _field_is_zero
         source = np.zeros((self.g, self.g))
         deficit = np.zeros((self.g, self.g))
         for fraction, att, o2 in zip(self._patch_frac, self._patch_att, self._patch_o2):
@@ -332,8 +339,24 @@ class World:
             self.sample(self.o2_deficit, x, y), 0.0, self.p.o2_ambient - 0.01)
 
     def sample(self, field: np.ndarray, x, y):
-        """Bilinear sample of a grid field at world coordinates."""
+        """Bilinear sample of a grid field at world coordinates.
+
+        Fast path: a field that is identically zero bilinearly interpolates to exactly
+        0.0 at every point, so the interpolation is skipped for fields the zero-registry
+        knows are empty (see `_field_is_zero`). Validation still runs -- a divergent
+        animal must raise whether or not the dish is empty. In the bare worlds every
+        gait sweep uses, this removes most of the sensory sampling cost; measured on the
+        profile that motivated it, `sample` was a fifth of the whole step. The returned
+        value and type are unchanged: a numpy float64 zero for scalar coordinates, a
+        zero array of the broadcast shape otherwise -- both bit-identical to what the
+        interpolation of a zero field returns.
+        """
         self._validate_coordinates(x, y)
+        if self._field_is_zero(field):
+            xa = np.asarray(x, dtype=float)
+            ya = np.asarray(y, dtype=float)
+            shape = np.broadcast_shapes(xa.shape, ya.shape)
+            return np.float64(0.0) if shape == () else np.zeros(shape)
         fx = (np.asarray(x, dtype=float) + self.extent) / self.h - 0.5
         fy = (np.asarray(y, dtype=float) + self.extent) / self.h - 0.5
         x0 = np.clip(np.floor(fx).astype(int), 0, self.g - 2)
@@ -353,6 +376,8 @@ class World:
         The return value is the point of this, not a courtesy: it is what the caller is
         allowed to have. ``Pharynx.finish_step`` adds *this* to the lumen rather than what
         it asked for, which is what stops an animal ingesting food the plate never had.
+        (Writes the food field; the epoch bump for `_field_is_zero` is below the
+        docstring.)
 
         `amount` is a total, withdrawn proportionally to what is present in the
         neighbourhood. It used to be subtracted from every cell of the 3x3 patch
@@ -369,6 +394,7 @@ class World:
         available = float(patch.sum())
         if available <= 0.0:
             return 0.0
+        self._field_epoch += 1   # about to write the food field; see _field_is_zero
         take = min(amount, available)
         patch *= 1.0 - take / available
         return take
@@ -411,6 +437,7 @@ class World:
         invariance to cell and group relabeling, per-request correspondence with the input,
         and single-neighbourhood equivalence with :meth:`eat`.
         """
+        self._field_epoch += 1   # writes the food field; see _field_is_zero
         requests = list(requests)
         allocations = np.zeros(len(requests), dtype=float)
         groups = {}
@@ -513,8 +540,45 @@ class World:
         return (max(0, i - 1), min(self.g, i + 2),
                 max(0, j - 1), min(self.g, j + 2))
 
+    def _field_is_zero(self, field: np.ndarray) -> bool:
+        """Is this field identically zero right now? Cached per field per epoch.
+
+        The epoch counter is bumped by every method that writes a field --
+        `add_food_patch`, `_rebuild_sources`, `eat`, `eat_batch`, `step` -- so a stale
+        answer is impossible as long as that list stays complete. **A new field-writing
+        method must bump `_field_epoch`**; the failure mode of forgetting is an empty
+        reading from a non-empty dish, which the sensory assays would not stay quiet
+        about, but the rule is cheaper than the debugging. The memo holds a reference to
+        the array it classified, both so `id()` cannot be recycled and so a rebound
+        field (a fresh array at the same attribute) misses the memo and is re-tested.
+        """
+        if self._zero_memo_epoch != self._field_epoch:
+            # Clear rather than filter: rebound fields would otherwise accumulate stale
+            # array references (and their memory) for as long as the world lives.
+            self._zero_memo.clear()
+            self._zero_memo_epoch = self._field_epoch
+        key = id(field)
+        hit = self._zero_memo.get(key)
+        if hit is not None and hit[1] is field:
+            return hit[0]
+        is_zero = not field.any()
+        self._zero_memo[key] = (is_zero, field)
+        return is_zero
+
     def _validate_coordinates(self, x, y) -> None:
-        """Fail rather than laundering a divergent animal into a rim-cell reading."""
+        """Fail rather than laundering a divergent animal into a rim-cell reading.
+
+        Scalar coordinates are memoised: the senses sample several fields at the same
+        nose point within one step, and a point that was finite and inside the dish a
+        microsecond ago still is. The memo is (x, y) of the last scalar pair validated,
+        compared exactly, so it can never accept a point the full check would reject.
+        """
+        try:
+            key = (float(x), float(y))
+        except (TypeError, ValueError):
+            key = None
+        if key is not None and key == self._valid_memo:
+            return
         x, y = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
         if not np.isfinite(x).all() or not np.isfinite(y).all():
             raise DivergentSimulation("world coordinates are not finite")
@@ -523,6 +587,8 @@ class World:
             raise DivergentSimulation(
                 "animal left the dish (radius %.6g mm > %.6g mm)"
                 % (float(np.max(radius)), self.extent))
+        if key is not None:
+            self._valid_memo = key
 
     def step(self, dt: float) -> None:
         """Advance the diffusing fields, in chunks of the field timestep."""
@@ -531,6 +597,7 @@ class World:
         while self._acc >= self.p.field_dt:
             self._acc -= self.p.field_dt
             fdt = self.p.field_dt
+            self._field_epoch += 1   # rebinding fields below; see _field_is_zero
             # What the standing bacteria are emitting *this* step, before anything reads
             # it. Rebuilding after the relaxation instead would leave the attractant one
             # field step behind the oxygen, for no reason anyone could defend.
