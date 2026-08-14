@@ -176,7 +176,8 @@ const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k))
 function die(id) {
   if (CORPSE > 0 || METAB > 0) {
     const f64 = new Float64Array(E.memory.buffer);
-    const x = f64[(E.ptrNodesX(id) >> 3) + 25], y = f64[(E.ptrNodesY(id) >> 3) + 25];
+    // Node 24 is the runtime's own midpoint (G.N_LINKS >> 1), the node layEgg uses.
+    const x = f64[(E.ptrNodesX(id) >> 3) + 24], y = f64[(E.ptrNodesY(id) >> 3) + 24];
     const worth = CORPSE + (METAB > 0 ? CORPSE_YIELD * E.getEnergy(id) : 0);
     if (worth > 0) E.depositFood(x, y, CORPSE_R, worth);
   }

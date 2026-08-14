@@ -46,22 +46,29 @@ function engine() {
 const STEPS_PER_S = 2000;   // DT = 0.0005
 
 test('metabolism off is bit-identical, and a zero-cap setter is off', () => {
-  // TWIN DISHES, not twin worms: two co-located animals in one dish share evolving
-  // fields and drift apart at denormal scale whatever the setter does -- the first
-  // draft of this test compared same-dish twins and failed on a 1e-306 tail
-  // coordinate. Separate engines isolate exactly the thing under test.
+  // A correction, on the record because the first two stories were both wrong. The
+  // first draft compared same-dish twins and failed on a ~1e-306 "node 50"; this
+  // comment then blamed co-located animals drifting through shared fields. Both
+  // fictions: the body has 49 nodes (N_LINKS = 48), and the read was 51 -- indices 49
+  // and 50 were out-of-bounds heap-neighbour bytes decoding as denormals, different
+  // per worm within one dish, identical across twin engines (same allocation order,
+  // same garbage), which is why the "fix" appeared to work. Measured after the fix:
+  // same-dish twins are bit-identical over all 49 real nodes. The twin-dish shape is
+  // kept anyway -- it isolates the setter from everything else -- but the read is 49,
+  // and the moral is the museum's: garbage that decodes as a plausible float is the
+  // politest failure there is.
   const run = (withSetter) => {
     const E = engine();
     const w = E.createWorm(5, 0.0, 0.0, 0.0);
     if (withSetter) E.setMetabolism(w, 0.0, 1e9, 1e9, 0.5, 0.5, 1.0);  // zero cap: inert
     E.stepAll(4 * STEPS_PER_S);
     const f64 = new Float64Array(E.memory.buffer);
-    const nx = Array.from(f64.subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 51));
+    const nx = Array.from(f64.subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 49));
     const v = Array.from(f64.subarray(E.ptrV(w) >> 3, (E.ptrV(w) >> 3) + 302));
     return { nx, v, fade: E.getMetabFade(w) };
   };
   const plain = run(false), setter = run(true);
-  for (let i = 0; i <= 50; i++) {
+  for (let i = 0; i <= 48; i++) {
     assert.equal(setter.nx[i], plain.nx[i], `node ${i} differs with metabolism zero-capped`);
   }
   for (let i = 0; i < 302; i++) {
@@ -78,7 +85,7 @@ test('an unfed animal runs down to the floor, weakened but physical', () => {
 
   const f64 = () => new Float64Array(E.memory.buffer);
   const mid = () => {
-    const nx = f64()[(E.ptrNodesX(w) >> 3) + 25], ny = f64()[(E.ptrNodesY(w) >> 3) + 25];
+    const nx = f64()[(E.ptrNodesX(w) >> 3) + 24], ny = f64()[(E.ptrNodesY(w) >> 3) + 24];
     return [nx, ny];
   };
   E.stepAll(4 * STEPS_PER_S);

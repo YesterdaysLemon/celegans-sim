@@ -54,13 +54,15 @@ function run(seconds, configure) {
   if (configure) configure(E, w);
   E.stepAll(Math.round(seconds * STEPS_PER_S));
   const f64 = new Float64Array(E.memory.buffer);
-  const nx = Array.from(f64.subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 51));
-  const ny = Array.from(f64.subarray(E.ptrNodesY(w) >> 3, (E.ptrNodesY(w) >> 3) + 51));
-  return { nx, ny, disp: Math.hypot(nx[25], ny[25]), inv: E.checkInvariants(w) };
+  // 49 nodes -- N_LINKS = 48. Reading past the end returns heap-neighbour bytes that
+  // decode as plausible denormals; see the correction in metabolism.test.mjs.
+  const nx = Array.from(f64.subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 49));
+  const ny = Array.from(f64.subarray(E.ptrNodesY(w) >> 3, (E.ptrNodesY(w) >> 3) + 49));
+  return { nx, ny, disp: Math.hypot(nx[24], ny[24]), inv: E.checkInvariants(w) };
 }
 const maxNodeDiff = (a, b) => {
   let d = 0;
-  for (let i = 0; i <= 50; i++) {
+  for (let i = 0; i <= 48; i++) {
     d = Math.max(d, Math.abs(a.nx[i] - b.nx[i]), Math.abs(a.ny[i] - b.ny[i]));
   }
   return d;

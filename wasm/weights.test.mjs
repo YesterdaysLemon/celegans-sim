@@ -89,7 +89,8 @@ test('development on the wild-type graph reproduces the exporter', () => {
     worstV = Math.max(worstV, Math.abs(f64[va + i] - f64[vb + i]));
   }
   const xa = E.ptrNodesX(a) >> 3, xb = E.ptrNodesX(b) >> 3;
-  for (let i = 0; i <= 50; i++) {
+  // 49 nodes (N_LINKS = 48); see the out-of-bounds correction in metabolism.test.mjs.
+  for (let i = 0; i <= 48; i++) {
     worstX = Math.max(worstX, Math.abs(f64[xa + i] - f64[xb + i]));
   }
   assert.ok(worstV < 1e-8, `developed twin diverged by ${worstV} mV`);
