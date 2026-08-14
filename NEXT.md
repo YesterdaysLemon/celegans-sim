@@ -133,7 +133,11 @@ snapshots; hatch develops. Contracts pinned in `wasm/weights.test.mjs`; the aren
 `wasm/arena.mjs`: the genes-only `proprio_gain` climb did not appear under weight
 mutation — drowned signal or selection moved into the weights; a weight-drift readout
 in the arena reports would distinguish them. Then the topology tier (entries
-added/removed, which changes the CSR pattern the weights ride on).
+added/removed, which changes the CSR pattern the weights ride on). Tier four's
+chain-shaped half landed 2026-08-14: heritable stiffness, width and muscle profiles
+(`setMorphology`, twelve control points clamped [0.25, 4], eggs carry snapshots,
+`ARENA_MMUT`; contracts in `wasm/morphology.test.mjs`). Branching bodies are explicitly
+out of scope — that is an engine rewrite, not a mutation, and the mechanism says so.
 
 **1b. The dish has a metabolism now — run it until it bites.** Death by physiology
 landed 2026-08-14 (runtime: `setMetabolism`/`getEnergy`/`depositFood`, drag-power work

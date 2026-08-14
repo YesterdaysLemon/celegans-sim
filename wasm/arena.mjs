@@ -79,6 +79,20 @@ const MUT = env('ARENA_MUT', 0.10);
  * readout, and one seed decides nothing. Patterns, not findings. */
 const WMUT = env('ARENA_WMUT', 0.0);
 const WMUT_N = env('ARENA_WMUT_N', 3);
+/* Tier-four-within-the-chain: ARENA_MMUT is the lognormal sigma applied at hatch to the
+ * twelve morphology control points (stiffness, width and muscle profiles along the
+ * body; runtime clamps to [0.25, 4]; contracts in wasm/morphology.test.mjs). getMorph
+ * returns 1.0 for a reference-shaped animal, so the first mutated generation steps off
+ * the reference smoothly. Default off. Branching bodies are NOT here and will not be --
+ * that is an engine rewrite, recorded as out of scope at the mechanism.
+ *
+ * Shakedown (2026-08-14, seed 31, MMUT=0.10 with METAB=0.1, 240 s): 57 births, the
+ * whole population shaped by t=180 s, no drops, no physics failures, and the width and
+ * stiffness means idled near 1.0 -- no directional pull in four minutes, which is what
+ * an honest null looks like. Also the record's FIRST starvation death: one animal ran
+ * its store to zero and died where it stood, in a dish that also culled 50 -- physiology
+ * is now a minority death mode waiting for a poorer plate. */
+const MMUT = env('ARENA_MMUT', 0.0);
 /* The metabolic budget (runtime mechanism: setMetabolism / getEnergy / depositFood;
  * contracts in wasm/metabolism.test.mjs). ARENA_METAB is the store capacity in food
  * units; 0 -- the default -- is the old dish exactly: no fading, no starvation, death
@@ -215,6 +229,11 @@ function hatchDue() {
       }
       E.developWorm(id);
     }
+    if (MMUT > 0) {
+      const ctl = Array.from({ length: 12 }, (_, j) =>
+        E.getMorph(id, j) * Math.exp(normal() * MMUT));
+      E.setMorphology(id, ...ctl);
+    }
     metabolise(id, METAB_HATCH);            // hatchlings start part-stocked: policy
     founderOf.set(id, founderOf.get(parent) ?? -1);   // -1: parent already culled
     born.set(id, simT);
@@ -243,6 +262,13 @@ function report() {
     .map((g) => [g, GENES.indexOf(g)]).filter(([, s]) => s >= 0);
   const carriers = WMUT > 0
     ? `  weighted ${pop.filter((id) => E.hasOwnWeights(id)).length}/${pop.length}` : '';
+  const shaped = MMUT > 0
+    ? `  shaped ${pop.filter((id) => E.hasOwnMorphology(id)).length}/${pop.length}`
+      + `  width ${(pop.reduce((a, id) => a + (E.getMorph(id, 4) + E.getMorph(id, 5)
+          + E.getMorph(id, 6) + E.getMorph(id, 7)) / 4, 0) / (pop.length || 1)).toFixed(2)}`
+      + `  stiff ${(pop.reduce((a, id) => a + (E.getMorph(id, 0) + E.getMorph(id, 1)
+          + E.getMorph(id, 2) + E.getMorph(id, 3)) / 4, 0) / (pop.length || 1)).toFixed(2)}`
+    : '';
   let metab = '';
   if (METAB > 0 && pop.length) {
     const es = pop.map((id) => E.getEnergy(id) / METAB);
@@ -254,7 +280,7 @@ function report() {
     + `  births ${births}  deaths ${deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
     + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('')
-    + carriers + metab);
+    + carriers + shaped + metab);
 }
 
 console.log(`ARENA -- ${FOUNDERS} founders, cap ${CAP}, ${SECONDS} s of dish time,`
