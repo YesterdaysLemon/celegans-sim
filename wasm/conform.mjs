@@ -345,7 +345,7 @@ E.addRepellent(7.0, -3.0, 0.9, 5.0);
 E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
 const w5 = E.createWorm(0, 0.0, 0.0, 0.0);
 E.setHeadCascade(w5, cc.cascade.head_stages, cc.cascade.head_stage_decay,
-                 cc.cascade.head_delay_n);
+                 cc.cascade.head_delay_n, cc.cascade.head_stage_tau);
 let cXY = 0, cV = 0, cGate = 0;
 prev = 0;
 for (const f of cc.frames) {
@@ -379,6 +379,62 @@ console.log(`  direction gate disagreed on   ${cGate} of ${cc.frames.length} sam
 console.log(`  cascade actually did something ${cascadeEffect.toExponential(3)} mV against the single-lag reflex`);
 const cascadeOk = cXY < 1e-6 && cV < 1e-6 && cGate === 0 && cascadeEffect > 1e-3;
 console.log(cascadeOk ? '  PASS' : '  FAIL');
+
+// --- the amine load-sensing path --------------------------------------------------------
+/* The deepest exercise the port gets: the drag-force transduction, dopamine's slow
+ * integration, and all three effects -- lag, reach blend into the payload's swim fields,
+ * muscle EC rate -- must agree at once, on the cascade, over 4000 steps. The reference is
+ * built at the third-calibration configuration and the runtime is handed the same floats
+ * through setHeadCascade and setAminePath. */
+const amc = ref.amine;
+if (!amc) { console.error('reference has no `amine` case -- regenerate it'); process.exit(1); }
+if (!amc.cascade || !amc.amine) { console.error('amine case carries no config -- regenerate it'); process.exit(1); }
+E.resetWorld();
+E.clearWorms();
+E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+const w6 = E.createWorm(0, 0.0, 0.0, 0.0);
+E.setHeadCascade(w6, amc.cascade.head_stages, amc.cascade.head_stage_decay,
+                 amc.cascade.head_delay_n, amc.cascade.head_stage_tau);
+E.setAminePath(w6, amc.amine.load_gain, amc.amine.load_half, amc.amine.head_lag,
+               amc.amine.reach_blend, amc.amine.muscle_rate);
+let amXY = 0, amV = 0, amGate = 0;
+prev = 0;
+for (const f of amc.frames) {
+  E.step(w6, f.step - prev);
+  prev = f.step;
+  const nx = F64().subarray(E.ptrNodesX(w6) >> 3, (E.ptrNodesX(w6) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(w6) >> 3, (E.ptrNodesY(w6) >> 3) + f.y.length);
+  const vv = F64().subarray(E.ptrV(w6) >> 3, (E.ptrV(w6) >> 3) + f.V.length);
+  for (let i = 0; i < f.x.length; i++)
+    amXY = Math.max(amXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  for (let i = 0; i < f.V.length; i++) amV = Math.max(amV, Math.abs(vv[i] - f.V[i]));
+  if (E.getGateForward(w6) !== f.gate) amGate++;
+}
+/* Against the same animal with only the cascade -- the path has to have moved something
+ * beyond what the cascade alone moves, or three effects were compared at zero. */
+E.resetWorld(); E.clearWorms(); E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+const wCasc = E.createWorm(0, 0.0, 0.0, 0.0);
+E.setHeadCascade(wCasc, amc.cascade.head_stages, amc.cascade.head_stage_decay,
+                 amc.cascade.head_delay_n, amc.cascade.head_stage_tau);
+E.step(wCasc, amc.steps);
+const cascV = Array.from(F64().subarray(E.ptrV(wCasc) >> 3, (E.ptrV(wCasc) >> 3) + 302));
+const amLastV = amc.frames[amc.frames.length - 1].V;
+let amineEffect = 0;
+for (let i = 0; i < 302; i++) amineEffect = Math.max(amineEffect, Math.abs(cascV[i] - amLastV[i]));
+
+console.log(`\nAMINE PATH -- load transduction + three dopamine effects, ${amc.steps} steps, noise off`);
+console.log(`  worst node disagreement       ${amXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${amV.toExponential(3)} mV`);
+console.log(`  direction gate disagreed on   ${amGate} of ${amc.frames.length} samples`);
+console.log(`  path actually did something   ${amineEffect.toExponential(3)} mV against cascade-only`);
+const amineOk = amXY < 1e-6 && amV < 1e-6 && amGate === 0 && amineEffect > 1e-3;
+console.log(amineOk ? '  PASS' : '  FAIL');
 
 // --- the path the browser actually runs ----------------------------------------------
 // Everything above drives `step(w, n)`. The viewer drives `stepAll(n)`, which is a
@@ -630,7 +686,7 @@ const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph
   && plateLost > 0 && relGap < 1e-9 && flat.length === 0;
 console.log(multiOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && cascadeOk && allOk && multiOk;
+const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && cascadeOk && amineOk && allOk && multiOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 // Only a completed numeric comparison may use the dedicated finding code. Missing or

@@ -111,8 +111,19 @@ declare namespace __AdaptedExports {
    * @param stages `i32`
    * @param stageDecay `f64`
    * @param delayN `i32`
+   * @param stageTau `f64`
    */
-  export function setHeadCascade(w: number, stages: number, stageDecay: number, delayN: number): void;
+  export function setHeadCascade(w: number, stages: number, stageDecay: number, delayN: number, stageTau: number): void;
+  /**
+   * assembly/index/setAminePath
+   * @param w `i32`
+   * @param loadGain `f64`
+   * @param loadHalf `f64`
+   * @param headLag `f64`
+   * @param reachBlend `f64`
+   * @param muscleRate `f64`
+   */
+  export function setAminePath(w: number, loadGain: number, loadHalf: number, headLag: number, reachBlend: number, muscleRate: number): void;
   /**
    * assembly/index/clearWorms
    */

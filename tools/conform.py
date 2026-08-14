@@ -98,7 +98,8 @@ def folded_case():
     return out
 
 
-def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau=0.0):
+def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau=0.0,
+              amine=False):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
     Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
@@ -127,6 +128,19 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
         p = dataclasses.replace(p, sensory=dataclasses.replace(
             p.sensory, head_stages=head_stages, head_stage_tau=head_stage_tau,
             **({"head_delay": head_delay} if head_delay is not None else {})))
+    # The amine load-sensing path at its third-calibration configuration
+    # (tools/amine_gait.py) -- which runs on the cascade, so this case exercises both,
+    # end to end: drag-force transduction, dopamine integration, the lag, reach and
+    # muscle-rate effects, and the swim fields the payload carries as wbs/was.
+    if amine:
+        p = dataclasses.replace(
+            p,
+            sensory=dataclasses.replace(
+                p.sensory, head_stages=4, head_delay=0.0, head_stage_tau=0.125,
+                load_gain=60.0, load_half=1.0, proprio_reach_swim=0.48),
+            modulator=dataclasses.replace(
+                p.modulator, dopamine_head_lag=1.30, dopamine_reach_swim=2.0,
+                dopamine_muscle_rate=0.5))
     # A plate with something on it. A bare world leaves most of the sensory layer reading
     # zero -- and a term that is only ever multiplied by zero is not being checked. The
     # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
@@ -145,12 +159,19 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
     sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     steps = 4000
     out = {"steps": steps, "sample": 200, "frames": []}
-    if head_stages:
+    if sim.senses._head_stages > 1:
         # The exact constants the Python side computed, so the runtime is configured with
         # the same floats rather than recomputing them and eating a rounding difference.
         out["cascade"] = {"head_stages": int(sim.senses._head_stages),
                           "head_stage_decay": float(sim.senses._head_stage_decay),
+                          "head_stage_tau": float(sim.senses._head_stage_tau),
                           "head_delay_n": int(sim.senses._head_delay_n)}
+    if amine:
+        s, mo = sim.p.sensory, sim.p.modulator
+        out["amine"] = {"load_gain": s.load_gain, "load_half": s.load_half,
+                        "head_lag": mo.dopamine_head_lag,
+                        "reach_blend": mo.dopamine_reach_swim,
+                        "muscle_rate": mo.dopamine_muscle_rate}
     for i in range(steps):
         sim.step()
         if (i + 1) % 200 == 0:
@@ -441,6 +462,10 @@ def main():
                # no transport delay -- so the ported chain is exercised stage by stage
                # rather than sitting behind a branch the default never takes.
                "cascade": full_case(head_stages=4, head_delay=0.0, head_stage_tau=0.125),
+               # The amine path, which is also the deepest exercise the modulator layer
+               # gets: dopamine must integrate the transduced load and move three
+               # effects for this to agree.
+               "amine": full_case(amine=True),
                # Several animals on one plate. Everything above is one animal, and one
                # animal cannot reach the batch settlement or the shared world advance.
                "multi": multi_case()},

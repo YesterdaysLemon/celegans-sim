@@ -35,6 +35,13 @@ import numpy as np
 from worm.body import Body
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
+from worm.senses import _receptive_fields
+
+# The swim-end proprioceptive reach carried in the payload for the amine load-sensing
+# path -- the third-calibration value from tools/amine_gait.py. A different calibration
+# means a re-export, which is the right coupling: the matrices are construction-time
+# data, exactly like every other precomputed map aboard.
+AMINE_REACH_SWIM = 0.48
 
 OUT = "web/worm.model"
 
@@ -456,6 +463,24 @@ def export(path=OUT, params=None):
     # exercises stages = 4 through setHeadCascade against this same payload.
     b.i("head_stages", sen._head_stages)
     b.f("head_stage_decay", sen._head_stage_decay)
+    # The taus behind the decays, for the amine path: dopamine rescales the reflex and
+    # muscle time constants at run time, so the runtime recomputes the decays from tau
+    # and scale the same way worm/senses.py and worm/muscle.py do. At scale 1 the
+    # precomputed decays are used and these are never read.
+    b.f("head_stage_tau", sen._head_stage_tau)
+    b.f("head_tau", p.sensory.head_tau)
+    b.f("mus_tau_ca", p.muscle.tau_calcium)
+    b.f("mus_tau_te", p.muscle.tau_tension)
+    # The swim-end receptive fields, at the reach the amine research configuration was
+    # calibrated to (tools/amine_gait.py, third calibration). Auxiliary payload in the
+    # same sense as mus_raw: the canonical step never reads them, and setAminePath turns
+    # them on per worm. Built with the same _receptive_fields the live matrices use, so
+    # the Python conformance side constructs bit-identical values.
+    swim_joint_s = np.arange(1, p.body.n_links) / p.body.n_links
+    b.csr("wbs", _receptive_fields(conn, sen.db, sen.vb, swim_joint_s,
+                                   AMINE_REACH_SWIM, +1))
+    b.csr("was", _receptive_fields(conn, sen.da, sen.va, swim_joint_s,
+                                   AMINE_REACH_SWIM, -1))
     b.f("prop_adapt_rate", sen._prop_adapt_rate)
     b.f("chem_decay", sen._chem_decay).f("odour_decay", sen._odour_decay)
     b.f("odour_rate", sen._odour_rate).f("therm_decay", sen._therm_decay)

@@ -109,11 +109,23 @@ does; see below.
 
 ## Route 3 — the Python-only paths
 
-Four families. **All are off by default**, and that is what
-`tests/test_runtime_parity.py` pins.
+Four families, two of which crossed into the runtime on 2026-08-14 (the cascade and the
+amine path — see their entries). **All are off by default**, and the two still
+Python-only are what `tests/test_runtime_parity.py` pins.
 
 ### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`, `modulator.dopamine_muscle_rate`) — the amine load-sensing path
-**Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
+**Runtime: implemented (2026-08-14 port), off by default. Lifecycle: `REFERENCE_CANDIDATE`.**
+
+*The port:* `Worm.dragLoad` mirrors `Body.drag_load` from the saved qdot; the transduction
+current, dopamine's three effect scales and the swim-field blend run per worm behind
+`setAminePath`, whose all-zero default is the canonical animal; the swim receptive fields
+ride in the payload as `wbs`/`was` at the third-calibration reach, built by the same
+`_receptive_fields` the Python constructs with. The `amine` conformance case runs the
+whole configuration for 4000 steps and agrees to 5.0e-13 mm / 5.0e-11 mV, with 68 mV of
+measured effect against cascade-only — the same absent-and-zero-agree argument every
+enabled case exists for. Adoption (flipping defaults) remains gated on the behavioural
+scorecard and the food/load confound in NEXT.md; the runtime-parity precondition is
+discharged.
 
 CEP/ADE/PDE transduce the drag force the cuticle bears (`Body.drag_load`, the mean |c·v|
 per unit length — the one gait signal measured to survive below the K ≈ 8 knee where the
@@ -144,7 +156,14 @@ rescale), `worm/modulators.py::head_lag_scale/swim_reach_blend`, `worm/engine.py
 load pass-through). Tools: `tools/amine_gait.py`.
 
 ### `sensory.head_stages`, `sensory.head_stage_tau` — the head-reflex cascade
-**Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
+**Runtime: implemented (2026-08-14 port) — Route 2 now, kept here for its history. Lifecycle: `REFERENCE_CANDIDATE`.**
+
+*The port:* `HEAD_STAGES`/`HEAD_STAGE_DECAY`/`HEAD_STAGE_TAU` are exported scalars, the
+stage chain runs in both reflex forms, and `setHeadCascade` configures it per worm so the
+`cascade` conformance case exercises stages = 4 against the canonical payload: 4.98e-13 mm
+/ 5.0e-11 mV over 4000 steps, 31 mV of effect against the single-lag reflex. At the
+shipped stages = 1 the single-lag path is untouched byte for byte. Adoption is still its
+own decision; what this port removes is only the parity blocker.
 
 Replaces the single first-order lag on the head stretch reflex with N stages in series, so
 phase *adds* rather than averaging. At `head_stages = 4`, `head_stage_tau = 0.125`,
