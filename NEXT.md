@@ -50,12 +50,15 @@ ceiling near 1.40 L against 1.54, and mid-continuum trajectories that wander (ne
 effects) stays gated on separating the serotonin scalar's food roles — the same
 confound-class precondition as adoption.
 
-**Adoption is a separate decision from calibration, with preconditions already named:**
-the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it —
-bare agar now saturates dopamine, so the basal-slowing calibration's assumption breaks in
-the enabled configuration); a full `tools/scorecard.py`/`tools/ethogram.py` pass, because
-dopamine now moves during ordinary locomotion and everything it touches moves with it;
-and runtime parity for five constants plus the cascade the path runs on.
+**Adoption is a separate decision from calibration, and the preconditions are down to
+two.** Runtime parity is discharged (2026-08-14): the cascade and the whole amine path
+are ported to `wasm/assembly/index.ts` behind per-worm setters with all-zero defaults,
+each with its own conformance case agreeing to 5e-13 mm / 5e-11 mV and each measurably
+doing something against its off control — see `docs/runtime-parity.md`. What remains:
+the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it), and
+the behavioural gate — a full paired `tools/compare.py all` run at the amine
+configuration was started 2026-08-14 and its verdict tables are the next thing to read
+before any default moves.
 
 *(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
 below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
@@ -113,14 +116,21 @@ behavioural assay at once.
 Evolved animals are not *C. elegans*, and nothing here produces a claim about the animal —
 [`docs/project-architecture.md`](docs/project-architecture.md) §1.
 
-**1. Export the raw muscle `G`, and finish the exporter rework.** Unblocks heritable weights
-*and* topology together. The graph is already in the payload as CSR and the runtime already
-solves for `V_th`; the one remaining blocker is that the exported muscle `G` is
-*post*-`_balance`, so the balance can be neither recomputed nor checked from the payload.
-Export the raw one alongside it and port the bisection — 70 iterations over 95 cells, no
-linear algebra.
+**1. Heritable weights and topology — the payload half is done.** The raw muscle `G`
+ships alongside the balanced matrix (2026-08-14), and `checkBalance()` in the runtime
+reruns `_balance`'s 70-iteration bisection from it, pinned below 1e-9 by the invariants
+test — the balance is recomputable and checkable browser-side. What remains is the
+architecture half: per-worm conductance matrices so a lineage can actually carry a
+mutated `G`, rebalanced through the ported bisection at birth.
 
-**2. Make egg production depend on laying having made room for it.** `EVO_FITNESS=eggs` is
+**2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
+(`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
+main line: there is no fitness scalar to game — reproduction is eat → transport → uterus
+→ HSN/VC laying → survive incubation, and a first arena run showed a founding dynasty
+sweep to fixation in 150 dish-seconds followed by the plate economy shutting laying down.
+The physiology question below stands only if the scalar `EVO_FITNESS=eggs` measure is to
+be kept honest for short assays. **Make egg production depend on laying having made room
+for it.** `EVO_FITNESS=eggs` is
 measured to be intake in different units: `laid + held` is conserved across a laying event, so
 egg production is blind to the egg-laying circuit by construction. A real uterus is not a
 bucket that fills regardless. Small model change — but it lands in `worm/egglaying.py`, which
