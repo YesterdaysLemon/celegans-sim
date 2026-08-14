@@ -24,8 +24,9 @@
   <header>
     <b>The Arena</b>
     <span class="warn">Track B — nothing in this dish is a claim about <i>C. elegans</i>.</span>
-    <span>Descent with modification on a finite plate: eggs hatch, the least-fed starve at
-    the cap, and every niche a lineage finds is a measured defect of the reconstruction.</span>
+    <span>Descent with modification on a finite plate: eggs hatch, empty stores kill where
+    the body stands, every corpse becomes food where it fell, and every niche a lineage
+    finds is a measured defect of the reconstruction.</span>
     <a href="index.html">→ the reference animal's dish</a>
   </header>
   <canvas id="dish"></canvas>
@@ -38,6 +39,15 @@
  * compressed incubation, mutation at hatch, death by carrying capacity. */
 const CAP = 10, FOUNDERS = 4, MUT = 0.10, INCUBATION = 60, SEED = 1;
 const STEPS_PER_FRAME = 200;                     // dish time per rendered frame
+/* The metabolic budget, on by default in the browser dish -- this page exists to show
+ * the plate economy, and death that feeds the plate is the economy closing its loop.
+ * Same invented constants as wasm/arena.mjs's defaults; contracts in
+ * wasm/metabolism.test.mjs. Death is physiology here (store at zero), the cull stays
+ * as the capacity backstop, and every body becomes food where it stopped. */
+const METAB = 0.1, METAB_T = 240, METAB_WORKP = 2.0, METAB_FLOOR = 0.25;
+const METAB_KNEE = 0.35, METAB_HATCH = 0.6;
+const CORPSE = METAB * 0.5, CORPSE_YIELD = 0.8, CORPSE_R = 0.8;
+const BASAL = METAB / METAB_T, WORKC = BASAL / METAB_WORKP;
 
 const [wasmBuf, modelBuf] = await Promise.all([
   fetch('worm.wasm').then((r) => r.arrayBuffer()),
@@ -82,13 +92,24 @@ E.addFood(7, -4, 4, 1.0, 1.0, 9.0);
 E.addFood(0, 9, 3, 1.0, 0.8, 8.0);
 
 const founderOf = new Map(); const eatenAt = new Map();
-let simT = 0, births = 0, deaths = 0, iota = 1000;
+const corpses = [];                          // {x, y, worth, t} -- drawn as fading blooms
+let simT = 0, births = 0, deaths = 0, starved = 0, iota = 1000;
 for (let i = 0; i < FOUNDERS; i++) {
   const a = (2 * Math.PI * i) / FOUNDERS;
   const id = E.createWorm(SEED + i, 6 * Math.cos(a), 6 * Math.sin(a), a + Math.PI / 2);
+  E.setMetabolism(id, METAB, BASAL, WORKC, METAB_FLOOR, METAB_KNEE, 1.0);
   founderOf.set(id, i); eatenAt.set(id, 0);
 }
 const ids = () => Array.from({ length: E.wormCount() }, (_, k) => E.wormIdAt(k));
+
+/* Every death feeds the plate: the body plus a yield on whatever store was left. */
+function die(id) {
+  const x = F64()[(E.ptrNodesX(id) >> 3) + 25], y = F64()[(E.ptrNodesY(id) >> 3) + 25];
+  const worth = CORPSE + CORPSE_YIELD * E.getEnergy(id);
+  E.depositFood(x, y, CORPSE_R, worth);
+  corpses.push({ x, y, worth, t: simT });
+  E.removeWorm(id); founderOf.delete(id); eatenAt.delete(id); deaths++;
+}
 
 function cullTo(cap) {
   while (E.wormCount() > cap) {
@@ -97,7 +118,13 @@ function cullTo(cap) {
       const recent = E.getEaten(id) - (eatenAt.get(id) ?? 0);
       if (recent < low) { low = recent; worst = id; }
     }
-    E.removeWorm(worst); founderOf.delete(worst); eatenAt.delete(worst); deaths++;
+    die(worst);
+  }
+}
+
+function reap() {
+  for (const id of ids()) {
+    if (E.getEnergy(id) <= 0.0) { die(id); starved++; }
   }
 }
 function hatchDue() {
@@ -109,6 +136,7 @@ function hatchDue() {
     for (let s = 0; s < GENES.length; s++) {
       E.setGene(id, s, clampGene(GENES[s], E.getGene(id, s) + normal() * MUT * scaleOf(GENES[s])));
     }
+    E.setMetabolism(id, METAB, BASAL, WORKC, METAB_FLOOR, METAB_KNEE, METAB_HATCH);
     founderOf.set(id, founderOf.get(parent) ?? -1);
     eatenAt.set(id, 0); births++;
     cullTo(CAP);
@@ -134,6 +162,19 @@ function draw() {
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(X(lx), Y(ly), lr * 2.2 * s, 0, 7); ctx.fill();
   }
+  /* Corpses: a bloom where a body became food, brightest when fresh and richest,
+   * fading over ~90 dish-seconds as (visually) the plate absorbs it. The food itself
+   * is real and stays until eaten -- only the marker fades. */
+  for (let i = corpses.length - 1; i >= 0; i--) {
+    const c = corpses[i];
+    const age = simT - c.t;
+    if (age > 90) { corpses.splice(i, 1); continue; }
+    const a = 0.55 * (1 - age / 90) * Math.min(1, c.worth / METAB);
+    const g = ctx.createRadialGradient(X(c.x), Y(c.y), 0, X(c.x), Y(c.y), CORPSE_R * 2.5 * s);
+    g.addColorStop(0, `rgba(190,170,80,${a})`); g.addColorStop(1, 'rgba(190,170,80,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(X(c.x), Y(c.y), CORPSE_R * 2.5 * s, 0, 7); ctx.fill();
+  }
   const nE = E.eggCount();
   const ex = F64().subarray(E.ptrEggX() >> 3, (E.ptrEggX() >> 3) + nE);
   const ey = F64().subarray(E.ptrEggY() >> 3, (E.ptrEggY() >> 3) + nE);
@@ -144,7 +185,10 @@ function draw() {
   for (const id of ids()) {
     const nx = F64().subarray(E.ptrNodesX(id) >> 3, (E.ptrNodesX(id) >> 3) + 51);
     const ny = F64().subarray(E.ptrNodesY(id) >> 3, (E.ptrNodesY(id) >> 3) + 51);
-    ctx.strokeStyle = `hsl(${HUE(founderOf.get(id) ?? -1)} 70% 62%)`;
+    // Lightness follows the store: a fed animal glows, a starving one dims toward the
+    // dark of the dish -- the fade you see is the fade the muscles feel.
+    const e = Math.max(0, Math.min(1, E.getEnergy(id) / METAB));
+    ctx.strokeStyle = `hsl(${HUE(founderOf.get(id) ?? -1)} ${40 + 30 * e}% ${25 + 40 * e}%)`;
     ctx.lineWidth = Math.max(1.5, 0.08 * s);
     ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(X(nx[0]), Y(ny[0]));
@@ -157,6 +201,7 @@ let acc = 0;
 function frame() {
   E.stepAll(STEPS_PER_FRAME);
   simT += STEPS_PER_FRAME * DT;
+  reap();
   hatchDue();
   if ((acc++ & 15) === 0) {
     for (const id of ids()) eatenAt.set(id, E.getEaten(id));
@@ -164,8 +209,12 @@ function frame() {
     for (const id of ids()) { const f = founderOf.get(id) ?? -1; dyn.set(f, (dyn.get(f) ?? 0) + 1); }
     const dynasties = Array.from(dyn.entries()).sort((a, b) => b[1] - a[1])
       .map(([f, n]) => `${f < 0 ? 'orphan' : 'F' + f}:${n}`).join('  ');
+    const pop = ids();
+    const meanE = pop.length
+      ? pop.reduce((a, id) => a + E.getEnergy(id), 0) / (pop.length * METAB) : 0;
     hud.textContent = `dish ${simT.toFixed(0)} s   population ${E.wormCount()}/${CAP}`
-      + `   eggs ${E.eggCount()}   born ${births}   died ${deaths}   dynasties  ${dynasties}`;
+      + `   eggs ${E.eggCount()}   born ${births}   died ${deaths}`
+      + ` (starved ${starved})   energy ${meanE.toFixed(2)}   dynasties  ${dynasties}`;
   }
   draw();
   requestAnimationFrame(frame);

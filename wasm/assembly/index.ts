@@ -411,6 +411,42 @@ class World {
     return true;
   }
 
+  /* A finite food deposit: `amount` spread evenly over the in-dish cells within r of
+   * (x, y). Two passes -- count, then credit -- so the division is by the cells that
+   * will actually take the food and the sum over the plate rises by exactly `amount`
+   * (to rounding) unless the circle falls entirely off the dish. */
+  deposit(x: f64, y: f64, r: f64, amount: f64): f64 {
+    const g = this.g;
+    const i0 = <i32>Math.max(0, Math.floor((y - r + this.extent) / this.h));
+    const i1 = <i32>Math.min(<f64>(g - 1), Math.floor((y + r + this.extent) / this.h));
+    const j0 = <i32>Math.max(0, Math.floor((x - r + this.extent) / this.h));
+    const j1 = <i32>Math.min(<f64>(g - 1), Math.floor((x + r + this.extent) / this.h));
+    let cells = 0;
+    for (let i = i0; i <= i1; i++) {
+      const cy = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = j0; j <= j1; j++) {
+        const cx = -this.extent + (<f64>j + 0.5) * this.h;
+        const dx = cx - x, dy = cy - y;
+        if (dx * dx + dy * dy <= r * r
+            && Math.sqrt(cx * cx + cy * cy) <= this.extent) cells++;
+      }
+    }
+    if (cells == 0) return 0.0;
+    const per = amount / <f64>cells;
+    for (let i = i0; i <= i1; i++) {
+      const cy = -this.extent + (<f64>i + 0.5) * this.h;
+      for (let j = j0; j <= j1; j++) {
+        const cx = -this.extent + (<f64>j + 0.5) * this.h;
+        const dx = cx - x, dy = cy - y;
+        if (dx * dx + dy * dy <= r * r
+            && Math.sqrt(cx * cx + cy * cy) <= this.extent) {
+          unchecked(this.food[i * g + j] += per);
+        }
+      }
+    }
+    return amount;
+  }
+
   stepFields(dt: f64): void {
     this.facc += dt;
     while (this.facc >= G.WORLD_FIELD_DT) {
@@ -933,6 +969,26 @@ class Worm {
   amMuscleRate: f64 = 0.0;
   amLoad: f64 = 0.0;
   qdotSave: StaticArray<f64> = new StaticArray<f64>(G.N_LINKS + 2);
+  /* Metabolism: TRACK B DISH PHYSIOLOGY, not reference biology. The reference animal has
+   * no death and no energy budget anywhere in its equations -- a worm that never eats
+   * swims at full strength forever, and that immortality is exhibit material
+   * (docs/niche-museum.md). These fields give a dish the option of making starvation a
+   * mechanism instead of a cull policy: an energy store filled by what the pharynx
+   * actually transported, drained by a basal rate plus the body's real drag dissipation,
+   * fading the muscles toward a floor as it empties. Every constant is INVENTED -- chosen
+   * for dish timescales, not measured from the animal -- and the all-zero default is the
+   * canonical animal untouched, the same off-is-identical contract as the amine path.
+   * The octopamine starvation arm composes with this for free: a hungry animal roams
+   * harder, which under a work cost is spending its reserves faster -- the real
+   * starvation trade-off, emerging from two mechanisms that never mention each other. */
+  metabCap: f64 = 0.0;         // store capacity, food units; 0 = metabolism off
+  metabBasal: f64 = 0.0;       // food units per second, standing cost
+  metabWork: f64 = 0.0;        // food units per unit of drag power, locomotor cost
+  metabFloor: f64 = 0.0;       // muscle fade floor at an empty store
+  metabFadeFrac: f64 = 0.0;    // fraction of capacity below which fading begins
+  metabE: f64 = 0.0;           // the store itself
+  metabPrevIngested: f64 = 0.0;
+  metabFade: f64 = 1.0;        // applied to the muscle moment; 1.0 when off
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
   repAdapt: f64 = 0.0;
   adaptReady: bool = false;
@@ -1257,7 +1313,10 @@ class Worm {
       if (s >= m(G.OFF_mus_row_pos, rows - 1)) { k = rows - 2; f = 1.0; }
       const dj = unchecked(sRowD[k]) + f * (unchecked(sRowD[k + 1]) - unchecked(sRowD[k]));
       const vj = unchecked(sRowV[k]) + f * (unchecked(sRowV[k + 1]) - unchecked(sRowV[k]));
-      unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj));
+      // metabFade is 1.0 whenever metabolism is off, and x * 1.0 is bit-identical -- the
+      // canonical animal's moment is untouched. A fading animal's muscles pull weaker
+      // everywhere at once, which is starvation as physics rather than as bookkeeping.
+      unchecked(this.moment[j] = m(G.OFF_mus_joint_gain, j) * (dj - vj) * this.metabFade);
     }
   }
 
@@ -1415,10 +1474,11 @@ class Worm {
     this.bx += unchecked(Q[0]) * dt;
     this.by += unchecked(Q[1]) * dt;
     for (let i = 0; i < n; i++) unchecked(this.theta[i] += unchecked(Q[2 + i]) * dt);
-    // The amine path reads the drag force the cuticle bore, which needs the qdot that
-    // produced this step's positions -- the same pairing worm/body.py::drag_load uses.
-    // Only kept when the path is on; the canonical animal skips the copy.
-    if (this.amLoadGain != 0.0) {
+    // The amine path reads the drag force the cuticle bore, and the metabolic work cost
+    // reads the drag power -- both need the qdot that produced this step's positions,
+    // the same pairing worm/body.py::drag_load uses. Only kept when a consumer is on;
+    // the canonical animal skips the copy.
+    if (this.amLoadGain != 0.0 || this.metabWork > 0.0) {
       for (let i = 0; i < N; i++) unchecked(this.qdotSave[i] = unchecked(Q[i]));
     }
     this.updateNodes();
@@ -1446,6 +1506,54 @@ class Worm {
       sum += Math.sqrt(this.cT * vt * (this.cT * vt) + this.cN * vn * (this.cN * vn));
     }
     return sum / <f64>n;
+  }
+
+  /* Drag power dissipated by the cuticle, uN mm / s: the same segment-midpoint
+   * velocities dragLoad() uses, but summed as the positive-definite dissipation
+   * cT vt^2 + cN vn^2 per unit length times the segment length. This is the actual
+   * mechanical work rate the medium extracts from the animal -- at zero Reynolds number
+   * every joule of locomotion leaves through exactly this term, so a metabolic work
+   * cost that reads it is charging for the physics the body really did, not for a
+   * proxy of it. */
+  dragPower(): f64 {
+    const n = G.N_LINKS, l = G.BODY_L;
+    let cumX: f64 = 0.0, cumY: f64 = 0.0;
+    let sum: f64 = 0.0;
+    for (let i = 0; i < n; i++) {
+      const th = unchecked(this.theta[i]);
+      const ux = Math.cos(th), uy = Math.sin(th);
+      const nx = -uy, ny = ux;
+      const cx = l * nx * unchecked(this.qdotSave[2 + i]);
+      const cy = l * ny * unchecked(this.qdotSave[2 + i]);
+      const vx = unchecked(this.qdotSave[0]) + cumX + 0.5 * cx;
+      const vy = unchecked(this.qdotSave[1]) + cumY + 0.5 * cy;
+      cumX += cx; cumY += cy;
+      const vt = vx * ux + vy * uy;
+      const vn = vx * nx + vy * ny;
+      sum += (this.cT * vt * vt + this.cN * vn * vn) * l;
+    }
+    return sum;
+  }
+
+  /* One metabolic step: intake in, basal plus work out, the store clamped to [0, cap],
+   * and the muscle fade recomputed for the NEXT step's jointMoment (a one-step delay,
+   * the same shape as the contact forces mechanosensation reads). Runs in finishStep,
+   * after the plate has answered this step's feeding, so intake is what actually reached
+   * the intestine. With the cap at zero this returns immediately and metabFade stays at
+   * its constructed 1.0 -- the canonical animal's moments are multiplied by exactly one,
+   * which is bit-identical. */
+  stepMetabolism(): void {
+    if (this.metabCap <= 0.0) return;
+    const intake = this.ingested - this.metabPrevIngested;
+    this.metabPrevIngested = this.ingested;
+    this.metabE += intake
+      - (this.metabBasal + this.metabWork * this.dragPower()) * G.DT;
+    if (this.metabE > this.metabCap) this.metabE = this.metabCap;
+    if (this.metabE < 0.0) this.metabE = 0.0;
+    const knee = this.metabFadeFrac * this.metabCap;
+    this.metabFade = (knee > 0.0 && this.metabE < knee)
+      ? this.metabFloor + (1.0 - this.metabFloor) * (this.metabE / knee)
+      : 1.0;
   }
 
   /* The three amine effects, mirroring worm/modulators.py exactly: floors 0.4 and 0.5,
@@ -1891,6 +1999,7 @@ class Worm {
                      ? new WeightSet(this.synVal, this.synVal2, this.gapVal, this.musRaw)
                      : null);
     }
+    this.stepMetabolism();
     this.t += G.DT;
   }
 
@@ -2085,6 +2194,19 @@ let nextWormId: i32 = 0;
 export function initWorld(): void { world = new World(); }
 export function addFood(x: f64, y: f64, r: f64, d: f64, att: f64, ls: f64): void {
   world.addPatch(x, y, r, d, att, ls);
+}
+/* Put a fixed AMOUNT of food straight onto the plate, spread uniformly over the cells
+ * within r of (x, y) that lie inside the dish. This is the corpse mechanism: a lawn
+ * (addFood) is a standing bacterial colony with an attractant plume and a cached
+ * megabyte of field shape; a corpse is neither -- it is a finite deposit where a body
+ * stopped, findable by the local food sense but not smellable from across the dish.
+ * That asymmetry is a deliberate first cut, stated here so nobody mistakes it for
+ * biology: real carcasses recruit scavengers by smell, and if a dish ever wants that it
+ * pays for a patch slot instead. Conservation is exact -- what this returns is what the
+ * plate actually took (0 if every candidate cell is outside the dish), so a caller
+ * crediting a corpse can check nothing leaked. */
+export function depositFood(x: f64, y: f64, r: f64, amount: f64): f64 {
+  return world.deposit(x, y, r, amount);
 }
 /* How many lawns the plate is carrying, and how many it turned away. A patch is a megabyte
  * of cached field shape now, so `addFood` can refuse (see MAX_FOOD_PATCHES); a caller that
@@ -2423,6 +2545,28 @@ export function setAminePath(w: i32, loadGain: f64, loadHalf: f64, headLag: f64,
   worm.amReachBlend = reachBlend;
   worm.amMuscleRate = muscleRate;
 }
+/* Turn on the metabolic budget for one animal (Track B dish physiology; see the field
+ * block in class Worm). cap in food units (0 disables and restores fade 1.0), basal in
+ * food units/s, work in food units per unit drag power, floor and fadeFrac as fractions.
+ * initialFrac sets the starting fill; a founder starts full, a policy that hatches
+ * animals hungrier is a caller's choice. No optional parameters -- raw bindings trap on
+ * them (see setHeadCascade). */
+export function setMetabolism(w: i32, cap: f64, basal: f64, work: f64,
+                              floor: f64, fadeFrac: f64, initialFrac: f64): void {
+  const worm = byId(w);
+  worm.metabCap = cap;
+  worm.metabBasal = basal;
+  worm.metabWork = work;
+  worm.metabFloor = clamp(floor, 0.0, 1.0);
+  worm.metabFadeFrac = clamp(fadeFrac, 0.0, 1.0);
+  worm.metabE = clamp(initialFrac, 0.0, 1.0) * cap;
+  worm.metabPrevIngested = worm.ingested;
+  worm.metabFade = 1.0;
+}
+export function getEnergy(w: i32): f64 { return byId(w).metabE; }
+export function getMetabFade(w: i32): f64 { return byId(w).metabFade; }
+export function getDragPower(w: i32): f64 { return byId(w).dragPower(); }
+
 export function clearWorms(): void { worms = []; wormById = new Map<i32, Worm>(); }
 /* Remove one animal, whoever it is. Returns 1 if it was there.
  *
