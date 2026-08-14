@@ -133,6 +133,9 @@ class Body:
         along = np.abs(np.arange(n + 1)[:, None] - np.arange(n + 1)[None, :]) * self.l
         self._self_contact_dist = contact
         self._self_pairs = np.triu(along > SELF_CONTACT_MARGIN * contact, k=1)
+        # The self-contact broad phase's reference: (node positions at the last full
+        # check, the clearance margin found there). None forces a full check.
+        self._contact_ref = None
 
         # Bending stiffness along the body. A solid rod would scale as r^4, but the worm is
         # a thin-walled cylinder held out by internal hydrostatic pressure, for which the
@@ -189,14 +192,37 @@ class Body:
         The nose and tail have zero radius in `radius_profile`, so the outermost node of
         each cannot register contact at all. Its neighbours can, and they are 0.021 mm
         away, so nothing passes through the body -- but the very tip is not a collider.
+
+        THE BROAD PHASE, and why it is exact rather than approximate. The full pairwise
+        check ran every step and returned zeros essentially always (the docstring above
+        records the animal as measurably inert against it). It now runs only when it
+        could possibly say otherwise: after a full check finds no contact, the node
+        positions and the smallest clearance above threshold (the margin) are kept, and
+        each subsequent step computes one number -- the largest Euclidean displacement of
+        any node since that reference. While twice that displacement is below the margin,
+        no pair can have closed its gap (triangle inequality: a pair's gap shrinks by at
+        most the sum of its two nodes' displacements), so the zero force is returned
+        without being recomputed. No velocity bound is assumed, nothing is predicted, and
+        the moment the displacement eats the margin -- or any contact is actually active
+        -- the full check runs again. The forces this function returns are therefore
+        identical to the always-check version, step for step, by construction.
         """
+        ref = self._contact_ref
+        if ref is not None:
+            delta = nodes - ref[0]
+            max_sq = float(np.einsum("ij,ij->i", delta, delta).max())
+            if 4.0 * max_sq < ref[1] * ref[1]:
+                return np.zeros_like(nodes)
         f = np.zeros_like(nodes)
         d = nodes[:, None, :] - nodes[None, :, :]
         dist = np.sqrt((d * d).sum(axis=2))
         pen = self._self_contact_dist - dist
         hit = self._self_pairs & (pen > 0.0)
         if not hit.any():
+            margin = float(-pen[self._self_pairs].max()) if self._self_pairs.any() else np.inf
+            self._contact_ref = (nodes.copy(), margin)
             return f
+        self._contact_ref = None
         ii, jj = np.nonzero(hit)
         direction = d[ii, jj] / np.maximum(dist[ii, jj, None], 1e-9)
         push = stiffness * pen[ii, jj, None] * direction
