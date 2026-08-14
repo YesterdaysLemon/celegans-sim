@@ -165,7 +165,15 @@ def _job(job):
     med = media_sweep()[u_index]
     p = amine_params(med)
     sim = Simulation(p, seed=seed, world=bare_world(p))
-    sim.run(6.0)
+    # 24 s, not the baseline protocol's 6: dopamine's time constant is 6 s, so a 6 s
+    # settle measures the path's *transient* -- three coefficients still sliding -- and
+    # at mid-continuum media that transient can trip into the broken mode the stability
+    # grid mapped, which is exactly what the first three-effect locus recorded at
+    # K = 3.54 (0.956 +-0.534 Hz) while per-seed probes with a long settle found every
+    # seed healthy on the chord. The baseline has no slow state and is settle-insensitive
+    # by construction, so the pairing against flambda_locus.py survives; the protocol
+    # difference is this comment.
+    sim.run(24.0)
     start = sim.body.centroid().copy()
     t0 = sim.t
     prev, path = start.copy(), 0.0
