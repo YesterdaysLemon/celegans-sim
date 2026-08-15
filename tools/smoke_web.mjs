@@ -90,11 +90,15 @@ function serve() {
 // the right one agree. Every developer monitor that is not a laptop screen is dpr 1, and
 // so is a default headless Chrome, which is how a hit test that only worked on the top-left
 // quadrant of the panel shipped and survived this file.
+// `touch: true` emulates a touch screen, which is what flips the `(pointer: coarse)`
+// media query -- the phone layouts are the touch layouts, and #156's collisions only
+// exist at touch sizing, so probing them with a mouse-shaped viewport tests nothing.
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'hidpi',   width: 1440, height: 900, dpr: 2 },
   { name: 'tablet',  width: 768,  height: 1024 },
-  { name: 'mobile',  width: 390,  height: 844 },
+  { name: 'mobile',  width: 390,  height: 844, touch: true },
+  { name: 'phoneSE', width: 320,  height: 568, touch: true },
 ];
 
 // Ids that must exist and be visible at every viewport. These are the controls, not the
@@ -127,7 +131,8 @@ try {
   for (const vp of VIEWPORTS) {
     const page = await browser.newPage();
     await page.setViewport({
-      width: vp.width, height: vp.height, deviceScaleFactor: vp.dpr || 1 });
+      width: vp.width, height: vp.height, deviceScaleFactor: vp.dpr || 1,
+      hasTouch: !!vp.touch });
 
     const errors = [], failed = [];
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -177,6 +182,46 @@ try {
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(vp.name, overflow <= 0, `${overflow}px of horizontal overflow`);
+
+    /* #156's three regressions, checked at every viewport because none of them is a
+     * phone-only concept -- phones are just where they happened.
+     *
+     * 1. Header navigation must be INSIDE the viewport. Overflow is hidden, so a header
+     *    element past the right edge is not scrolled-to, it is gone -- which is how the
+     *    museum door vanished from phones while the overflow check above stayed green.
+     * 2. Visible dish controls must not overlap each other. A chip under the mode
+     *    switch is two controls answering one tap.
+     * 3. The first measurement panel must start within 1.7 viewport heights, so the
+     *    instruments are not buried behind two screens of chrome. */
+    const reach = await page.evaluate(() => {
+      const vw = innerWidth;
+      const clipped = [...document.querySelectorAll('header a, header button, header .warn')]
+        .filter((e) => { const r = e.getBoundingClientRect();
+          return r.width > 0 && (r.right > vw + 1 || r.left < -1); })
+        .map((e) => (e.textContent || '').trim().slice(0, 16));
+      const boxes = [...document.querySelectorAll('#dish .floating button, #dish .chip')]
+        .filter((e) => e.getBoundingClientRect().width > 0)
+        .map((e) => ({ t: (e.textContent || e.getAttribute('aria-label') || '?').trim(),
+                       r: e.getBoundingClientRect() }));
+      const collisions = [];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i].r, b = boxes[j].r;
+        if (a.left < b.right - 1 && b.left < a.right - 1
+            && a.top < b.bottom - 1 && b.top < a.bottom - 1)
+          collisions.push(`${boxes[i].t}x${boxes[j].t}`);
+      }
+      const rail = document.querySelector('.panel');
+      const railVH = rail
+        ? (rail.getBoundingClientRect().top + scrollY) / innerHeight : 0;
+      return { clipped, collisions, railVH };
+    });
+    check(vp.name, reach.clipped.length === 0,
+          `header navigation clipped out of the viewport: ${reach.clipped.join(', ')}`);
+    check(vp.name, reach.collisions.length === 0,
+          `dish controls overlap: ${reach.collisions.slice(0, 4).join(', ')}`);
+    check(vp.name, reach.railVH <= 1.7,
+          `the first measurement panel starts ${reach.railVH.toFixed(2)} viewport `
+          + 'heights down (ceiling 1.7)');
 
     if (started) {
       // Playback: the button is a toggle and has to say so.
@@ -585,12 +630,20 @@ try {
               + ` through the selector gives ${cull.deliberate.restore}`);
       }
 
-      // Touch targets, on the layouts that are touch-oriented.
+      // Touch targets, on the layouts that are touch-oriented. 44x44 is the floor for
+      // point targets; a slider is a drag target whose hit area is its whole track, so
+      // for ranges the requirement is AREA -- at least 44x44's worth -- rather than both
+      // dimensions. A 140x36 track is a bigger thing to hit than a 44x44 button, and
+      // insisting on its tallness was spending 320px-phone rows on nothing (#156).
       if (vp.width <= 1080) {
         const small = await page.evaluate(() =>
           [...document.querySelectorAll('button, input[type=range], [tabindex]')]
             .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0; })
-            .filter((e) => { const r = e.getBoundingClientRect(); return r.width < 44 || r.height < 44; })
+            .filter((e) => {
+              const r = e.getBoundingClientRect();
+              if (e.matches('input[type=range]')) return r.width * r.height < 44 * 44 || r.height < 24;
+              return r.width < 44 || r.height < 44;
+            })
             .map((e) => e.id || e.textContent.trim().slice(0, 12)));
         check(vp.name, small.length === 0, `targets under 44px: ${small.join(', ')}`);
       }
