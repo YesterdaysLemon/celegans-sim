@@ -37,7 +37,7 @@
  * lawn, a gate bias that turns circling into lawn-holding -- every exploit that shows up
  * here is a measured defect or degeneracy of the reconstruction, found by creatures with
  * no incentive to be polite about it. Log them; they are the product. The log has a
- * building now: docs/niche-museum.md, whose accession rules (measured, pinned, Track B)
+ * building now: web/museum.md, whose accession rules (measured, pinned, Track B)
  * are the bar an observation must clear before it is called an exhibit.
  *
  * THE FIRST FULL RUN (2026-08-14, defaults, seed 1, 600 dish-seconds): first hatches at
@@ -58,7 +58,7 @@
  * mechanism: in near-zero drag, a permanently-biased deep bend spins the body and net
  * translation rides the tangential/normal drag anisotropy -- a wheel, not a swimmer,
  * and cheap precisely because the model is 2D RFT with no worm-worm collision. NOT YET
- * MEASURED, so per docs/niche-museum.md rules it is not an exhibit: the instrument it
+ * MEASURED, so per web/museum.md rules it is not an exhibit: the instrument it
  * wants is a buffer-medium arena run logging net displacement per unit drag power and
  * per-worm curvature means, to catch skaters forming and price their transport against
  * undulators. Video evidence held by the owner; NEXT.md carries the to-do.
@@ -68,7 +68,7 @@
  * magnitude tracking dish turnover (124/88/67/34 births). Four same-signed seeds is a
  * one-sided sign test at p = 1/16 = 0.0625: one seed short of a clean claim, and it is
  * recorded exactly that way. A fifth seed settles whether "the dish selects a stronger
- * body reflex" graduates from replicated pattern to finding; docs/niche-museum.md IV.1
+ * body reflex" graduates from replicated pattern to finding; web/museum.md IV.1
  * holds the exhibit either way.
  */
 

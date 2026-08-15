@@ -511,6 +511,32 @@ try {
           out.backDish = document.getElementById('app').dataset.dish;
           return out;
         });
+        /* The museum. Its collection is museum.md rendered client-side; a fetch failure
+         * or a renderer that eats the document would both look like a quiet page, so
+         * assert the hall actually filled: multiple wings (h2s), many exhibit
+         * paragraphs, and no error fallback. */
+        const museum = await (async () => {
+          const mp = await page.browser().newPage();
+          const errs = [];
+          mp.on('pageerror', (e) => errs.push(String(e)));
+          await mp.goto(`${base}/museum.html`, { waitUntil: 'domcontentloaded' });
+          await new Promise((r) => setTimeout(r, 1500));
+          const got = await mp.evaluate(() => ({
+            wings: document.querySelectorAll('#doc h2').length,
+            paras: document.querySelectorAll('#doc p').length,
+            // #doc only: body.textContent includes the page's own script source, whose
+            // fallback string literal made this check read its own reflection.
+            failed: document.getElementById('doc').textContent.includes('failed to load'),
+          }));
+          await mp.close();
+          return { ...got, errs };
+        })();
+        check(vp.name, museum.wings >= 4 && museum.paras > 10 && !museum.failed,
+              `the museum did not render: ${museum.wings} wings, ${museum.paras} paragraphs,`
+              + ` failed=${museum.failed}`);
+        check(vp.name, museum.errs.length === 0,
+              `museum page errors: ${museum.errs.join(' | ')}`);
+
         if (!arena.skipped) {
           check(vp.name, arena.dish === 'arena', `the tab left data-dish at "${arena.dish}"`);
           check(vp.name, arena.chips === arena.chipsTotal && arena.chipsTotal > 0,

@@ -991,7 +991,7 @@ class Worm {
   /* Metabolism: TRACK B DISH PHYSIOLOGY, not reference biology. The reference animal has
    * no death and no energy budget anywhere in its equations -- a worm that never eats
    * swims at full strength forever, and that immortality is exhibit material
-   * (docs/niche-museum.md). These fields give a dish the option of making starvation a
+   * (web/museum.md). These fields give a dish the option of making starvation a
    * mechanism instead of a cull policy: an energy store filled by what the pharynx
    * actually transported, drained by a basal rate plus the body's real drag dissipation,
    * fading the muscles toward a floor as it empties. Every constant is INVENTED -- chosen
@@ -1028,7 +1028,7 @@ class Worm {
    *     the metabolic work cost read the unscaled cuticle for now.
    *   * MUSCLE -- scales the joint gain profile the muscle moments map through.
    *
-   * The clamp floor of 0.25 is the negative-EI lesson (docs/niche-museum.md II.1) made
+   * The clamp floor of 0.25 is the negative-EI lesson (web/museum.md II.1) made
    * structural: every profile stays positive, K_mat stays positive semi-definite, and a
    * mutant can be bad at being a worm but cannot stop being one. All-null default is the
    * canonical animal reading the payload untouched; the on-path costs ~93 kB per worm

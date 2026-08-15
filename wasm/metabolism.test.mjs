@@ -3,7 +3,7 @@
  *     node --test wasm/metabolism.test.mjs
  *
  * TRACK B, and doubly so: the reference animal has no death and no energy budget -- a
- * worm that never eats swims at full strength forever (docs/niche-museum.md holds the
+ * worm that never eats swims at full strength forever (web/museum.md holds the
  * immortality exhibit). These are contracts about the *machinery*:
  *
  *   1. Off is bit-identical. metabFade multiplies every muscle moment, so the off state
