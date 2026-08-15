@@ -51,6 +51,18 @@
  * about the animal. Laying also shut down in pulses as camped lawns ran dry -- the plate
  * economy is a real constraint, not scenery.
  *
+ * REPORTED SIGHTING (2026-08-15, the owner's browser dish, medium switched to BUFFER,
+ * ~140 births in): lineages that COIL INTO TIGHT SPIRALS and skate -- rotating coiled
+ * bodies translating in long arcs, header speed spiking past 1500 um/s, kymograph
+ * showing deep synchronised bend-blocks instead of a travelling wave. Plausible
+ * mechanism: in near-zero drag, a permanently-biased deep bend spins the body and net
+ * translation rides the tangential/normal drag anisotropy -- a wheel, not a swimmer,
+ * and cheap precisely because the model is 2D RFT with no worm-worm collision. NOT YET
+ * MEASURED, so per docs/niche-museum.md rules it is not an exhibit: the instrument it
+ * wants is a buffer-medium arena run logging net displacement per unit drag power and
+ * per-worm curvature means, to catch skaters forming and price their transport against
+ * undulators. Video evidence held by the owner; NEXT.md carries the to-do.
+ *
  * REPLICATION (2026-08-14, seeds 2-4, same defaults): every seed ended above wild-type
  * 30.0 -- 39.8, 33.9, 37.7, 33.6 -- four dishes, four climbs, no reversals, with
  * magnitude tracking dish turnover (124/88/67/34 births). Four same-signed seeds is a
@@ -138,6 +150,14 @@ const METAB_KNEE = env('ARENA_METAB_KNEE', 0.35);
 const METAB_HATCH = env('ARENA_METAB_HATCH', 0.6);   // hatchling starting fill fraction
 const CORPSE = env('ARENA_CORPSE', METAB * 0.5);
 const CORPSE_YIELD = env('ARENA_CORPSE_YIELD', 0.8);
+/* The living-plate policies (web/arena-policy.js): corpse rot into a repellent miasma,
+ * lawn regrowth (throughput-limited economy), juvenile development. All default OFF
+ * here -- recorded runs must keep replaying -- and none of them consumes the seeded rng
+ * stream, so turning them on forks a run's ecology without forking its mutations. */
+const ROT_T = env('ARENA_ROT', 0);
+const REGROW = env('ARENA_REGROW', 0);
+const JUVENILE = env('ARENA_JUVENILE', 0);
+const GROW_T = env('ARENA_GROW_T', 90);
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
@@ -160,6 +180,7 @@ const arena = makeArena(E, { genes: GENES, scaleOf }, {
   metab: METAB, metabT: METAB_T, metabWorkP: METAB_WORKP,
   metabFloor: METAB_FLOOR, metabKnee: METAB_KNEE, metabHatch: METAB_HATCH,
   corpse: CORPSE, corpseYield: CORPSE_YIELD, seed: SEED,
+  rotT: ROT_T, regrow: REGROW, juvenile: JUVENILE, growT: GROW_T,
 }, rand, normal, (id) => {
   const f64 = new Float64Array(E.memory.buffer);
   return [f64[(E.ptrNodesX(id) >> 3) + 24], f64[(E.ptrNodesY(id) >> 3) + 24]];

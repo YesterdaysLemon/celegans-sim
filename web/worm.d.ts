@@ -42,6 +42,15 @@ declare namespace __AdaptedExports {
    */
   export function depositFood(x: number, y: number, r: number, amount: number): number;
   /**
+   * assembly/index/depositRepellent
+   * @param x `f64`
+   * @param y `f64`
+   * @param r `f64`
+   * @param amount `f64`
+   * @returns `f64`
+   */
+  export function depositRepellent(x: number, y: number, r: number, amount: number): number;
+  /**
    * assembly/index/foodPatchCount
    * @returns `i32`
    */
@@ -255,6 +264,18 @@ declare namespace __AdaptedExports {
    * @param mu3 `f64`
    */
   export function setMorphology(w: number, st0: number, st1: number, st2: number, st3: number, wd0: number, wd1: number, wd2: number, wd3: number, mu0: number, mu1: number, mu2: number, mu3: number): void;
+  /**
+   * assembly/index/setDevelopment
+   * @param w `i32`
+   * @param s `f64`
+   */
+  export function setDevelopment(w: number, s: number): void;
+  /**
+   * assembly/index/getDevelopment
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function getDevelopment(w: number): number;
   /**
    * assembly/index/clearMorphology
    * @param w `i32`

@@ -39,6 +39,21 @@ export function resolveOptions(o = {}) {
     corpse: o.corpse ?? (metab > 0 ? metab * 0.5 : 0.0),
     corpseYield: o.corpseYield ?? 0.8,
     corpseR: o.corpseR ?? 0.8,
+    /* Rot: a corpse this many seconds old turns -- its marker sours and a repellent
+     * miasma is deposited where it lay, sized by what the body was worth. The
+     * repellent field diffuses and decays on its own, so the plate forgets. 0 = off. */
+    rotT: o.rotT ?? 0,
+    rotStench: o.rotStench ?? 2.0,        // repellent units per unit of corpse worth
+    /* Regrowth: bacteria grow back. Each lawn site receives regrow food-units/s,
+     * deposited into the food field on the policy cadence -- so the plate's carrying
+     * capacity becomes a THROUGHPUT, not a stock, and "too much food on average" is a
+     * knob instead of a fate. 0 = the never-restocked plate. */
+    regrow: o.regrow ?? 0,
+    /* Development: hatchlings start at juvenile scale and grow toward their inherited
+     * adult morphology while their store is above the fade knee -- growth is fed-time,
+     * so a hatchling that cannot win food stays small. 0 = hatch at full size. */
+    juvenile: o.juvenile ?? 0,            // starting scale, e.g. 0.55; 0 disables
+    growT: o.growT ?? 90,                 // seconds of fed time from juvenile to adult
     seed: o.seed ?? 1,
     basal: metab > 0 ? metab / (o.metabT ?? 240) : 0,
     workC: metab > 0 ? (metab / (o.metabT ?? 240)) / (o.metabWorkP ?? 2.0) : 0,
@@ -86,18 +101,31 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     }
   };
 
-  /* Three lawns, never restocked: the plate is the whole economy. Returns the patch
-   * list so a viewer can hand it to its minimap. */
+  /* Three lawns: the plate is the whole economy. With regrow at 0 they are never
+   * restocked, exactly the original dish; with it on, each site receives its share of
+   * regrow food-units/s and the economy becomes throughput-limited -- the stock can
+   * start smaller because the tap stays open. The attractant plume and the oxygen
+   * depression stay at the founding lawn's shape either way (patch shapes are cached at
+   * creation; a regrown lawn smells like its founder) -- a stated first cut. Returns
+   * the patch list so a viewer can hand it to its minimap. */
+  const LAWNS = [
+    { x: -8.0, y: 5.0, r: 4.0, d: 1.0 },
+    { x: 7.0, y: -4.0, r: 4.0, d: 1.0 },
+    { x: 0.0, y: 9.0, r: 3.0, d: 0.8 },
+  ];
   arena.seedPlate = () => {
-    E.addFood(-8.0, 5.0, 4.0, 1.0, 1.0, 9.0);
-    E.addFood(7.0, -4.0, 4.0, 1.0, 1.0, 9.0);
-    E.addFood(0.0, 9.0, 3.0, 1.0, 0.8, 8.0);
-    return [
-      { x: -8.0, y: 5.0, r: 4.0, kind: 'food' },
-      { x: 7.0, y: -4.0, r: 4.0, kind: 'food' },
-      { x: 0.0, y: 9.0, r: 3.0, kind: 'food' },
-    ];
+    for (const l of LAWNS) E.addFood(l.x, l.y, l.r, l.d, l.d, 9.0);
+    return LAWNS.map((l) => ({ x: l.x, y: l.y, r: l.r, kind: 'food' }));
   };
+  let regrowT = 0;
+  function regrowPass() {
+    if (opt.regrow <= 0) return;
+    const dt = arena.simT - regrowT;
+    if (dt < 2.0) return;                 // a trickle, not a drip-per-tick
+    regrowT = arena.simT;
+    const per = (opt.regrow * dt) / LAWNS.length;
+    for (const l of LAWNS) E.depositFood(l.x, l.y, l.r * 0.8, per);
+  }
 
   /* Wild-type clones on a ring, fed. Everything after them is descent with
    * modification. */
@@ -186,6 +214,7 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
         E.setMorphology(id, ...ctl);
       }
       metabolise(id, opt.metabHatch);
+      arena.beginGrowth(id);
       arena.founderOf.set(id, arena.founderOf.get(parent) ?? -1);
       arena.eatenAt.set(id, 0.0);
       arena.births++;
@@ -195,11 +224,15 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
   };
 
   /* One policy pass at simulated time `t`: the reaper first (a starved body should not
-   * be counted against the cap a hatchling needs), then the hatchery. */
+   * be counted against the cap a hatchling needs), then the hatchery, then the plate's
+   * own life -- regrowth, rot, growth. */
   arena.tick = (t) => {
     arena.simT = t;
     arena.reap();
     arena.hatchDue();
+    regrowPass();
+    arena.fadeCorpses();
+    arena.growthPass();
   };
 
   /* Refresh the trailing-intake window the cull judges by. The node driver does this on
@@ -218,13 +251,59 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     return Array.from(dyn.entries()).sort((a, b) => b[1] - a[1]);
   };
 
-  /* Forget corpse markers older than `age` simulated seconds -- the food they left is
-   * real and stays on the plate; only the marker fades. */
+  /* Corpse aging. A corpse older than rotT TURNS: its marker sours (c.rotted, for a
+   * renderer to recolour) and a one-time repellent miasma proportional to its worth is
+   * deposited where it lay -- the runtime's repellent field then diffuses and decays it
+   * away on its own. Markers older than `age` are forgotten either way; the food a body
+   * left is real and stays until eaten. */
   arena.fadeCorpses = (age = 90) => {
     const c = arena.corpses;
     for (let i = c.length - 1; i >= 0; i--) {
-      if (arena.simT - c[i].t > age) c.splice(i, 1);
+      const k = c[i];
+      const elapsed = arena.simT - k.t;
+      if (opt.rotT > 0 && !k.rotted && elapsed > opt.rotT) {
+        k.rotted = true;
+        E.depositRepellent(k.x, k.y, opt.corpseR * 1.5, opt.rotStench * k.worth);
+      }
+      if (elapsed > age) c.splice(i, 1);
     }
+  };
+
+  /* Development: every animal below adult scale grows while fed, through the runtime's
+   * setDevelopment -- PHENOTYPE, never the genome. The first draft scaled the genome's
+   * control points directly, and eggs then inherited their parent's developmental
+   * state: a juvenile's child hatched pre-shrunk and shrank again, 0.55 a generation
+   * (seed 41, width mean 0.35 by t=90 against a juvenile floor of 0.55). The runtime
+   * now keeps genotype and age apart, so this pass cannot contaminate inheritance
+   * however it is driven. A juvenile is thinner (less drag) and weaker (the muscle
+   * profile scales), which makes being small a real disadvantage in the cull's intake
+   * contest. Growth is gated on the store sitting above the fade knee -- fed time, so a
+   * hatchling that cannot win food stays small -- and consumes NO randomness, so seeded
+   * replays are untouched by turning it on or off. */
+  const grownOf = new Map();               // id -> { scale, lastT }
+  arena.beginGrowth = (id) => {
+    if (opt.juvenile <= 0) return;
+    grownOf.set(id, { scale: opt.juvenile, lastT: arena.simT });
+    E.setDevelopment(id, opt.juvenile);
+  };
+  arena.growthPass = () => {
+    if (opt.juvenile <= 0) return;
+    for (const [id, g] of grownOf) {
+      if (!arena.founderOf.has(id)) { grownOf.delete(id); continue; }   // buried
+      if (g.scale >= 1.0) { grownOf.delete(id); continue; }             // grown up
+      const dt = arena.simT - g.lastT;
+      g.lastT = arena.simT;
+      if (dt <= 0) continue;
+      // Fed time only: below the knee the store is buying survival, not growth.
+      if (opt.metab > 0 && E.getEnergy(id) < opt.metabKnee * opt.metab) continue;
+      g.scale = Math.min(1.0, g.scale + ((1.0 - opt.juvenile) / opt.growT) * dt);
+      E.setDevelopment(id, g.scale);
+      if (arena.onGrowth) arena.onGrowth(id, g.scale);
+    }
+  };
+  arena.scaleOfWorm = (id) => {
+    const g = grownOf.get(id);
+    return g ? g.scale : 1.0;
   };
 
   return arena;

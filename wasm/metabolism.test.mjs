@@ -124,6 +124,30 @@ test('eating refills the store through the real pharynx', () => {
   assert.ok(e1 <= 0.05 + 1e-15, 'and the cap must hold');
 });
 
+test('a rot miasma deposits into the repellent field, and the plate forgets it', () => {
+  const E = engine();
+  const f64 = () => new Float64Array(E.memory.buffer);
+  const G2 = 256 * 256;
+  const total = () => {
+    const rep = f64().subarray(E.ptrRepellent() >> 3, (E.ptrRepellent() >> 3) + G2);
+    let s = 0; for (let i = 0; i < G2; i++) s += rep[i];
+    return s;
+  };
+  const before = total();
+  const taken = E.depositRepellent(-2.0, 3.0, 1.2, 0.4);
+  assert.equal(taken, 0.4, 'an in-dish miasma is taken whole');
+  const justAfter = total();
+  assert.ok(Math.abs(justAfter - before - 0.4) < 1e-9,
+    `the field must gain exactly the deposit: gained ${justAfter - before}`);
+  // The repellent field diffuses and decays in stepFields; a fouled patch must fade
+  // rather than accumulate forever. Two simulated seconds is plenty to see the decay
+  // moving; full disappearance takes longer and is the field dynamics' own business.
+  const w = E.createWorm(1, 20.0, 20.0, 0.0);   // far corner; fields step with the dish
+  E.stepAll(2 * STEPS_PER_S);
+  assert.ok(total() < justAfter,
+    `the miasma should be decaying: ${justAfter} -> ${total()}`);
+});
+
 test('a corpse deposit conserves food exactly, and off-dish is refused', () => {
   const E = engine();
   const f64 = () => new Float64Array(E.memory.buffer);

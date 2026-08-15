@@ -152,7 +152,21 @@ outfeeds a starved husk. The first shakedown selected *feeding harder* instead o
 (record in `wasm/arena.mjs`): zero starvations at the default constants. Next: a dish
 poor enough that the tax bites (smaller lawns, shorter `ARENA_METAB_T`), replication,
 and the museum watch — scavenging lineages, corpse-camping, and whether laying-near-food
-becomes a heritable strategy once eggs hatch onto their parent's grave.
+becomes a heritable strategy once eggs hatch onto their parent's grave. **The plate
+lives now** (2026-08-15): corpses rot into a repellent miasma the field dynamics fade,
+lawns can regrow (throughput-limited economy, `ARENA_REGROW`), and hatchlings develop —
+juvenile scale ramping to adult on fed time, allometrically (width ∝ s, muscle ∝ s²,
+stiffness ∝ s³, because a uniform scale is mechanically invisible at zero Reynolds —
+measured, then asserted in `wasm/morphology.test.mjs`). Development is runtime phenotype
+(`setDevelopment`), never the genome: the first draft scaled the control points and
+generations shrank 0.55× each — the correction is on the record in the mechanism.
+
+**1c. The buffer skater wants an instrument.** The owner's dish, switched to buffer,
+evolved coiled lineages that spin and skate in long arcs (>1500 µm/s bursts; sighting
+recorded in `wasm/arena.mjs`). Not an exhibit until measured: a buffer-medium arena run
+logging net displacement per drag power and per-worm curvature means, to catch skaters
+forming and price their transport against undulators. Likely a 2D+RFT+no-collision
+niche — exactly what the museum exists for.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
