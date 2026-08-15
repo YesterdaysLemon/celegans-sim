@@ -39,6 +39,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -63,9 +64,20 @@ const OPT = {
  * runner that mutates the machine to make itself pass is the same failure as one that
  * lowers a threshold to make a test pass.
  */
+/* PATH walk in Node rather than `sh -c command -v` (#167): the probe must not itself
+ * require the POSIX shell whose absence it may be about to report. PATHEXT covers the
+ * Windows spelling of executability. */
 function which(bin) {
-  const r = spawnSync('sh', ['-c', `command -v ${bin}`], { encoding: 'utf8' });
-  return r.status === 0 ? r.stdout.trim() : null;
+  const exts = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';') : [''];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const p = path.join(dir, bin + ext.toLowerCase());
+      try { fs.accessSync(p, fs.constants.X_OK); return p; } catch { /* keep walking */ }
+    }
+  }
+  return null;
 }
 
 function findChrome() {
@@ -116,12 +128,61 @@ const NEED = {
 
 /* --- how a gate runs ----------------------------------------------------------------- */
 
+/* Does this command string actually need a shell? Most gates are a plain `node ...`
+ * invocation, and those spawn directly on every platform. The ones that use variable
+ * expansion, pipes, redirects or `cd` genuinely want POSIX `sh`; on a platform without
+ * one they must FAIL SAYING SO rather than with the empty output an ENOENT spawn used
+ * to produce (#167). */
+const NEEDS_SHELL = /[&|<>$;`"'\\]|(?:^|\s)cd\s/;
+
 function sh(cmd, env = {}) {
-  return () => spawnSync('sh', ['-c', cmd], {
+  const opts = () => ({
     cwd: ROOT, encoding: 'utf8',
     env: { ...process.env, ...env },
     maxBuffer: 64 * 1024 * 1024,
   });
+  return () => {
+    let r;
+    if (!NEEDS_SHELL.test(cmd)) {
+      const [file, ...args] = cmd.split(/\s+/);
+      r = spawnSync(file, args, opts());
+    } else if (process.platform !== 'win32' || which('sh')) {
+      r = spawnSync('sh', ['-c', cmd], opts());
+    } else {
+      return { status: 1, stdout: '',
+               stderr: `this gate's command needs a POSIX sh, and none is on PATH:\n  ${cmd}\n`
+                 + 'Install Git Bash or run the gate under WSL.' };
+    }
+    // A spawn that never ran (ENOENT and kin) reports status null and empty streams --
+    // the "immediate failure with empty output" #167 hit. Name the culprit instead.
+    if (r.error) {
+      return { status: r.status ?? 1, stdout: r.stdout || '',
+               stderr: (r.stderr || '') + `\nspawn failed for: ${cmd}\n${r.error.message}` };
+    }
+    return r;
+  };
+}
+
+/* --selftest: the portability contract (#167), asserted without running any gate.
+ * Focused on the two things that broke Windows: temp-directory selection must come
+ * from the platform API, and the shell classifier must keep plain node invocations
+ * shell-free while routing genuinely-POSIX commands to sh. */
+if (has('--selftest')) {
+  const assert = (ok, what) => {
+    if (!ok) { console.error(`selftest FAIL: ${what}`); process.exit(1); }
+    console.log(`  ok  ${what}`);
+  };
+  assert(path.isAbsolute(os.tmpdir()), 'os.tmpdir() is absolute on this platform');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'celegans-selftest-'));
+  fs.rmdirSync(d);
+  assert(true, 'mkdtemp under os.tmpdir() works');
+  const simple = ['node tools/check_web.mjs', 'node --test wasm/medium.test.mjs'];
+  const posix = ['"$PY" tools/conform.py > web/conform.json',
+                 'cp a b && cd wasm && npx asc', 'docker run --rm -d --name x \\'];
+  for (const c of simple) assert(!NEEDS_SHELL.test(c), `shell-free: ${c}`);
+  for (const c of posix) assert(NEEDS_SHELL.test(c), `needs sh: ${c.slice(0, 30)}...`);
+  console.log('selftest passed');
+  process.exit(0);
 }
 
 // The one gate CI expresses as an inline shell loop rather than as a script. Reproduced
@@ -283,7 +344,7 @@ const GATES = [
     needs: ['asc', 'model'], mutates: ['web/worm.wasm'],
     run: sh('cp web/worm.wasm "$SNAP/worm.wasm" && cd wasm '
           + '&& npx asc assembly/index.ts --target release && cmp "$SNAP/worm.wasm" ../web/worm.wasm',
-            { SNAP: fs.mkdtempSync(path.join(process.env.TMPDIR || '/tmp', 'celegans-')) }),
+            { SNAP: fs.mkdtempSync(path.join(os.tmpdir(), 'celegans-')) }),
   },
   /* Snapshot, regenerate, compare -- one gate, because the comparison is meaningless
    * without the snapshot that precedes it. CI can afford to split them across steps because
@@ -310,7 +371,7 @@ const GATES = [
           + '  --expected-layout "$SNAP/model_gen.ts" --actual-layout wasm/assembly/model_gen.ts '
           + '  --expected-wasm "$SNAP/worm.wasm" --actual-wasm web/worm.wasm',
             { PYTHONPATH: '.', PY: PY || 'python3',
-              SNAP: fs.mkdtempSync(path.join(process.env.TMPDIR || '/tmp', 'celegans-')) }),
+              SNAP: fs.mkdtempSync(path.join(os.tmpdir(), 'celegans-')) }),
   },
 
   // ---- python.yml : tests -------------------------------------------------------------
