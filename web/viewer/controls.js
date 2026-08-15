@@ -237,13 +237,49 @@ export function wire() {
   // Drag to pan. Dragging is how you detach the camera, so it switches to Free itself
   // rather than making you find a button first -- and a drag must not also be read as a
   // click, or every pan would drop a lawn.
+  //
+  // Shift-drag on an animal is the TWEEZERS: pick it up and put it down somewhere else.
+  // The runtime translates the pose rigidly (translateWorm) -- gait phase, neurons and
+  // every internal state ride along -- so this is moving the animal, not resetting it.
+  // Local engines only: the socket protocol has no such command, and the ?server dish
+  // simply pans as before.
   let drag = null;
+  let tweeze = null;               // { i } while an animal is held
   dish.addEventListener('pointerdown', (e) => {
+    if (e.shiftKey && S.engine && S.worms.length) {
+      const [x, y] = worldAt(dish, e);
+      let best = -1, bd = 1.2 * 1.2;
+      S.worms.forEach((o, i) => {
+        const d = (o.cx - x) ** 2 + (o.cy - y) ** 2;
+        if (d < bd) { bd = d; best = i; }
+      });
+      if (best >= 0) {
+        tweeze = { i: best };
+        dish.setPointerCapture(e.pointerId);
+        dish.classList.add('dragging');
+        return;
+      }
+    }
     drag = { x: e.clientX, y: e.clientY, moved: 0 };
     dish.setPointerCapture(e.pointerId);
     dish.classList.add('dragging');
   });
   dish.addEventListener('pointermove', (e) => {
+    if (tweeze) {
+      const eng = S.engine, f = S.worms[tweeze.i];
+      if (!eng || !f) { tweeze = null; return; }
+      const [x, y] = worldAt(dish, e);
+      // Hold the body where the pointer is, kept inside the glass. The clamp is on the
+      // *destination* so a fling at the rim lands at the rim rather than outside it.
+      const R = S.meta.world.radius - 0.8;
+      const d = Math.hypot(x, y);
+      const tx = d > R ? x * (R / d) : x, ty = d > R ? y * (R / d) : y;
+      eng.E.translateWorm(eng.worms[tweeze.i], tx - f.cx, ty - f.cy);
+      // The trail would draw the teleport as a stroke across the dish; the animal's
+      // history restarts where it was put down.
+      if (S.trails[tweeze.i]) S.trails[tweeze.i].length = 0;
+      return;
+    }
     if (!drag) return;
     const r = dish.getBoundingClientRect();
     const scale = Math.min(r.width, r.height) / S.view.span;
@@ -257,8 +293,9 @@ export function wire() {
     }
   });
   const endDrag = (e) => {
-    if (drag) dish.releasePointerCapture?.(e.pointerId);
+    if (drag || tweeze) dish.releasePointerCapture?.(e.pointerId);
     drag = null;
+    tweeze = null;
     dish.classList.remove('dragging');
   };
   dish.addEventListener('pointerup', endDrag);
@@ -277,13 +314,41 @@ export function wire() {
     if (best >= 0 && best !== S.focus) focusWorm(best);
   });
 
+  // The dropper: double-click squeezes whichever bottle is selected. Food is a real
+  // lawn (patch object, attractant plume, the 16-lawn cap); repellent goes straight
+  // into the live field and diffuses, decays and blows around from there. The bottle
+  // selector is hidden in ?server mode along with the rest of the local-only tools.
   dish.addEventListener('dblclick', (e) => {
     if (!S.meta) return;
     const [x, y] = worldAt(dish, e);
     if (Math.hypot(x, y) > S.meta.world.radius - 1) return;
-    send({ cmd: 'drop_food', x, y, r: 2.5 });
-    S.meta.world.patches.push({ x, y, r: 2.5, kind: 'food' });
+    if (S.dropper === 'repellent') {
+      send({ cmd: 'drop_repellent', x, y, r: 2.5 });
+    } else {
+      send({ cmd: 'drop_food', x, y, r: 2.5 });
+      S.meta.world.patches.push({ x, y, r: 2.5, kind: 'food' });
+    }
   });
+
+  document.querySelectorAll('[data-drop]').forEach((b) => b.addEventListener('click', () => {
+    S.dropper = b.dataset.drop;
+    document.querySelectorAll('[data-drop]').forEach((o) =>
+      o.setAttribute('aria-pressed', String(o === b)));
+  }));
+
+  // The weather knob, arena only: a multiplier on the dish's baseline wind. It reaches
+  // into the live policy options, which the wind pass reads every tick, so the gusts
+  // respond immediately -- and it consumes no rng, so a seeded run's mutation stream
+  // is not forked by playing with the weather.
+  const weather = el('r-weather');
+  if (weather) {
+    weather.addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      el('o-weather').textContent = `${v.toFixed(1)}×`;
+      e.target.setAttribute('aria-valuetext', `${v.toFixed(1)} times baseline wind`);
+      if (S.engine && S.engine.setWeather) S.engine.setWeather(v);
+    });
+  }
 
   // The dish tabs. The actual switch lives in app.js (it owns the engines); the wiring
   // lives here with every other listener. S.switchDish is absent in ?server mode, where

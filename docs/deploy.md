@@ -133,9 +133,17 @@ the rail, `1`/`2` switch the mode.
 Four measurement views: all 302 neurons ordered head to tail and coloured by activation,
 hover for identity and click to plot; the four muscle quadrants; a scrolling curvature
 kymograph; live membrane traces. Transport controls change the medium under the animal
-live, poke it at either end, ablate neurons by clicking them, and drop new food where you
-double-click. A lamp in the header flashes once per pharyngeal pump — at 250 a minute on
-food that is a flicker, and off food an occasional blink.
+live, poke it at either end, and ablate neurons by clicking them. A lamp in the header
+flashes once per pharyngeal pump — at 250 a minute on food that is a flicker, and off
+food an occasional blink.
+
+And you can reach into the dish. A **dropper** on the plate chooses what a double-click
+puts down — a bacterial lawn, or a dose of repellent that diffuses, decays and blows
+around like anything else on the plate. **Shift-drag an animal** to pick it up with the
+tweezers and put it down somewhere else: the runtime translates the pose rigidly, so
+gait phase and every neuron ride along — moving the animal, not resetting it. On the
+arena dish a **Weather** slider scales the wind live, from a still room to a gusty one
+(all three are local-engine tools; the `?server` feed keeps plain lawn-dropping).
 
 **And the transport bar scrubs.** The media-player metaphor at the top of this file was
 missing the one control that makes it one, because there was no history to scrub — every

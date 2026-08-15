@@ -21,6 +21,7 @@ export const S = {
   corpses: null,       // the arena's death markers, when that dish is on stage
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
   cam: 'follow',                        // 'follow' | 'free'
+  dropper: 'food',                      // which bottle double-click squeezes
   trail: [],
   kymo: null,
   traces: [], selected: [],

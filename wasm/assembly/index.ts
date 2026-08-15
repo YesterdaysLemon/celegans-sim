@@ -3368,6 +3368,18 @@ export function pokeWorm(w: i32, anterior: i32, strength: f64): void {
   const wm = byId(w);
   if (anterior != 0) wm.pokeA += strength; else wm.pokeP += strength;
 }
+/* Tweezers: rigidly translate an animal. The pose is a head anchor plus link angles, so
+ * a translation is two additions and a node rebuild -- the shape, the gait phase and
+ * every internal state ride along untouched, and at zero Reynolds there is no momentum
+ * to reconcile: the body simply continues from where it was put down. The caller owns
+ * keeping the destination inside the dish (the runtime does not police it here, the
+ * same division of labour as createWorm's spawn position). */
+export function translateWorm(w: i32, dx: f64, dy: f64): void {
+  const wm = byId(w);
+  wm.bx += dx;
+  wm.by += dy;
+  wm.updateNodes();
+}
 export function ptrNodesX(w: i32): usize { return changetype<usize>(byId(w).nodesX); }
 export function ptrNodesY(w: i32): usize { return changetype<usize>(byId(w).nodesY); }
 export function ptrKappa(w: i32): usize { return changetype<usize>(byId(w).kappa); }

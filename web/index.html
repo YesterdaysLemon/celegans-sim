@@ -108,9 +108,21 @@ try {
         <button id="b-zin" class="ghost sq" aria-label="Zoom in">+</button>
         <span class="readout" id="o-zoom" aria-live="off">6.5 mm</span>
       </div>
+      <!-- The dropper's two bottles: what a double-click puts on the plate. Local
+           engines only -- app.js hides this in ?server mode, where the socket protocol
+           has no repellent command. -->
+      <div class="seg" id="dropper" role="group" aria-label="Dropper">
+        <!-- aria-labels distinct from the layer chips': "Repellent" already names the
+             layer toggle, and two controls answering to one name is a screen-reader
+             coin-flip (the smoke test counts duplicates). -->
+        <button data-drop="food" aria-pressed="true" aria-label="Drop lawns"
+                title="Double-click drops a bacterial lawn">Lawn</button>
+        <button data-drop="repellent" aria-pressed="false" aria-label="Drop repellent"
+                title="Double-click drops a dose of repellent">Repellent</button>
+      </div>
     </div>
 
-    <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn</span>
+    <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop &middot; shift&#8209;drag a worm to move it</span>
   </section>
 
   <aside id="rail">
@@ -168,6 +180,16 @@ try {
       <button data-medium="agar" aria-pressed="true">Agar</button>
       <button data-medium="viscous" aria-pressed="false">Viscous</button>
       <button data-medium="buffer" aria-pressed="false">Buffer</button>
+    </div>
+
+    <!-- Environmental stimulation, arena only: a live multiplier on the dish's wind.
+         0x is a still room, 2x is a gusty one. It reads as weather because it is --
+         the drift clocks are deterministic, so this forks nothing but the air. -->
+    <div class="group arena-only" role="group" aria-label="Weather">
+      <label class="cap" for="r-weather">Weather</label>
+      <input type="range" id="r-weather" min="0" max="2" step="0.05" value="1"
+             aria-valuetext="1.0&times; baseline wind">
+      <span class="readout" id="o-weather">1.0&times;</span>
     </div>
 
     <div class="group" role="group" aria-label="Touch">

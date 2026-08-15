@@ -193,6 +193,16 @@ export class ArenaEngine extends LocalEngine {
 
   corpses() { return this.arena ? this.arena.corpses : null; }
 
+  /* The weather knob: a live multiplier on the dish's baseline wind. The wind pass
+   * reads opt.wind every tick and the drift clocks are deterministic functions of dish
+   * time, so this neither forks the seeded mutation stream nor desynchronises a replay
+   * beyond the wind itself -- turning the knob is weather, not a new dish. */
+  setWeather(x) {
+    if (!this.arena) return;
+    if (this._wind0 === undefined) this._wind0 = this.arena.opt.wind;
+    this.arena.opt.wind = this._wind0 * Math.max(0, x);
+  }
+
   /* The viewer's +/- buttons, rerouted through the dish's own rules: a new animal is a
    * fresh wild-type founder (fed, so the reaper does not eat the button press), and a
    * removal is a death like any other -- it feeds the plate. */

@@ -105,6 +105,12 @@ if (location.search.includes('server')) {
   pv.disabled = true;
   pv.title = 'Preserving needs the local engine; the ?server feed has no worm state '
     + 'to read. Load the viewer without ?server to preserve specimens.';
+  // The dropper's repellent bottle and the tweezers are local-engine tools too: the
+  // socket protocol has neither command. The dropper hides (double-click still drops a
+  // lawn, which the protocol does have) and the hint stops advertising the tweezers.
+  el('dropper').style.display = 'none';
+  el('dish-hint').innerHTML =
+    'drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn';
   connect();
 } else {
   S.switchDish = switchDish;
