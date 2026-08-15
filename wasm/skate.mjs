@@ -45,6 +45,30 @@
  *
  *     node wasm/skate.mjs
  *     SKATE_SECONDS=1500 SKATE_SEED=43 SKATE_MEDIUM=buffer node wasm/skate.mjs
+ *
+ * THE FIRST HUNTS (2026-08-15, seeds 41/43/47) -- A NULL, AND THREE ECOLOGY FINDINGS.
+ * No skater formed. One dish ran the sighting's full protocol end to end: seed 41 held
+ * a thriving agar population to the switch (10 animals, 49 births of accumulated
+ * mutation) and survived 1,200 s of buffer, eroding 10 -> 1 with ZERO births after the
+ * physics changed -- every window read as an honest undulator (|kbar| < 1 /mm, turns
+ * near zero, buffer transport 25-60 mm/E against agar's 0.2-0.5). Seeds 43 and 47
+ * collapsed on agar before their switches (1 animal each) and closed as dead dishes.
+ * One full dish deciding nothing either way -- the owner's sighting stands as a
+ * sighting, and the trap stays set.
+ *
+ * What the hunts DID establish, in three lessons the knobs above now embody:
+ *   1. Buffer-from-birth is unsurvivable at this economy: founders cannot reach a lawn
+ *      inside their metabolic window (both first dishes extinct, zero births). Hence
+ *      SKATE_AGAR_UNTIL.
+ *   2. The showcase scarcity is a founder lottery: at lawnScale 0.6/metabT 240, three
+ *      of four tested seeds went extinct on AGAR before the first hatch. Hence the
+ *      generous plate.
+ *   3. Even an established, evolved dish stops LAYING in buffer -- seed 41's births
+ *      froze at the switch and never resumed. The plate economy cannot sustain a
+ *      buffer population, which bounds how long any hunt can watch selection operate
+ *      there (~1,200 s of attrition). A future trap wanting generations IN buffer
+ *      needs either a richer plate or laying that survives low drag; the owner's
+ *      browser dish had a human topping up lawns, which may be the whole difference.
  */
 
 import fs from 'fs';
