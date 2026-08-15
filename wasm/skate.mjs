@@ -1,0 +1,221 @@
+/* The skater trap: the instrument NEXT.md 1c asked for, pointed at the owner's sighting.
+ *
+ * THE SIGHTING (2026-08-15, the owner's browser dish, medium switched to buffer, ~140
+ * births in): lineages that coil into tight spirals and SKATE -- rotating coiled bodies
+ * translating in long arcs, header speed past 1500 um/s, kymograph showing deep
+ * synchronised bend-blocks instead of a travelling wave. A wheel, not a swimmer.
+ *
+ * TRACK B, AND LOUDLY: nothing here is a claim about C. elegans. If skating is real and
+ * cheap, that is a fact about THIS reconstruction -- 2D resistive-force theory with no
+ * worm-worm collision and no cost for holding a deep bend -- and the museum's accession
+ * rules (measured, pinned) are the bar this instrument exists to clear.
+ *
+ * WHAT IT MEASURES, per animal per reporting window:
+ *
+ *   net        straight-line displacement of the body midpoint over the window, mm.
+ *   E_drag     integrated drag dissipation over the window (runtime dragPower * dt) --
+ *              the same power the metabolism taxes, so "cheap" here is the dish's own
+ *              currency, not an invented score.
+ *   transport  net / E_drag: millimetres bought per unit of drag energy. The column the
+ *              whole question lives in -- a skater that beats the undulators on it has
+ *              found genuinely cheaper transport in this physics, not just faster.
+ *   kbar       time-mean of the SIGNED per-joint curvature mean, /mm. An undulator's
+ *              wave averages toward zero; a coiled skater holds a deep constant bend, so
+ *              |kbar| is the shape signature.
+ *   |k|bar     time-mean of the mean |curvature| -- effort of bending, either style.
+ *   turns      net body-axis revolutions over the window (head-to-tail axis angle,
+ *              unwrapped). Undulators wobble around zero; a skater ROLLS.
+ *
+ * THE FLAG. A window is called a SKATER when the shape says coil, the axis says roll,
+ * and the animal is actually going somewhere:
+ *
+ *     |kbar| >= 3.0 /mm   AND   |turns| >= 2   AND   net >= 0.10 mm
+ *
+ * Thresholds are instrument calibration, not biology: an honest undulator in this model
+ * runs |kbar| well under 1 /mm (the travelling wave cancels) and net axis rotation near
+ * zero, so the gap between the cohorts is wide and the exact numbers are not load-
+ * bearing. Every flagged window prints; the first flag per animal snapshots its full
+ * heritable state to SKATE_OUT so a catch can be transplanted and preserved as a museum
+ * specimen through the same pipeline as the communal jars.
+ *
+ * THE DISH: the full living plate in BUFFER -- metabolism, corpses, rot, regrowth, wind,
+ * juveniles, gene + weight + morphology mutation. Buffer is the medium the sighting came
+ * from and the one where drag anisotropy is weakest; agar available for the control arm
+ * (SKATE_MEDIUM=agar) so "skaters are a buffer niche" is testable rather than assumed.
+ *
+ *     node wasm/skate.mjs
+ *     SKATE_SECONDS=1500 SKATE_SEED=43 SKATE_MEDIUM=buffer node wasm/skate.mjs
+ */
+
+import fs from 'fs';
+import { engine, GENES, scaleOf, rng, normalFrom, DT } from './evolve.mjs';
+import { makeArena } from '../web/arena-policy.js';
+
+const env = (k, d) => (process.env[k] !== undefined ? Number(process.env[k]) : d);
+const SECONDS = env('SKATE_SECONDS', 1500);
+const SEED = env('SKATE_SEED', 41);
+const MEDIUM = process.env.SKATE_MEDIUM || 'buffer';
+const WINDOW = env('SKATE_WINDOW', 30);          // seconds per transport ledger window
+const OUT = process.env.SKATE_OUT || `tmp_skate_seed${SEED}_${MEDIUM}.json`;
+const CHUNK = 0.5;
+
+// The model header carries the medium drag pairs; the runtime is switched the same way
+// the viewer's Medium buttons switch it. Read directly -- evolve.mjs does not re-export
+// the header, and six lines beat a new export nothing else wants.
+const modelBuf = fs.readFileSync(new URL('../web/worm.model', import.meta.url));
+const headLen = modelBuf.readUInt32LE(8);
+const HEAD = JSON.parse(modelBuf.subarray(12, 12 + headLen).toString());
+const CT = HEAD.scalars[`med_${MEDIUM}_ct`], CN = HEAD.scalars[`med_${MEDIUM}_cn`];
+if (!(CT > 0)) throw new Error(`unknown medium ${MEDIUM}`);
+
+const OPT = {
+  cap: 10, founders: 4, mut: 0.10, incubation: 45,
+  wmut: 0.15, wmutN: 4, mmut: 0.08,
+  metab: 0.1, metabT: 240, metabWorkP: 2.0,
+  metabFloor: 0.25, metabKnee: 0.35, metabHatch: 0.6,
+  corpse: 0.05, corpseYield: 0.8, seed: SEED,
+  rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
+  wind: 0.03, lawnScale: 0.6,
+};
+
+const rand = rng(SEED);
+const normal = normalFrom(rand);
+const E = engine();
+E.setNoise(1);
+E.setMedium(CT, CN);
+
+// Fresh views every read: any allocation can grow linear memory and detach old ones.
+const f64 = () => new Float64Array(E.memory.buffer);
+const nodeAt = (id, k) => {
+  const m = f64();
+  return [m[(E.ptrNodesX(id) >> 3) + k], m[(E.ptrNodesY(id) >> 3) + k]];
+};
+const N_JOINTS = HEAD.ints.n_joints;
+const MID = HEAD.ints.n_nodes >> 1;
+
+const arena = makeArena(E, { genes: GENES, scaleOf }, OPT, rand, normal,
+                        (id) => nodeAt(id, MID));
+
+/* Per-animal ledger for the current window. Keyed by worm id; ids are never reused, so
+ * a dead animal's row just stops accumulating and is swept at the window boundary. */
+const ledger = new Map();
+function openRow(id) {
+  const [x, y] = nodeAt(id, MID);
+  const [hx, hy] = nodeAt(id, 0);
+  const [tx, ty] = nodeAt(id, N_JOINTS);
+  return { x0: x, y0: y, E: 0, kSum: 0, kAbsSum: 0, n: 0,
+           axis: Math.atan2(ty - hy, tx - hx), turns: 0 };
+}
+
+function sample(id, row) {
+  row.E += E.getDragPower(id) * CHUNK;
+  const m = f64();
+  const kp = E.ptrKappa(id) >> 3;
+  let s = 0, a = 0;
+  for (let j = 0; j < N_JOINTS; j++) { const k = m[kp + j]; s += k; a += Math.abs(k); }
+  row.kSum += s / N_JOINTS;
+  row.kAbsSum += a / N_JOINTS;
+  row.n += 1;
+  // Body-axis rotation, unwrapped one sample at a time: at 0.5 s a body cannot turn
+  // half a revolution unnoticed at any speed this dish produces.
+  const [hx, hy] = nodeAt(id, 0);
+  const [tx, ty] = nodeAt(id, N_JOINTS);
+  const axis = Math.atan2(ty - hy, tx - hx);
+  let d = axis - row.axis;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  row.turns += d / (2 * Math.PI);
+  row.axis = axis;
+}
+
+const catches = [];                    // first-flag snapshots, written to OUT
+const flagged = new Set();             // ids already snapshotted
+
+function snapshot(id, stats, t) {
+  catches.push({
+    caught: `t=${t}s ${MEDIUM} seed ${SEED}`,
+    stats,
+    dynasty: arena.founderOf.get(id) ?? -1,
+    development: E.getDevelopment(id),
+    morphology: Array.from({ length: 12 }, (_, j) => E.getMorph(id, j)),
+    genes: GENES.map((g, s) => [g, E.getGene(id, s)]),
+    // Weights only where the animal owns a mutated set -- fam x index x value triples
+    // would be 3,935 rows; the ratio against a wild-type sibling reconstructs them, and
+    // hasOwnWeights says whether there is anything to reconstruct.
+    ownWeights: !!E.hasOwnWeights(id),
+  });
+  fs.writeFileSync(OUT, JSON.stringify({ seed: SEED, medium: MEDIUM, options: OPT,
+                                         catches }, null, 1));
+}
+
+arena.seedPlate();
+arena.spawnFounders();
+for (const id of arena.ids()) ledger.set(id, openRow(id));
+
+console.log(`SKATER TRAP -- ${MEDIUM} (ct ${CT}, cn ${CN}), seed ${SEED}, `
+  + `${SECONDS} s, window ${WINDOW} s, cap ${OPT.cap}`);
+console.log('Track B: nothing below is a claim about C. elegans.');
+console.log('flag: |kbar| >= 3.0 /mm AND |turns| >= 2 AND net >= 0.10 mm per window\n');
+
+let simT = 0;
+let nextWindow = WINDOW;
+const t0 = Date.now();
+while (simT < SECONDS) {
+  E.stepAll(Math.round(CHUNK / DT));
+  simT += CHUNK;
+  arena.tick(simT);
+  const pop = arena.ids();
+  for (const id of pop) {
+    let row = ledger.get(id);
+    if (!row) ledger.set(id, row = openRow(id));   // hatched mid-window
+    sample(id, row);
+  }
+
+  if (simT >= nextWindow) {
+    const live = new Set(pop);
+    const rows = [];
+    for (const [id, r] of ledger) {
+      if (!live.has(id) || r.n < 10) continue;     // died, or barely sampled
+      const [x, y] = nodeAt(id, MID);
+      const net = Math.hypot(x - r.x0, y - r.y0);
+      const kbar = r.kSum / r.n, kabs = r.kAbsSum / r.n;
+      rows.push({ id, net, E: r.E, transport: r.E > 1e-12 ? net / r.E : 0,
+                  kbar, kabs, turns: r.turns,
+                  skater: Math.abs(kbar) >= 3.0 && Math.abs(r.turns) >= 2 && net >= 0.10 });
+    }
+    const skaters = rows.filter((r) => r.skater);
+    const undul = rows.filter((r) => Math.abs(r.kbar) < 1.0);
+    const best = (xs) => xs.length ? xs.reduce((a, b) => (b.transport > a.transport ? b : a)) : null;
+    const bu = best(undul), bs = best(skaters);
+    console.log(`t=${String(simT).padStart(5)}s  pop ${rows.length}  `
+      + `births ${arena.births}  deaths ${arena.deaths}  skaters ${skaters.length}`
+      + (bu ? `  best-undulator ${bu.transport.toFixed(2)} mm/E` : '')
+      + (bs ? `  BEST-SKATER ${bs.transport.toFixed(2)} mm/E` : '')
+      + `  (${Math.round((Date.now() - t0) / 1000)}s wall)`);
+    for (const r of skaters) {
+      console.log(`    SKATER id ${r.id}: net ${r.net.toFixed(2)} mm, `
+        + `transport ${r.transport.toFixed(2)} mm/E, kbar ${r.kbar.toFixed(2)}/mm, `
+        + `|k| ${r.kabs.toFixed(2)}/mm, turns ${r.turns.toFixed(1)}`);
+      if (!flagged.has(r.id)) {
+        flagged.add(r.id);
+        snapshot(r.id, { net: r.net, transport: r.transport, kbar: r.kbar,
+                         kabs: r.kabs, turns: r.turns }, simT);
+        console.log(`      -> snapshotted to ${OUT}`);
+      }
+    }
+    // Fresh windows for the survivors; the dead leave the ledger with their ids.
+    ledger.clear();
+    for (const id of pop) ledger.set(id, openRow(id));
+    nextWindow += WINDOW;
+  }
+}
+
+const wall = (Date.now() - t0) / 1000;
+console.log(`\ndish closed: ${SECONDS} s in ${wall.toFixed(0)} s wall, `
+  + `${arena.births} born, ${arena.deaths} died, ${flagged.size} distinct animal(s) `
+  + `flagged as skaters${flagged.size ? `; snapshots in ${OUT}` : ''}.`);
+if (!flagged.size) {
+  console.log('No skater this run. One seed decides nothing in either direction -- the '
+    + 'sighting came from one dish in ~140 births, and this run is priced in the report '
+    + 'lines above for when one does form.');
+}

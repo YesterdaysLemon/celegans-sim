@@ -170,12 +170,18 @@ measured, then asserted in `wasm/morphology.test.mjs`). Development is runtime p
 (`setDevelopment`), never the genome: the first draft scaled the control points and
 generations shrank 0.55× each — the correction is on the record in the mechanism.
 
-**1c. The buffer skater wants an instrument.** The owner's dish, switched to buffer,
-evolved coiled lineages that spin and skate in long arcs (>1500 µm/s bursts; sighting
-recorded in `wasm/arena.mjs`). Not an exhibit until measured: a buffer-medium arena run
-logging net displacement per drag power and per-worm curvature means, to catch skaters
-forming and price their transport against undulators. Likely a 2D+RFT+no-collision
-niche — exactly what the museum exists for.
+**1c. The buffer skater wants an instrument — and now has one.** The owner's dish,
+switched to buffer, evolved coiled lineages that spin and skate in long arcs (>1500 µm/s
+bursts; sighting recorded in `wasm/arena.mjs`). Not an exhibit until measured, and
+`wasm/skate.mjs` is the instrument: the full living plate in buffer, logging per animal
+per 30 s window the net midpoint displacement, the integrated drag dissipation (the
+metabolism's own currency), their ratio (transport: mm bought per unit drag energy), the
+signed and absolute curvature means, and net body-axis revolutions. A window is flagged
+SKATER on coil + roll + displacement (|kbar| ≥ 3 /mm, |turns| ≥ 2, net ≥ 0.10 mm — the
+cohorts sit far apart, so the thresholds are calibration, not biology), and a first flag
+snapshots the animal's full heritable state for transplant-and-preserve. `SKATE_MEDIUM=agar`
+is the control arm, so "skating is a buffer niche" is testable rather than assumed.
+Hunts running; a null is a null — the sighting came from one dish in ~140 births.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
