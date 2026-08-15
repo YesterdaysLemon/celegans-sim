@@ -78,14 +78,20 @@ const HEAD = JSON.parse(modelBuf.subarray(12, 12 + headLen).toString());
 const CT = HEAD.scalars[`med_${MEDIUM}_ct`], CN = HEAD.scalars[`med_${MEDIUM}_cn`];
 if (!(CT > 0)) throw new Error(`unknown medium ${MEDIUM}`);
 
+/* A GENEROUS plate, and that is calibration, not science. At the showcase scarcity
+ * (lawnScale 0.6, metabT 240, 4 founders) three of four tested seeds went extinct on
+ * AGAR before the first hatch -- founder survival there is a lottery, and a trap whose
+ * dish is usually dead measures nothing. The hunt needs a dish that reliably reaches an
+ * evolving population before the physics switch; how harsh a plate can be before
+ * ecology collapses is a different instrument's question. */
 const OPT = {
-  cap: 10, founders: 4, mut: 0.10, incubation: 45,
+  cap: 10, founders: 8, mut: 0.10, incubation: 45,
   wmut: 0.15, wmutN: 4, mmut: 0.08,
-  metab: 0.1, metabT: 240, metabWorkP: 2.0,
+  metab: 0.1, metabT: 360, metabWorkP: 2.0,
   metabFloor: 0.25, metabKnee: 0.35, metabHatch: 0.6,
   corpse: 0.05, corpseYield: 0.8, seed: SEED,
-  rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
-  wind: 0.03, lawnScale: 0.6,
+  rotT: 45, regrow: 0.03, juvenile: 0.55, growT: 90,
+  wind: 0.03, lawnScale: 0.9,
 };
 
 const rand = rng(SEED);
