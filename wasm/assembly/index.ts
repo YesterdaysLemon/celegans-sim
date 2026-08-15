@@ -466,6 +466,35 @@ class World {
     return amount;
   }
 
+  /* Advect one field by (dx, dy) mm: every cell takes the value that was upwind of it,
+   * bilinearly interpolated, via the scratch buffer. Whatever blows past the dish edge
+   * is lost -- a windy plate is not a closed system, and saying so beats pretending the
+   * budget balances. Small per-call shifts (a fraction of a cell) keep numerical
+   * diffusion gentle; the caller owns the cadence. */
+  advect(target: StaticArray<f64>, dx: f64, dy: f64): void {
+    const g = this.g, h = this.h;
+    const sx = dx / h, sy = dy / h;              // shift in cell units
+    for (let i = 0; i < g; i++) {
+      const fy = <f64>i - sy;
+      const y0 = <i32>Math.floor(fy);
+      const wy = fy - <f64>y0;
+      for (let j = 0; j < g; j++) {
+        const fx = <f64>j - sx;
+        const x0 = <i32>Math.floor(fx);
+        const wx = fx - <f64>x0;
+        let v: f64 = 0.0;
+        if (y0 >= 0 && y0 < g - 1 && x0 >= 0 && x0 < g - 1) {
+          const a = unchecked(target[y0 * g + x0]), b = unchecked(target[y0 * g + x0 + 1]);
+          const c = unchecked(target[(y0 + 1) * g + x0]), d = unchecked(target[(y0 + 1) * g + x0 + 1]);
+          v = a * (1 - wx) * (1 - wy) + b * wx * (1 - wy)
+            + c * (1 - wx) * wy + d * wx * wy;
+        }
+        unchecked(this.scratch[i * g + j] = v);
+      }
+    }
+    for (let k = 0; k < g * g; k++) unchecked(target[k] = unchecked(this.scratch[k]));
+  }
+
   stepFields(dt: f64): void {
     this.facc += dt;
     while (this.facc >= G.WORLD_FIELD_DT) {
@@ -1044,6 +1073,17 @@ class Worm {
    * mean 0.35 by t=90 against a juvenile floor of 0.55). Development is not heritable,
    * and now it cannot be. */
   morphDev: f64 = 1.0;
+  /* Per-worm body length and contact scale, both driven by development. bodyL replaces
+   * the compiled G.BODY_L in every site that means "this animal's link length" -- the
+   * drag metric's l/l^2/l^3 factors, node placement, curvature normalisation, the drag
+   * load and power, self-contact eligibility, the invariant curvature limit -- so a
+   * juvenile is SHORT, not merely narrow. contactScale shrinks the self-contact radii
+   * by the same factor as the width, keeping the shrunken body self-similar; without it
+   * a short juvenile's nodes sit inside reference-width contact distances and the
+   * force fires on an animal that is simply small. Defaults are the compiled constants
+   * exactly, so the off state reads the same numbers it always did. */
+  bodyL: f64 = G.BODY_L;
+  contactScale: f64 = 1.0;
   mRho: StaticArray<f64> | null = null;        // n           scaled drag weights
   mMaskRho: StaticArray<f64> | null = null;    // n*n
   mMaskSqrt: StaticArray<f64> | null = null;   // n*n
@@ -1404,7 +1444,7 @@ class Worm {
   }
 
   updateNodes(): void {
-    const L = G.N_LINKS, l = G.BODY_L;
+    const L = G.N_LINKS, l = this.bodyL;
     let cx = this.bx, cy = this.by;
     unchecked(this.nodesX[0] = cx); unchecked(this.nodesY[0] = cy);
     for (let i = 0; i < L; i++) {
@@ -1422,7 +1462,7 @@ class Worm {
    * The triple sum over segments collapses into three n x n products once P and Q are
    * masked by "strictly behind", which is what makes this affordable at 2 kHz. */
   dragMatrix(): void {
-    const n = G.N_LINKS, l = G.BODY_L, N = n + 2;
+    const n = G.N_LINKS, l = this.bodyL, N = n + 2;
     const cT = this.cT, cN = this.cN;
     // Morphology-scaled drag arrays, or null for the payload originals. The branches
     // below are per-read but constant per worm, and the null arm is the untouched
@@ -1512,7 +1552,7 @@ class Worm {
    * and internal-damping terms, which are constant matrices and so cost nothing here but
    * remove the stiffest timescale from the stability condition entirely. */
   stepBody(dt: f64): void {
-    const n = G.N_LINKS, N = n + 2, l = G.BODY_L, J = G.N_JOINTS;
+    const n = G.N_LINKS, N = n + 2, l = this.bodyL, J = G.N_JOINTS;
     this.dragMatrix();
     const Q = sQv;
     for (let i = 0; i < N; i++) unchecked(Q[i] = 0.0);
@@ -1569,7 +1609,7 @@ class Worm {
    * and normal components against the current link frames, |c x v| averaged along the
    * body. The one gait signal measured to survive below the K ~ 8 knee. */
   dragLoad(): f64 {
-    const n = G.N_LINKS, l = G.BODY_L;
+    const n = G.N_LINKS, l = this.bodyL;
     let cumX: f64 = 0.0, cumY: f64 = 0.0;   // accumulated rotational contribution
     let sum: f64 = 0.0;
     for (let i = 0; i < n; i++) {
@@ -1596,7 +1636,7 @@ class Worm {
    * cost that reads it is charging for the physics the body really did, not for a
    * proxy of it. */
   dragPower(): f64 {
-    const n = G.N_LINKS, l = G.BODY_L;
+    const n = G.N_LINKS, l = this.bodyL;
     let cumX: f64 = 0.0, cumY: f64 = 0.0;
     let sum: f64 = 0.0;
     for (let i = 0; i < n; i++) {
@@ -2219,12 +2259,12 @@ class Worm {
    */
   selfContact(): void {
     const n = G.N_LINKS;
-    const stiff: f64 = 40.0, margin: f64 = 2.0, l = G.BODY_L;
+    const stiff: f64 = 40.0, margin: f64 = 2.0, l = this.bodyL;
     for (let i = 0; i <= n; i++) {
       const xi = unchecked(this.nodesX[i]), yi = unchecked(this.nodesY[i]);
       const ri = m(G.OFF_body_node_radius, i);
       for (let j = i + 1; j <= n; j++) {
-        const cd = ri + m(G.OFF_body_node_radius, j);
+        const cd = (ri + m(G.OFF_body_node_radius, j)) * this.contactScale;
         if (<f64>(j - i) * l <= margin * cd) continue;
         const dx = xi - unchecked(this.nodesX[j]);
         if (dx > cd || dx < -cd) continue;
@@ -2296,6 +2336,18 @@ export function depositFood(x: f64, y: f64, r: f64, amount: f64): f64 {
  * moment of deposit: returns what the plate took, 0 if the circle misses the dish. */
 export function depositRepellent(x: f64, y: f64, r: f64, amount: f64): f64 {
   return world.depositInto(world.repellent, x, y, r, amount);
+}
+/* Wind: drift the food and repellent fields by (dx, dy) mm. Policy owns the weather --
+ * its direction, its gusts, its cadence; the mechanism only moves what is already on
+ * the plate. The attractant is deliberately NOT advected: its sources are the standing
+ * bacterial colonies, whose plume is rebuilt from the cached patch shapes every field
+ * step, so blowing the plume would be undone within 20 ms -- and a colony's scent
+ * pinned to the colony while its spilled food drifts downwind is a readable, honest
+ * asymmetry. Mask after moving, so nothing drifts through the dish wall. */
+export function driftFields(dx: f64, dy: f64): void {
+  world.advect(world.food, dx, dy);
+  world.advect(world.repellent, dx, dy);
+  world.maskDish();
 }
 /* How many lawns the plate is carrying, and how many it turned away. A patch is a megabyte
  * of cached field shape now, so `addFood` can refuse (see MAX_FOOD_PATCHES); a caller that
@@ -2693,19 +2745,28 @@ function applyMorphology(wm: Worm, ctl: StaticArray<f64>, dev: f64): void {
    * ALLOMETRICALLY, because a uniform scale is mechanically invisible at zero Reynolds
    * (muscle moment, elastic torque and drag all scaled by s leaves qdot = D^-1 F
    * exactly where it was; measured by this file's own test before this comment was
-   * written). Development therefore scales the three profiles by different powers of
-   * size, the way bodies do: width (drag goes with perimeter) by s, muscle (force goes
-   * with cross-section) by s^2, stiffness (a pressurised shell) by s^3. A juvenile is
-   * weak and floppy RELATIVE to its drag -- genuinely disadvantaged in the intake
-   * contest -- and grows into strength. All still clamped to the genome's own
+   * written). Development scales the whole body, the way bodies scale:
+   *
+   *   length      bodyL = s * L_ref -- a juvenile is SHORT, and every l, l^2, l^3 in
+   *               the drag metric, the node placement and the curvature limit follows;
+   *   width       rho and the contact radii by s (drag goes with perimeter);
+   *   muscle      torque by s^3 (force with cross-section s^2, moment arm with s);
+   *   stiffness   the payload K_j carries 1/L_ref, so the physical EI(s^3)/(L s)
+   *               works out to K_ref * s^2, and gamma with it.
+   *
+   * Net of the drag's own l-scaling this leaves a juvenile slower and floppier per
+   * unit of body than the adult of the same genes -- genuinely disadvantaged in the
+   * intake contest -- and it grows into strength. All still clamped to the genome's
    * envelope. The pharynx does not scale: a juvenile eats at adult rate, a stated
    * first cut. */
   const d1 = wm.morphDev;
   const d2 = d1 * d1;
   const d3 = d2 * d1;
+  wm.bodyL = G.BODY_L * d1;
+  wm.contactScale = d1;
   const c = new StaticArray<f64>(12);
   for (let i = 0; i < 12; i++) {
-    const pow = i < 4 ? d3 : i < 8 ? d1 : d2;
+    const pow = i < 4 ? d2 : i < 8 ? d1 : d3;
     unchecked(c[i] = clamp(unchecked(wm.morphCtl[i]) * pow, 0.25, 4.0));
   }
 
@@ -2788,6 +2849,9 @@ export function getDevelopment(w: i32): f64 { return byId(w).morphDev; }
 export function clearMorphology(w: i32): void {
   const wm = byId(w);
   wm.ownMorph = false;
+  wm.morphDev = 1.0;
+  wm.bodyL = G.BODY_L;
+  wm.contactScale = 1.0;
   wm.mRho = null; wm.mMaskRho = null; wm.mMaskSqrt = null; wm.mRhoMax = null;
   wm.mK = null; wm.mKmat = null; wm.mBmat = null; wm.mMusGain = null;
 }
@@ -3034,7 +3098,8 @@ export const INVARIANT_LEFT_THE_DISH: i32 = 5;
 
 export function checkInvariants(w: i32): i32 {
   const wm = byId(w);
-  const n = G.N_LINKS, l = G.BODY_L;
+  const n = G.N_LINKS, l = wm.bodyL;   // the animal's own length: a juvenile's tighter
+                                        // curvature limit is real, not a violation
 
   for (let i = 0; i < n; i++) {
     if (!isFinite(unchecked(wm.theta[i]))) return INVARIANT_ANGLES_NOT_FINITE;

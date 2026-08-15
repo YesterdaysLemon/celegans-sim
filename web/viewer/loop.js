@@ -12,6 +12,7 @@ import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
 import { updateFreq, updateStats, updatePump, updateEggs, updateDishStats } from './stats.js';
 import { buildWormSel, clampFocus, syncScrub } from './controls.js';
 import { record, at as historyAt } from './history.js';
+import { samplePreserve } from './specimen.js';
 
 let fieldClock = 0;
 
@@ -154,6 +155,9 @@ function localTick(now) {
     S.field.stamp = now;              // invalidates the field-image cache in drawFields
     fieldClock = now;
   }
+
+  // A running capture samples the focused animal on dish time; inert otherwise.
+  samplePreserve();
 
   // Last, because it snapshots what is about to be drawn and S.eggs is only settled above.
   record(S.worms, S.eggs);

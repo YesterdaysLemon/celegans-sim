@@ -51,6 +51,12 @@ declare namespace __AdaptedExports {
    */
   export function depositRepellent(x: number, y: number, r: number, amount: number): number;
   /**
+   * assembly/index/driftFields
+   * @param dx `f64`
+   * @param dy `f64`
+   */
+  export function driftFields(dx: number, dy: number): void;
+  /**
    * assembly/index/foodPatchCount
    * @returns `i32`
    */

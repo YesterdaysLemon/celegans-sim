@@ -15,6 +15,7 @@ import { buildLegend } from './stats.js';
 import { send } from './transport.js';
 import { count as historyCount, at as historyAt, reset as historyReset,
          stats as historyStats } from './history.js';
+import { startPreserve } from './specimen.js';
 
 /* ------------------------------------------------------------------- scrubbing ---- */
 
@@ -293,6 +294,11 @@ export function wire() {
     });
     head.setAttribute('aria-expanded', String(!head.parentElement.classList.contains('collapsed')));
   });
+
+  // Preserve the focused animal as a museum specimen: a recorded walk cycle plus its
+  // genes and morphology, downloaded as a file and shelved in localStorage. The button
+  // disables itself while the capture runs (specimen.js owns its lifecycle).
+  el('b-preserve').addEventListener('click', () => startPreserve());
 
   el('b-worm-add').addEventListener('click', () => {
     if (!S.engine) return;

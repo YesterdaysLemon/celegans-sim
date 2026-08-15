@@ -49,6 +49,18 @@ export function resolveOptions(o = {}) {
      * capacity becomes a THROUGHPUT, not a stock, and "too much food on average" is a
      * knob instead of a fate. 0 = the never-restocked plate. */
     regrow: o.regrow ?? 0,
+    /* Wind: the plate's food and repellent drift at this many mm/s in a direction that
+     * meanders deterministically with dish time (no rng -- weather must not fork a
+     * seeded run's mutation stream). Regrowth keeps feeding the lawn SITES while the
+     * wind smears what is already down, so a windy plate develops plumes and drifts
+     * instead of tidy discs. The attractant stays pinned to its colonies -- the
+     * mechanism says why. 0 = a still day. */
+    wind: o.wind ?? 0,
+    /* Lawn scale multiplies the founding lawns' densities: below 1 the plate starts
+     * poorer without moving the sites. And `lawns` replaces the layout wholesale --
+     * a caller randomising starting conditions passes its own. */
+    lawnScale: o.lawnScale ?? 1.0,
+    lawns: o.lawns ?? null,
     /* Development: hatchlings start at juvenile scale and grow toward their inherited
      * adult morphology while their store is above the fade knee -- growth is fed-time,
      * so a hatchling that cannot win food stays small. 0 = hatch at full size. */
@@ -108,13 +120,15 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
    * depression stay at the founding lawn's shape either way (patch shapes are cached at
    * creation; a regrown lawn smells like its founder) -- a stated first cut. Returns
    * the patch list so a viewer can hand it to its minimap. */
-  const LAWNS = [
+  const LAWNS = opt.lawns || [
     { x: -8.0, y: 5.0, r: 4.0, d: 1.0 },
     { x: 7.0, y: -4.0, r: 4.0, d: 1.0 },
     { x: 0.0, y: 9.0, r: 3.0, d: 0.8 },
   ];
   arena.seedPlate = () => {
-    for (const l of LAWNS) E.addFood(l.x, l.y, l.r, l.d, l.d, 9.0);
+    for (const l of LAWNS) {
+      E.addFood(l.x, l.y, l.r, l.d * opt.lawnScale, l.d, 9.0);
+    }
     return LAWNS.map((l) => ({ x: l.x, y: l.y, r: l.r, kind: 'food' }));
   };
   let regrowT = 0;
@@ -125,6 +139,20 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     regrowT = arena.simT;
     const per = (opt.regrow * dt) / LAWNS.length;
     for (const l of LAWNS) E.depositFood(l.x, l.y, l.r * 0.8, per);
+  }
+  /* The weather. Direction meanders on two incommensurate slow clocks, magnitude
+   * breathes on a third -- deterministic in dish time, so identical seeds get
+   * identical weather and the mutation stream is untouched. */
+  let windT = 0;
+  function windPass() {
+    if (opt.wind <= 0) return;
+    const dt = arena.simT - windT;
+    if (dt < 1.0) return;
+    windT = arena.simT;
+    const t = arena.simT;
+    const dir = 2 * Math.PI * (t / 173.0) + 0.8 * Math.sin(t / 41.0);
+    const mag = opt.wind * (0.55 + 0.45 * Math.sin(t / 67.0));
+    E.driftFields(Math.cos(dir) * mag * dt, Math.sin(dir) * mag * dt);
   }
 
   /* Wild-type clones on a ring, fed. Everything after them is descent with
@@ -231,6 +259,7 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     arena.reap();
     arena.hatchDue();
     regrowPass();
+    windPass();
     arena.fadeCorpses();
     arena.growthPass();
   };
