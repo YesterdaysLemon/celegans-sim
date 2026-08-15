@@ -11,6 +11,18 @@
      question without adding an asset that docker/nginx.conf would then owe a cache policy. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 16C7 7 12 25 16 16s6-9 13 0' fill='none' stroke='%23e2a04a' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
+<!-- The mode, applied before first paint. app.js is a deferred module, so leaving this
+     to controls.js means a visitor who saved light mode gets a flash of the dark chrome
+     on every load. Same key and same fallback chain as controls.js initialMode(). -->
+<script>
+try {
+  var m = localStorage.getItem('celegans-mode');
+  if (m !== 'light' && m !== 'dark') {
+    m = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  document.documentElement.dataset.mode = m;
+} catch (e) { document.documentElement.dataset.mode = 'dark'; }
+</script>
 </head>
 <body>
 <div id="app">
@@ -62,11 +74,13 @@
 
     <!-- Floating over the dish rather than in the footer: these change what you are
          looking at, so they belong on the thing being looked at. -->
+    <!-- The mode toggle: two dish looks, two chrome languages, one switch. Dark is the
+         digital plate under terminal chrome; Light is the realistic plate under paper
+         chrome. It lives on the dish because the dish is the biggest thing it changes. -->
     <div class="floating tl">
-      <div class="seg" role="group" aria-label="View style">
-        <button data-view="digital" aria-pressed="true">Digital</button>
-        <button data-view="cartoon" aria-pressed="false">Cartoon</button>
-        <button data-view="realistic" aria-pressed="false">Realistic</button>
+      <div class="seg" role="group" aria-label="Mode">
+        <button data-mode="dark" aria-pressed="true">Dark</button>
+        <button data-mode="light" aria-pressed="false">Light</button>
       </div>
     </div>
 

@@ -190,6 +190,39 @@ function updateAblateUI() {
     : (n ? `${n} ablated${many ? ' in worm ' + (S.focus + 1) : ''}` : 'hover a neuron');
 }
 
+/* ------------------------------------------------------------------------- mode ---- */
+
+/* One switch, two languages. A mode binds a dish painter and a chrome skin together:
+ * dark is the digital plate (locked, untouched by the mode work) under terminal chrome,
+ * light is the realistic plate under paper chrome. The chrome half is entirely CSS,
+ * keyed off html[data-mode] -- the ROOT element, not body, because state.js reads the
+ * canvas palette from documentElement's computed style, and the chart labels have to
+ * turn to ink along with the chrome. The dish half is S.theme, which dish.js already
+ * reads. Persisted, and shared with the museum page, through one localStorage key. */
+export function setMode(mode) {
+  const m = mode === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.mode = m;
+  S.theme = m === 'dark' ? 'digital' : 'realistic';
+  // button[data-mode], not bare [data-mode]: the root element now carries the same
+  // attribute as the switch's own state, and must not be handed an aria-pressed.
+  document.querySelectorAll('button[data-mode]').forEach((o) =>
+    o.setAttribute('aria-pressed', String(o.dataset.mode === m)));
+  // The floating controls invert on the light plate; see #dish[data-plate] in the CSS.
+  el('dish').dataset.plate = theme().dark ? 'light' : 'dark';
+  buildLegend();
+  try { localStorage.setItem('celegans-mode', m); } catch (e) { /* private mode: fine */ }
+}
+
+/* The saved mode, else the OS preference, else dark -- dark is the identity. */
+export function initialMode() {
+  try {
+    const saved = localStorage.getItem('celegans-mode');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch (e) { /* private mode: fall through */ }
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light' : 'dark';
+}
+
 /* ----------------------------------------------------------------------- wiring --- */
 
 export function wire() {
@@ -262,14 +295,8 @@ export function wire() {
     S.switchDish(b.dataset.dish);
   }));
 
-  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('[data-view]').forEach((o) =>
-      o.setAttribute('aria-pressed', String(o === b)));
-    S.theme = b.dataset.view;
-    // The floating controls invert on the light plates; see #dish[data-plate] in the CSS.
-    el('dish').dataset.plate = theme().dark ? 'light' : 'dark';
-    buildLegend();
-  }));
+  document.querySelectorAll('button[data-mode]').forEach((b) => b.addEventListener('click', () =>
+    setMode(b.dataset.mode)));
 
   document.querySelectorAll('[data-layer]').forEach((b) => b.addEventListener('click', () => {
     const k = b.dataset.layer;
@@ -384,13 +411,14 @@ export function wire() {
     if (e.target.tagName === 'INPUT') return;
     if (e.key === 'f') { setCam(S.cam === 'follow' ? 'free' : 'follow'); if (S.cam === 'follow') S.recentre = true; }
     if (e.key === 'h') el('b-rail').click();
-    if (e.key === '1' || e.key === '2' || e.key === '3') {
-      document.querySelectorAll('[data-view]')[Number(e.key) - 1]?.click();
+    if (e.key === '1' || e.key === '2') {
+      document.querySelectorAll('button[data-mode]')[Number(e.key) - 1]?.click();
     }
   });
 
-  el('dish').dataset.plate = theme().dark ? 'light' : 'dark';
-  buildLegend();
+  // setMode does the plate inversion, the legend and persistence in one place; wire()
+  // just applies the initial choice.
+  setMode(initialMode());
   zoom(1);
 }
 

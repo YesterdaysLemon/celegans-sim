@@ -37,7 +37,7 @@ export function drawDish() {
 
   ctx.fillStyle = T.obstacle[0];
   ctx.strokeStyle = T.obstacle[1];
-  ctx.lineWidth = S.theme === 'cartoon' ? 2 : 1;
+  ctx.lineWidth = 1;
   for (const [ox, oy, orad] of S.meta.world.obstacles) {
     ctx.beginPath(); ctx.arc(X(ox), Y(oy), orad * scale, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
@@ -70,7 +70,7 @@ export function drawDish() {
     for (const tr of S.trails) {
       if (!tr || tr.length < 2) continue;
       ctx.strokeStyle = T.trail;
-      ctx.lineWidth = S.theme === 'cartoon' ? 1.6 : 1.2;
+      ctx.lineWidth = 1.2;
       ctx.globalAlpha = 0.55;
       ctx.beginPath();
       tr.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))));
@@ -80,7 +80,7 @@ export function drawDish() {
   }
   if (S.layers.trail && S.trail.length > 1) {
     ctx.strokeStyle = T.trail;
-    ctx.lineWidth = S.theme === 'cartoon' ? 2 : 1.5;
+    ctx.lineWidth = 1.5;
     ctx.lineJoin = ctx.lineCap = 'round';
     ctx.beginPath();
     S.trail.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))));
@@ -129,7 +129,7 @@ export function drawDish() {
   ctx.restore();
 
   // dish rim, drawn outside the clip so it is a crisp edge rather than a half-covered one
-  ctx.strokeStyle = T.rim(); ctx.lineWidth = S.theme === 'cartoon' ? 3 : 2;
+  ctx.strokeStyle = T.rim(); ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(X(0), Y(0), R * scale, 0, Math.PI * 2); ctx.stroke();
 
   drawMinimap(ctx, w, h, R, f);

@@ -1,8 +1,9 @@
-/* The body, painted three ways.
+/* The body, painted two ways -- digital for dark mode, realistic for light.
  *
- * All three painters work from one shared `geometry()` result -- screen-space centreline,
- * outward normals and radii -- so the three modes are guaranteed to be drawing the same
- * animal rather than three approximations of it.
+ * Both painters work from one shared `geometry()` result -- screen-space centreline,
+ * outward normals and radii -- so the two modes are guaranteed to be drawing the same
+ * animal rather than two approximations of it. (A third painter, cartoon, was retired
+ * with the mode work; see themes.js for the note.)
  *
  * PAINTERS is keyed by the same names as THEMES in themes.js. dish.js looks the painter up
  * by S.theme; neither module has to know about the other.
@@ -99,49 +100,6 @@ function drawWormDigital(ctx, G) {
   pumpMark(ctx, G, '#fff');
 }
 
-// Diagram mode: flat fill, heavy ink outline, segment ticks and one obvious eye. Nothing
-// is shaded, because shading would imply a three-dimensional body this model does not have.
-function drawWormCartoon(ctx, G, f) {
-  const INK = '#2b2722';
-  ctx.lineJoin = ctx.lineCap = 'round';
-
-  // The outline is capped: it is a cartoon convention, not a physical rim, so letting it
-  // scale freely with zoom turns the head into a blob and eventually fills the body in.
-  const ink = Math.min(5, Math.max(1.6, G.r[Math.floor(G.n / 2)] * 0.42));
-  bodyPath(ctx, G);
-  ctx.fillStyle = '#f5d982';
-  ctx.fill();
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = ink;
-  ctx.stroke();
-
-  // Segment ticks: the body is visibly made of repeating units, and they make the wave
-  // legible without colouring the animal by a quantity.
-  ctx.strokeStyle = 'rgba(43,39,34,0.30)';
-  ctx.lineWidth = Math.max(0.8, G.r[0] * 0.16);
-  for (let i = 3; i < G.n - 2; i += 3) {
-    const R = G.r[i] * 0.82;
-    ctx.beginPath();
-    ctx.moveTo(G.px[i] + G.nx[i] * R, G.py[i] + G.ny[i] * R);
-    ctx.lineTo(G.px[i] - G.nx[i] * R, G.py[i] - G.ny[i] * R);
-    ctx.stroke();
-  }
-
-  // Eye, set back from the nose onto the wider part of the head and offset to one side so
-  // the animal has a facing. Drawn at the tip it sat inside the outline and disappeared.
-  const e = Math.min(G.n - 1, 3);
-  const eR = Math.max(1.6, G.r[e] * 0.46);
-  const ex = G.px[e] + G.nx[e] * G.r[e] * 0.30;
-  const ey = G.py[e] + G.ny[e] * G.r[e] * 0.30;
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(ex, ey, eR, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = INK; ctx.lineWidth = Math.max(0.9, Math.min(2, eR * 0.28)); ctx.stroke();
-  ctx.fillStyle = INK;
-  ctx.beginPath(); ctx.arc(ex, ey, eR * 0.42, 0, Math.PI * 2); ctx.fill();
-
-  pumpMark(ctx, G, '#e8564a');
-}
-
 // Plate mode: a translucent amber body with a darker gut running down it and a specular
 // edge on one side. Soft edges, because nothing under a stereoscope has a 1px outline.
 function drawWormRealistic(ctx, G, f) {
@@ -223,6 +181,5 @@ function pumpMark(ctx, G, colour) {
 
 export const PAINTERS = {
   digital: drawWormDigital,
-  cartoon: drawWormCartoon,
   realistic: drawWormRealistic,
 };

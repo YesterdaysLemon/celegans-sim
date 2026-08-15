@@ -213,17 +213,24 @@ try {
             `the speed window grew ${paused.before.speed} -> ${paused.after.speed} `
             + 'with the clock frozen');
 
-      // Theme: three looks, and the pressed state follows.
+      // Mode: two of them, and each click must swap all three coupled things at once --
+      // the dish painter (S.theme), the chrome language (html[data-mode]) and the
+      // switch's own pressed state -- and persist the choice where the museum reads it.
       const themed = await page.evaluate(() => {
         const out = [];
-        for (const v of ['cartoon', 'realistic', 'digital']) {
-          const b = document.querySelector(`[data-view="${v}"]`);
+        const MODES = [['light', 'realistic'], ['dark', 'digital']];
+        for (const [m, painter] of MODES) {
+          const b = document.querySelector(`button[data-mode="${m}"]`);
           b.click();
-          out.push(window.__sim.theme === v && b.getAttribute('aria-pressed') === 'true');
+          out.push(window.__sim.theme === painter
+            && document.documentElement.dataset.mode === m
+            && b.getAttribute('aria-pressed') === 'true'
+            && localStorage.getItem('celegans-mode') === m);
         }
         return out;
       });
-      check(vp.name, themed.every(Boolean), 'a view mode did not take');
+      check(vp.name, themed.every(Boolean),
+            'a mode switch did not carry painter, chrome and persistence together');
 
       // Collapsing a panel has to report its state, not just look different.
       const panel = await page.evaluate(() => {

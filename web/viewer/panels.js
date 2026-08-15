@@ -82,7 +82,9 @@ export function drawNeurons() {
       ctx.strokeStyle = SERIES[sel]; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 2.2, 0, Math.PI * 2); ctx.stroke();
     } else if (S.hover === i) {
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+      // The cursor ring in the chrome's own foreground colour: white on the terminal,
+      // ink on the paper. A literal '#fff' disappeared in light mode.
+      ctx.strokeStyle = C('--text-primary'); ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 2.2, 0, Math.PI * 2); ctx.stroke();
     }
   }
