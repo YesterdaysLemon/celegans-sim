@@ -280,6 +280,20 @@ NO_CI_NEEDED = {
         "later and blaming the wrong change. In practice the archive is append-only "
         "history and should not drift at all.",
     ".gitignore": "affects no job's inputs",
+    ".github/FUNDING.yml": "the sponsor button; read by GitHub's UI, by no job",
+    "CONTRIBUTING.md": "prose -- conventions plus the local-gates runbook, moved from the "
+                       "README when the repository went public. The commands it quotes "
+                       "are the workflows' own steps, which tests/test_local_checks.py "
+                       "pins against both workflow files.",
+    "docs/model.md": "prose -- the full model account, moved byte-for-byte from the "
+                     "README at public launch. Every figure it quotes is asserted where "
+                     "it always was: the scorecard values by the Python suite, the "
+                     "conformance tolerances by tools/conform.py, the history-ring bytes "
+                     "by wasm/memory.mjs against web/viewer/history.js.",
+    "docs/deploy.md": "prose -- the runtime/serving/viewer account, moved from the README "
+                      "at public launch; same indirection note as docs/model.md.",
+    "docs/media/viewer-animal.png": "landing-page screenshot; an image gates nothing",
+    "docs/media/viewer-arena.png": "landing-page screenshot; an image gates nothing",
     ".claude/settings.json": "agent-harness configuration -- registers the SessionStart "
                              "hook. Nothing in the suite or the viewer reads it; it "
                              "configures the tool that edits the repo, not the repo.",

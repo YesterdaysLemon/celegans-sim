@@ -1,5 +1,9 @@
 # Research log — the project's long-term memory
 
+If you are visiting from the landing page: this is the working log, kept **append-only**,
+of how the results were actually reached — retractions, dead ends and all. It is the
+project's favourite room, and the rules below keep it honest.
+
 This directory is where scientific history lives. It is separate from
 [`NEXT.md`](../../NEXT.md) on purpose, because the two answer different questions and
 compete for the same scarce resource:
@@ -20,11 +24,13 @@ Before this split, one file did both, and the one that must stay short lost. It 
 **Everything here is a record of what was believed and measured at the time it was
 written.** Statements in an archived document are not claims about the model as it stands
 today. Some of them were retracted the same day. Some were retracted a week later. Some are
-still true. The archive does not tell you which — [`README.md`](../../README.md) and
+still true. The archive does not tell you which — [`docs/model.md`](../model.md) and
 [`NEXT.md`](../../NEXT.md) do.
 
 Read the archive to answer *"has this been tried?"* and *"why was it abandoned?"*, and read
-the README to answer *"what does the model do now?"*.
+[`docs/model.md`](../model.md) to answer *"what does the model do now?"*. (Before the
+repository went public that role belonged to the README, which is now the landing page;
+the model document carries its content unchanged.)
 
 ### What must never happen to these files
 
