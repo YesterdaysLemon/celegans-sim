@@ -659,8 +659,11 @@ function wireNeuronPanel() {
     nc.setAttribute('aria-label',
       `${n.name}, ${n.cls}, ${n.kind}${n.modality ? ', ' + n.modality : ''}. ` +
       `Neuron ${i + 1} of ${S.meta.neurons.length}. Enter to ${S.ablateMode ? 'ablate' : 'plot'}.`);
+    // The selection's numeric activity rides the hint (#165): the tooltip has it too,
+    // but on touch the tooltip sits under the finger that just tapped.
+    const pct = S.frame ? ` · ${(S.frame.act[i] * 100).toFixed(0)}%` : '';
     el('neuron-hint').textContent = coarse()
-      ? `${n.name} selected — Plot / Ablate under the graph`
+      ? `${n.name}${pct} — Plot / Ablate under the graph`
       : (S.ablateMode ? 'Enter to ablate' : 'Enter to plot');
     updateNeuronActions();
   };

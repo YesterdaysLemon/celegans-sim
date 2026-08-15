@@ -383,6 +383,87 @@ try {
               `${row.m} ${row.what} contrast ${row.cr.toFixed(2)}:1, floor ${row.floor}:1`);
       }
 
+      /* #165 + #166, desktop only (one build of the renderer answers for all): the
+       * whole path from frame.act[i] through seq() to the pixel actually on the canvas,
+       * plus the legend that names it -- in BOTH modes, against a FROZEN frame, and
+       * then again after the simulation moves. A renderer that painted seq(0.5) for
+       * every cell, or shifted its indices by one, fails here and nowhere else. */
+      if (vp.name === 'desktop') {
+        const probeActPixels = () => page.evaluate(async () => {
+          const S = window.__sim;
+          const { neuronCentre, activityLegend } = await import('/viewer/panels.js');
+          const { seq } = await import('/viewer/scales.js');
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const nc = document.getElementById('c-neurons');
+          const ctx = nc.getContext('2d');
+          const rect = nc.getBoundingClientRect();
+          const dpr = nc.width / rect.width;
+          const px = (cssX, cssY) => {
+            const d = ctx.getImageData(Math.round(cssX * dpr), Math.round(cssY * dpr), 1, 1).data;
+            return [d[0], d[1], d[2]];
+          };
+          const parse = (c) => c.match(/\d+/g).map(Number);
+          const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+          const acts = [...S.frame.act];
+          let match = 0, offGrey = 0;
+          const samples = [];
+          for (let i = 0; i < acts.length; i++) {
+            const c = neuronCentre(nc, i);
+            if (!c) continue;
+            const got = px(c.clientX - rect.left, c.clientY - rect.top);
+            const want = parse(seq(acts[i]));
+            samples.push(got);
+            if (dist(got, want) <= 8) match++;
+            if (dist(got, parse(seq(0.5))) > 8) offGrey++;
+          }
+          const L = activityLegend();
+          const legend = L ? {
+            lo: dist(px(L.x0 + 1, L.y), parse(seq(0.02))) <= 12,
+            hi: dist(px(L.x1 - 1, L.y), parse(seq(0.98))) <= 12,
+          } : null;
+          return { n: acts.length, match, offGrey, acts, legend,
+                   samples: samples.map((s) => s.join(',')) };
+        });
+
+        // Freeze the frame, then walk the whole contract.
+        await page.evaluate(() => {
+          const b = document.getElementById('b-play');
+          if (b.getAttribute('aria-pressed') === 'true') b.click();     // pause
+        });
+        const dark1 = await probeActPixels();
+        check(vp.name, dark1.match >= dark1.n * 0.95,
+              `dark: only ${dark1.match}/${dark1.n} neuron pixels match seq(act)`);
+        check(vp.name, dark1.offGrey >= 30,
+              `dark: ${dark1.offGrey} cells differ from seq(0.5) -- a constant would pass`);
+        check(vp.name, dark1.legend && dark1.legend.lo && dark1.legend.hi,
+              'dark: the legend endpoints do not match the live scale');
+
+        await page.evaluate(() => document.querySelector('button[data-mode="light"]').click());
+        const light1 = await probeActPixels();
+        check(vp.name, light1.match >= light1.n * 0.95,
+              `light: only ${light1.match}/${light1.n} neuron pixels match seq(act)`);
+        check(vp.name, light1.legend && light1.legend.lo && light1.legend.hi,
+              'light: the legend endpoints do not match the live scale');
+        const actsFrozen = dark1.acts.every((a, i) => a === light1.acts[i]);
+        const pixelsMoved = light1.samples.filter((s, i) => s !== dark1.samples[i]).length;
+        check(vp.name, actsFrozen, 'the paused frame CHANGED across a theme switch');
+        check(vp.name, pixelsMoved >= light1.n * 0.8,
+              `theme switch repainted only ${pixelsMoved}/${light1.n} cells with activity frozen`);
+
+        // Let it move, then re-freeze: the pixels must track the new activities.
+        await page.evaluate(() => document.querySelector('button[data-mode="dark"]').click());
+        await page.evaluate(() => document.getElementById('b-play').click());   // play
+        await new Promise((r) => setTimeout(r, 1500));
+        await page.evaluate(() => document.getElementById('b-play').click());   // pause
+        const dark2 = await probeActPixels();
+        const actsChanged = dark2.acts.filter((a, i) => Math.abs(a - dark1.acts[i]) > 0.005).length;
+        check(vp.name, actsChanged >= 50,
+              `after 1.5 s only ${actsChanged} activities moved -- the frame may be stuck`);
+        check(vp.name, dark2.match >= dark2.n * 0.95,
+              `after advancing, only ${dark2.match}/${dark2.n} pixels track seq(act)`);
+        await page.evaluate(() => document.getElementById('b-play').click());   // resume
+      }
+
       // The dropper: two bottles, visible, and selecting one changes what double-click
       // does (the state the dblclick handler reads).
       const dropper = await page.evaluate(() => {
