@@ -19,7 +19,7 @@ The worm is the project. The web app is a media player for it.
 > actually being worked on, and [`docs/runtime-parity.md`](docs/runtime-parity.md) before
 > changing any model default. The measured ways the reconstruction falls short — and the
 > niches evolution finds in them — are catalogued in
-> [`docs/niche-museum.md`](docs/niche-museum.md).
+> [`web/museum.md`](web/museum.md).
 
 ```bash
 python3 -m venv .venv                      # Python 3.10 or newer

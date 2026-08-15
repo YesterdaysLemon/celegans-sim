@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Niche Museum — celegans-sim</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 16C7 7 12 25 16 16s6-9 13 0' fill='none' stroke='%23d9a441' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- The museum's public building. The collection itself is museum.md, one file, the same
+     one the repository reads -- this page fetches and renders it, so there is nothing to
+     keep in sync. The renderer below handles exactly the markdown the museum uses
+     (headings, bold, italics, code spans, lists, rules, links) and is inline on purpose:
+     this page, like the arena before it, imports nothing from viewer/'s module graph.
+     The chrome is the shared stylesheet, so the museum reads as a wing of the same
+     instrument. -->
+<link rel="stylesheet" href="style.css">
+<style>
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "dish";
+         grid-template-rows: auto minmax(0, 1fr); }
+  .brand .warn { font-size: 11px; color: var(--warning); }
+  #hall {
+    grid-area: dish;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-1);
+    padding: 28px clamp(18px, 6vw, 64px) 64px;
+  }
+  #hall article { max-width: 74ch; margin: 0 auto; }
+  #hall h1 { font-size: 24px; letter-spacing: -0.01em; margin: 8px 0 14px; }
+  #hall h2 { font-size: 17px; margin: 34px 0 10px; color: var(--warning); }
+  #hall p, #hall li { font-size: 14px; line-height: 1.65; color: var(--text-secondary); }
+  #hall p strong:first-child { color: var(--text-primary); }
+  #hall strong { color: var(--text-primary); font-weight: 600; }
+  #hall code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  #hall hr { border: 0; border-top: 1px solid var(--border); margin: 30px 0; }
+  #hall ol, #hall ul { padding-left: 1.4em; }
+  #hall li { margin: 6px 0; }
+  #hall a { color: var(--series-1); }
+  .doors { display: inline-flex; gap: 6px; }
+  .doors a {
+    font-size: 12px; padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-secondary);
+    text-decoration: none; white-space: nowrap;
+  }
+  .doors a:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <h1>The&nbsp;Niche&nbsp;Museum</h1>
+      <span class="sub">the measured ways the reconstruction falls short, and the niches they open</span>
+      <span class="warn">every exhibit is a statement about the reconstruction, never the animal</span>
+      <span class="doors">
+        <a href="index.html">&larr; the animal</a>
+        <a href="index.html#arena">the arena</a>
+      </span>
+    </div>
+  </header>
+  <section id="hall"><article id="doc">fetching the collection&hellip;</article></section>
+</div>
+
+<script type="module">
+/* A renderer for the museum's own markdown dialect and nothing more. If the museum one
+ * day uses a construct this does not know, the page shows it as literal text rather
+ * than eating it -- fail visible, not silent. */
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const inline = (s) => esc(s)
+  .replace(/`([^`]+)`/g, '<code>$1</code>')
+  // Bold first and non-greedy, so **a claim with *emphasis* inside** nests instead of
+  // shattering into stray asterisks (exhibit I.2 found this the visible way).
+  .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) =>
+    /^(https?:|[.\w/-]+$)/.test(u) ? `<a href="${u}">${t}</a>` : `${t} (${u})`);
+
+function render(md) {
+  const out = [];
+  let list = null;                       // 'ol' | 'ul' | null
+  let para = [];
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const closePara = () => {
+    if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; }
+  };
+  for (const raw of md.split('\n')) {
+    const line = raw.trimEnd();
+    const h = /^(#{1,3}) (.*)$/.exec(line);
+    const oli = /^\d+\. (.*)$/.exec(line);
+    const uli = /^- (.*)$/.exec(line);
+    if (h) {
+      closePara(); closeList();
+      out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+    } else if (line === '---') {
+      closePara(); closeList();
+      out.push('<hr>');
+    } else if (oli || uli) {
+      closePara();
+      const want = oli ? 'ol' : 'ul';
+      if (list !== want) { closeList(); out.push(`<${want}>`); list = want; }
+      out.push(`<li>${inline((oli || uli)[1])}</li>`);
+    } else if (line === '') {
+      closePara(); closeList();
+    } else if (list && /^ {2,}/.test(raw)) {
+      // A continuation line inside a list item: append to the last <li>.
+      out[out.length - 1] = out[out.length - 1]
+        .replace(/<\/li>$/, ` ${inline(line.trim())}</li>`);
+    } else {
+      closeList();
+      para.push(line);
+    }
+  }
+  closePara(); closeList();
+  return out.join('\n');
+}
+
+const doc = document.getElementById('doc');
+try {
+  const r = await fetch('museum.md', { cache: 'no-cache' });
+  if (!r.ok) throw new Error(`museum.md: HTTP ${r.status}`);
+  doc.innerHTML = render(await r.text());
+} catch (err) {
+  doc.innerHTML = `<p><strong>The collection failed to load.</strong> ${esc(String(err))}
+    &mdash; the source of truth is <code>web/museum.md</code> in the repository.</p>`;
+}
+</script>
+</body>
+</html>
