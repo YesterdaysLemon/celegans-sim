@@ -65,8 +65,35 @@
       </span>
     </div>
   </header>
-  <section id="hall"><article id="doc">fetching the collection&hellip;</article></section>
+  <section id="hall">
+    <article id="doc">fetching the collection&hellip;</article>
+    <article id="shelf-wing">
+      <hr>
+      <h2>The specimen shelf</h2>
+      <p>Preserved animals — each jar a recorded walk cycle looping over its own genes
+      and shape, no simulation behind the glass. Preserve one from either dish with the
+      <strong>Preserve</strong> button; it lands here (this browser's shelf) and in a
+      downloaded <code>.json</code> you keep. A deployed site can also ship communal
+      jars: drop specimen files in <code>web/specimens/</code> and list them in
+      <code>index.json</code>.</p>
+      <div id="shelf"></div>
+    </article>
+  </section>
 </div>
+
+<style>
+  #shelf { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .jar {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px 8px; width: 244px;
+  }
+  .jar canvas { width: 220px; height: 150px; display: block;
+                background: #141413; border-radius: 6px; }
+  .jar .name { font-size: 12px; color: var(--text-primary); margin: 8px 0 2px;
+               font-weight: 600; overflow-wrap: anywhere; }
+  .jar .prov { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+  #shelf .empty { font-size: 13px; color: var(--text-muted); }
+</style>
 
 <script type="module">
 /* A renderer for the museum's own markdown dialect and nothing more. If the museum one
@@ -129,6 +156,87 @@ try {
 } catch (err) {
   doc.innerHTML = `<p><strong>The collection failed to load.</strong> ${esc(String(err))}
     &mdash; the source of truth is <code>web/museum.md</code> in the repository.</p>`;
+}
+
+/* ------------------------------------------------------------ the specimen shelf --
+ * Jars come from two places: this browser's localStorage (what YOU preserved) and the
+ * site's specimens/ directory (what the deployment ships). Each jar replays its
+ * recorded frames on a small canvas -- frame playback, deliberately not simulation. */
+const shelf = document.getElementById('shelf');
+
+function jar(spec) {
+  const card = document.createElement('div');
+  card.className = 'jar';
+  const cv = document.createElement('canvas');
+  cv.width = 440; cv.height = 300;                    // 2x for crisp lines
+  card.appendChild(cv);
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = spec.name || 'unnamed specimen';
+  card.appendChild(name);
+  const prov = document.createElement('div');
+  prov.className = 'prov';
+  const dev = spec.morphology ? ` · dev ${spec.morphology.development.toFixed(2)}` : '';
+  prov.textContent = `${spec.dish || '?'} dish, t=${spec.dishTime ?? '?'} s`
+    + `${dev} · ${spec.frames.length} frames`
+    + (spec.captured ? ` · ${spec.captured.slice(0, 10)}` : '');
+  card.appendChild(prov);
+  shelf.appendChild(card);
+
+  // Fit the whole cycle: bounds over every frame, once.
+  let ext = 0.5;
+  for (const fr of spec.frames) {
+    for (let i = 0; i < fr.length; i++) ext = Math.max(ext, Math.abs(fr[i]));
+  }
+  const ctx = cv.getContext('2d');
+  const scale = Math.min(cv.width, cv.height) / (2.2 * ext);
+  const hue = spec.style ? spec.style.hue : 40;
+  const ws = spec.widthScale;
+  const t0 = performance.now() + Math.random() * 1500;   // desynchronise the shelf
+  const frameMs = (spec.sampleDt || 0.05) * 1000;
+  function drawJar(now) {
+    const fi = Math.floor((now - t0) / frameMs);
+    const fr = spec.frames[((fi % spec.frames.length) + spec.frames.length) % spec.frames.length];
+    const n = fr.length / 2;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.strokeStyle = `hsl(${hue} 65% 60%)`;
+    const base = Math.max(2.5, 0.09 * scale);
+    for (let i = 0; i < n - 1; i++) {
+      ctx.lineWidth = base * (ws ? (ws[i] ?? 1) : 1);
+      ctx.beginPath();
+      ctx.moveTo(cv.width / 2 + fr[i * 2] * scale, cv.height / 2 - fr[i * 2 + 1] * scale);
+      ctx.lineTo(cv.width / 2 + fr[(i + 1) * 2] * scale,
+                 cv.height / 2 - fr[(i + 1) * 2 + 1] * scale);
+      ctx.stroke();
+    }
+    requestAnimationFrame(drawJar);
+  }
+  requestAnimationFrame(drawJar);
+}
+
+const jars = [];
+try { jars.push(...JSON.parse(localStorage.getItem('celegans-specimens') || '[]')); }
+catch (e) { /* a corrupt shelf shows as empty, not as a broken page */ }
+try {
+  const idx = await fetch('specimens/index.json', { cache: 'no-cache' });
+  if (idx.ok) {
+    for (const f of await idx.json()) {
+      try {
+        const r = await fetch(`specimens/${f}`, { cache: 'no-cache' });
+        if (r.ok) jars.push(await r.json());
+      } catch (e) { /* a missing jar is a gap on the shelf, not a broken shelf */ }
+    }
+  }
+} catch (e) { /* no communal shelf on this deployment */ }
+
+if (!jars.length) {
+  shelf.innerHTML = '<p class="empty">Nothing preserved yet. Find an animal worth '
+    + 'keeping and press <strong>Preserve</strong>.</p>';
+} else {
+  for (const s of jars.reverse()) {
+    if (s && Array.isArray(s.frames) && s.frames.length) jar(s);
+  }
 }
 </script>
 </body>

@@ -22,23 +22,35 @@ import { LocalEngine } from './local.js';
 import { makeArena } from './arena-policy.js';
 
 /* The browser dish's defaults: metabolism, morphology mutation, corpse rot, lawn
- * regrowth and juvenile development all on, because this dish is the showcase -- the
- * plate economy and the drifting bodies are what it is FOR. The tax is set to BITE
- * (metabT 150 against the original 240; the owner watched a dish idle at energy 0.99
- * with zero starvations and called it correctly: too much food on average), and the
- * plate is throughput-limited -- a slow regrowth tap against a stock ten camped animals
- * can outdrink. The node driver defaults everything off for controlled experiments and
- * replayable recorded runs; that asymmetry is policy surface, not drift, and both read
- * the same makeArena. */
-const BROWSER_OPTS = { metab: 0.1, metabT: 150, mmut: 0.08, seed: 1,
-                       rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90 };
+ * regrowth, juvenile development and WEATHER all on, because this dish is the showcase
+ * -- the plate economy and the drifting bodies are what it is FOR. The tax is set to
+ * BITE (metabT 150, lawns at 60% density against a slow regrowth tap; the owner
+ * watched a dish idle at energy 0.99 with zero starvations and called it correctly:
+ * too much food on average). Starting conditions are RANDOMISED per load -- a fresh
+ * seed, lawns jittered around the reference layout -- so no two browser dishes tell
+ * the same story; the node driver keeps fixed defaults for controlled, replayable
+ * runs, and both read the same makeArena. */
+function browserOpts() {
+  const jit = (v, r) => v + (Math.random() * 2 - 1) * r;
+  return {
+    metab: 0.1, metabT: 150, mmut: 0.08,
+    rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
+    wind: 0.03, lawnScale: 0.6,
+    seed: (Math.random() * 0x7fffffff) | 0,
+    lawns: [
+      { x: jit(-8, 3), y: jit(5, 3), r: jit(4, 0.8), d: 1.0 },
+      { x: jit(7, 3), y: jit(-4, 3), r: jit(4, 0.8), d: 1.0 },
+      { x: jit(0, 3), y: jit(9, 3), r: jit(3, 0.6), d: 0.8 },
+    ],
+  };
+}
 
 const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
 
 export class ArenaEngine extends LocalEngine {
   constructor(clock, options) {
     super(clock);
-    this.options = Object.assign({}, BROWSER_OPTS, options || {});
+    this.options = Object.assign(browserOpts(), options || {});
     this.simT = 0;
     this._policyT = 0;
     this._widthCache = new Map();      // worm id -> per-node width factors, built at birth

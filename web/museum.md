@@ -135,12 +135,15 @@ Exhibits from the arena, where the finders have no incentive to be polite. Every
 carries the arena's own caveat — small population (cap 10), compressed incubation, and
 until replication lands, *patterns, not findings*.
 
-**IV.1 — the dish selects a stronger body reflex.** First full run (2026-08-14, seed 1,
-600 dish-seconds): `sen_proprio_gain` climbed from wild-type 30.0 to a stable 39.8±3.3
-while `gate_bias` and `food_gain` barely drifted. No scorer anywhere in the loop — the
-plate economy did the selecting. WHY is a hypothesis (stronger drive between depleting
-lawns is the boring story; a gain interaction nobody has looked for is the fun one), and
-seeds 2–4 are running as this is written. Pinned: `wasm/arena.mjs` header.
+**IV.1 — the dish selects a stronger body reflex. A finding, five seeds deep.**
+`sen_proprio_gain` ended above the wild-type 30.0 in every one of five independent
+600-second dishes — 39.8, 33.9, 37.7, 33.6, 38.6 — no reversals, while `gate_bias` and
+`food_gain` barely drifted. Five same-signed seeds is a one-sided sign test at
+p = 1/32 = 0.031. No scorer anywhere in the loop: the plate economy did the selecting.
+WHY remains open (stronger drive between depleting lawns is the boring story; a gain
+interaction with the intake contest is the fun one) — the finding is *that* it selects,
+about this reconstruction's fitness landscape and nothing else. Pinned:
+`wasm/arena.mjs` header, per-seed tables in the run logs.
 
 **IV.2 — laying shuts down in pulses as camped lawns run dry.** The plate is never
 restocked, so a lineage that camps a lawn eats its own reproductive substrate: laying

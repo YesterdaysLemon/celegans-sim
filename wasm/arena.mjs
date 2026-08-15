@@ -63,13 +63,14 @@
  * per-worm curvature means, to catch skaters forming and price their transport against
  * undulators. Video evidence held by the owner; NEXT.md carries the to-do.
  *
- * REPLICATION (2026-08-14, seeds 2-4, same defaults): every seed ended above wild-type
- * 30.0 -- 39.8, 33.9, 37.7, 33.6 -- four dishes, four climbs, no reversals, with
- * magnitude tracking dish turnover (124/88/67/34 births). Four same-signed seeds is a
- * one-sided sign test at p = 1/16 = 0.0625: one seed short of a clean claim, and it is
- * recorded exactly that way. A fifth seed settles whether "the dish selects a stronger
- * body reflex" graduates from replicated pattern to finding; web/museum.md IV.1
- * holds the exhibit either way.
+ * REPLICATION -- NOW A FINDING (seeds 1-5, 2026-08-14/15, same defaults): every seed
+ * ended above wild-type 30.0 -- 39.8, 33.9, 37.7, 33.6, 38.6 -- five dishes, five
+ * climbs, no reversals, magnitude tracking dish turnover (124/88/67/34/75 births).
+ * Five same-signed seeds is a one-sided sign test at p = 1/32 = 0.031: THE DISH
+ * SELECTS A STRONGER BODY REFLEX, as a statement about this reconstruction's fitness
+ * landscape and nothing else. WHY is still open (stronger drive between depleting
+ * lawns is the boring story; a proprio-gain interaction with the intake contest is the
+ * interesting one), and web/museum.md IV.1 holds the exhibit.
  */
 
 import {
@@ -158,6 +159,8 @@ const ROT_T = env('ARENA_ROT', 0);
 const REGROW = env('ARENA_REGROW', 0);
 const JUVENILE = env('ARENA_JUVENILE', 0);
 const GROW_T = env('ARENA_GROW_T', 90);
+const WIND = env('ARENA_WIND', 0);
+const LAWNSCALE = env('ARENA_LAWNSCALE', 1);
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
@@ -181,6 +184,7 @@ const arena = makeArena(E, { genes: GENES, scaleOf }, {
   metabFloor: METAB_FLOOR, metabKnee: METAB_KNEE, metabHatch: METAB_HATCH,
   corpse: CORPSE, corpseYield: CORPSE_YIELD, seed: SEED,
   rotT: ROT_T, regrow: REGROW, juvenile: JUVENILE, growT: GROW_T,
+  wind: WIND, lawnScale: LAWNSCALE,
 }, rand, normal, (id) => {
   const f64 = new Float64Array(E.memory.buffer);
   return [f64[(E.ptrNodesX(id) >> 3) + 24], f64[(E.ptrNodesY(id) >> 3) + 24]];

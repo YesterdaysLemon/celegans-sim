@@ -154,6 +154,33 @@ test('development scales the phenotype and NEVER the genome', () => {
     'a juvenile should not move exactly like the adult of the same genome');
 });
 
+test('a juvenile is short, not merely narrow', () => {
+  // Development scales bodyL, so a half-scale animal's node chain spans half the
+  // reference contour. Measured as summed link lengths right after the set -- geometry,
+  // not dynamics, so the tolerance is tight.
+  const E = engine();
+  const w = E.createWorm(3, 0, 0, 0);
+  const contour = () => {
+    const f64 = new Float64Array(E.memory.buffer);
+    const nx = f64.subarray(E.ptrNodesX(w) >> 3, (E.ptrNodesX(w) >> 3) + 49);
+    const ny = f64.subarray(E.ptrNodesY(w) >> 3, (E.ptrNodesY(w) >> 3) + 49);
+    let s = 0;
+    for (let i = 1; i <= 48; i++) s += Math.hypot(nx[i] - nx[i - 1], ny[i] - ny[i - 1]);
+    return s;
+  };
+  E.stepAll(200);                       // settle once so nodes are freshly placed
+  const adult = contour();
+  E.setMorphology(w, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+  E.setDevelopment(w, 0.5);
+  E.stepAll(200);
+  const young = contour();
+  assert.ok(Math.abs(young / adult - 0.5) < 0.02,
+    `a dev-0.5 body should span half the contour: ${young} vs ${adult}`);
+  E.setDevelopment(w, 1.0);
+  E.stepAll(200);
+  assert.ok(Math.abs(contour() / adult - 1.0) < 0.02, 'growing back restores the length');
+});
+
 test('eggs carry a snapshot: hatchlings develop it, later parent mutation cannot reach it', () => {
   const E = engine();
   const w = E.createWorm(9, 0, 0, 0);
