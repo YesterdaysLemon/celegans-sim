@@ -240,6 +240,7 @@ header {
 .seg button {
   border: 0; background: transparent; border-radius: 6px;
   padding: 4px 10px; font-size: 11px; color: var(--text-secondary);
+  white-space: nowrap;       /* "The Animal" split over two lines is not a tab */
 }
 .seg button[aria-pressed="true"] {
   background: rgba(61, 220, 151, 0.14);
@@ -451,7 +452,7 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
        Pause, Rate, Medium and Touch about 1500 px down the page -- past everything, on a
        device where "scroll to it" is the whole interaction. The controls that change what
        the simulation is doing belong within reach of the thing they change. */
-    grid-template-rows: auto minmax(260px, 46vh) auto auto;
+    grid-template-rows: auto minmax(300px, 52vh) auto auto;
     grid-template-areas: "head" "dish" "foot" "side";
     height: auto; min-height: 100%;
   }
@@ -461,15 +462,58 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
      the overflow became an internal scroll on <body>: it worked, but window.scrollY never
      moved and iOS treats a body-height scroller as a second, laggier scroll surface. */
   html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: visible; }
+
+  /* The brand row was a single unwrappable flex line, and at 390 px it simply ran off
+     the right edge -- which clipped the museum door and the Track B warning out of
+     existence on exactly the devices that cannot hover their way to anything. Wrapping
+     is the whole fix; dropping the subtitle is the room to do it in (it is decoration,
+     and it was wrapping into a six-line ribbon of shrapnel beside the h1). */
+  .brand { flex-wrap: wrap; row-gap: 6px; }
+  .brand .sub { display: none; }
+  .brand .warn { flex: 1 1 100%; }
+
+  /* The header tiles were four rows of chrome before the first pixel of dish -- worse
+     on the arena, which has thirteen. One row, swiped sideways: every number is still
+     there, and the dish starts 250 px sooner. The scrollbar is hidden because the row
+     IS a scrollbar; the tiles clipping at the edge say "more" better than a 4 px bar. */
+  .stats {
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat { flex: 0 0 auto; }
+  .stat .value { white-space: nowrap; }
+
   /* The layer toggles used to be display:none here, which removed the only way to see or
      hide the chemical fields on exactly the devices with the least screen to spare. They
-     stay; they just stop being a tall column pinned to the right edge and become a
-     wrapping row tucked under the view switcher. */
+     stay -- one swipeable row tucked under the mode switch, same treatment as the stats,
+     where they used to be a wrapping block that buried the top half of the dish. */
   .floating.tr {
     top: 52px; left: 10px; right: 10px;
     align-items: flex-start;
+    max-width: calc(100% - 20px);
   }
-  .chips { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .chips {
+    flex-direction: row; flex-wrap: nowrap; align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+    padding-bottom: 2px;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; }
+
+  /* The bottom-left controls were a column -- camera, zoom, dropper stacked three deep
+     at touch size covered a third of the plate. A wrapping row along the bottom edge
+     keeps them off the animal; the bottom of a dish is the cheapest real estate it has. */
+  .floating.bl {
+    flex-direction: row; flex-wrap: wrap; align-items: center;
+    right: 76px;                     /* leave the minimap's corner alone */
+  }
+
   /* Stacked, the rail has no fixed height to share out, so panels take their natural
      size and the page scrolls. Sharing a fraction of nothing collapsed all five to a
      hairline. */
