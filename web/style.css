@@ -55,6 +55,11 @@
      that is on must never look like a data series that is high. */
   --accent: #3ddc97;
 
+  /* What canvas-drawn labels ('head', 'tail', quadrant names, trace names) render in --
+     the chrome's own voice, per mode, instead of a hard-coded system-ui that matched
+     neither (#157). */
+  --font-canvas: 10px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
   --radius: 8px;
   --gap: 10px;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
@@ -634,8 +639,11 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
    structural rules below are the ones where the paper genuinely disagrees with the
    terminal, plus explicit removals of the terminal's decorations (glow, ticks, cursor).
 
-   The data palette is deliberately NOT re-stated: the six series colours, the diverging
-   curvature poles and the status colours are mid-tone by design and hold on both grounds. */
+   The data palette is deliberately NOT re-stated -- with one measured exception. The
+   series hues, diverging poles and status colours are mid-tone by design and hold on
+   both grounds, except series-4: #c98500 reads 2.89:1 against the paper, under the 3:1
+   graphics floor (#157). It darkens here to the same amber at 4.5:1; hue is the series'
+   identity and it keeps it. */
 html[data-mode="light"] {
   color-scheme: light;
 
@@ -644,14 +652,20 @@ html[data-mode="light"] {
   --surface-2:      #efe8d8;
   --text-primary:   #221d15;
   --text-secondary: #45403a;
-  --text-muted:     #877f6e;
+  /* #6e6555, not the first draft's #877f6e: canvas labels render at 10px, and 3.74:1
+     at that size is a squint (#157 wants 4.5:1 for small canvas text; this is 5.4). */
+  --text-muted:     #6e6555;
   --gridline:       #ddd3bf;
   --baseline:       #c8bda6;
   --border:         rgba(34, 29, 21, 0.22);
 
+  --series-4: #9c6700;
+
   /* On paper the accent is the ink itself: an active control is a filled box, not a
      glowing one. */
   --accent: #221d15;
+
+  --font-canvas: 10px Georgia, "Iowan Old Style", serif;
 
   --radius: 4px;
   font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
