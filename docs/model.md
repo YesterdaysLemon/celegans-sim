@@ -187,9 +187,9 @@ nine.
 | Curvature, r.m.s. | **4.53 ± 0.05 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
 | Curvature, peak | **13.2 ± 1.2 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
-| Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
-| Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
-| Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
+| Muscle resting potential | **−22.0 mV** *(a point, not a range)* | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
+| Resting potentials | **−62 to −12 mV**, median −39 | −75 to −25 mV | several, see `params.py` |
+| Swimming efficiency U/c | **0.051 ± 0.002** *(low)* | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
 | Crawling speed (net) | **0.309 ± 0.051 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
@@ -198,8 +198,23 @@ nine.
 | Undulation frequency, agar | **0.66 ± 0.01 Hz** | 0.30 ± 0.02 Hz *(see below)* | Fang-Yen et al. 2010 |
 | Wavelength, agar | **0.86 ± 0.02 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
-Curvature, wave direction and the membrane potentials land on the measured values. The
-gait's *timing* does not: see below.
+Curvature, wave direction and the neuron resting potentials land on the measured values.
+The muscle rest and the swimming efficiency do not, and the gait's *timing* does not: see
+below.
+
+Three of these rows carry a published correction. The muscle rest, the resting-potential
+span and U/c were written by hand on day one and never produced by `tools/scorecard.py`
+at all — the very commit that added "every row describes the same animal" stepped over
+them. The tool's `v_lo`/`v_hi` also read the membrane once after ~90 s of crawling, which
+is a phase lottery, not a rest: across five seeds some head motor neuron sits on the
+**+45 mV clamp for 76%** of the window and on the **−80 mV clamp for 86%** — `v_clamp` is
+in the loop, not a numerical backstop (the cause is H2's proprioceptive current
+injection; see *what it does not get right*). `scorecard.py` now measures rest where a
+resting state exists — deterministically, before the animal moves — and reports the
+crawling span separately under its own name, with the clamp occupancy printed beside it.
+The muscle "rest" is exactly `v_half` by construction (`_balance` solves every cell to
+`rest_tension = 0.5`), so it is a point, and how near Gao & Zhen it lands is a
+coincidence of two independently chosen numbers.
 
 The mechanics are verified independently of the biology: the assembled drag metric matches
 direct Gauss-Legendre quadrature of the integral it stands for to 2×10⁻¹⁶ relative, it is
