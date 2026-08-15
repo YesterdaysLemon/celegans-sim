@@ -52,10 +52,20 @@ import { engine, GENES, scaleOf, rng, normalFrom, DT } from './evolve.mjs';
 import { makeArena } from '../web/arena-policy.js';
 
 const env = (k, d) => (process.env[k] !== undefined ? Number(process.env[k]) : d);
-const SECONDS = env('SKATE_SECONDS', 1500);
+const SECONDS = env('SKATE_SECONDS', 1800);
 const SEED = env('SKATE_SEED', 41);
 const MEDIUM = process.env.SKATE_MEDIUM || 'buffer';
 const WINDOW = env('SKATE_WINDOW', 30);          // seconds per transport ledger window
+/* THE PROTOCOL IS AGAR FIRST, AND THAT IS A MEASURED CORRECTION, not a convenience. The
+ * first hunts ran buffer from birth and both dishes starved -- seed 43 extinct at 0
+ * births/4 deaths, seed 41 down to one animal -- because buffer transport is too slow
+ * for a founder to reach a 0.6-density lawn inside its metabolic window. The sighting
+ * this instrument chases did not happen in a buffer-from-birth dish either: the owner
+ * switched an ESTABLISHED, evolving agar population to buffer mid-run. So the trap does
+ * what the sighting did -- agar until SKATE_AGAR_UNTIL while dynasties form, then the
+ * physics changes under them and the ledger watches who reinvents locomotion. Set it to
+ * 0 to reproduce the extinction result. */
+const AGAR_UNTIL = env('SKATE_AGAR_UNTIL', 600);
 const OUT = process.env.SKATE_OUT || `tmp_skate_seed${SEED}_${MEDIUM}.json`;
 const CHUNK = 0.5;
 
@@ -82,7 +92,8 @@ const rand = rng(SEED);
 const normal = normalFrom(rand);
 const E = engine();
 E.setNoise(1);
-E.setMedium(CT, CN);
+// Agar for the establishment phase; the hunt medium takes over at AGAR_UNTIL.
+if (AGAR_UNTIL <= 0) E.setMedium(CT, CN);
 
 // Fresh views every read: any allocation can grow linear memory and detach old ones.
 const f64 = () => new Float64Array(E.memory.buffer);
@@ -152,18 +163,26 @@ arena.seedPlate();
 arena.spawnFounders();
 for (const id of arena.ids()) ledger.set(id, openRow(id));
 
-console.log(`SKATER TRAP -- ${MEDIUM} (ct ${CT}, cn ${CN}), seed ${SEED}, `
-  + `${SECONDS} s, window ${WINDOW} s, cap ${OPT.cap}`);
+console.log(`SKATER TRAP -- agar until t=${AGAR_UNTIL}s, then ${MEDIUM} `
+  + `(ct ${CT}, cn ${CN}); seed ${SEED}, ${SECONDS} s, window ${WINDOW} s, cap ${OPT.cap}`);
 console.log('Track B: nothing below is a claim about C. elegans.');
 console.log('flag: |kbar| >= 3.0 /mm AND |turns| >= 2 AND net >= 0.10 mm per window\n');
 
 let simT = 0;
 let nextWindow = WINDOW;
+let switched = AGAR_UNTIL <= 0;
 const t0 = Date.now();
 while (simT < SECONDS) {
   E.stepAll(Math.round(CHUNK / DT));
   simT += CHUNK;
   arena.tick(simT);
+  if (!switched && simT >= AGAR_UNTIL) {
+    E.setMedium(CT, CN);
+    switched = true;
+    console.log(`  == t=${simT}s: the plate is now ${MEDIUM}. `
+      + `${arena.ids().length} animals, ${arena.births} born so far -- new physics, `
+      + 'same dynasties ==');
+  }
   const pop = arena.ids();
   for (const id of pop) {
     let row = ledger.get(id);
