@@ -110,6 +110,8 @@ try {
   .jar .name { font-size: 12px; color: var(--text-primary); margin: 8px 0 2px;
                font-weight: 600; overflow-wrap: anywhere; }
   .jar .prov { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+  .jar .about { font-size: 11.5px; color: var(--text-secondary); line-height: 1.55;
+                margin-top: 6px; }
   #shelf .empty { font-size: 13px; color: var(--text-muted); }
 </style>
 
@@ -199,6 +201,14 @@ function jar(spec) {
     + `${dev} · ${spec.frames.length} frames`
     + (spec.captured ? ` · ${spec.captured.slice(0, 10)}` : '');
   card.appendChild(prov);
+  // Communal jars ship with a label: what this animal is and why it was kept. A
+  // visitor's own catches have no 'about' and skip it.
+  if (spec.about) {
+    const ab = document.createElement('div');
+    ab.className = 'about';
+    ab.textContent = spec.about;
+    card.appendChild(ab);
+  }
   shelf.appendChild(card);
 
   // Fit the whole cycle: bounds over every frame, once.
