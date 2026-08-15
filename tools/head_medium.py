@@ -58,7 +58,7 @@ import dataclasses
 
 import numpy as np
 
-from tools.assays import pooled
+from tools.assays import paired, pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
@@ -157,23 +157,42 @@ def main():
     print("\n  GAIT MODULATION -- frequency span across the drag continuum")
     print("  The animal goes %.2f Hz on agar to %.2f Hz in buffer, a span of %.2fx."
           % (ANIMAL["agar"], ANIMAL["buffer"], ANIMAL["buffer"] / ANIMAL["agar"]))
-    spans = {}
+    # Spans are per-seed ratios averaged, not a ratio of two pooled means. See
+    # `tools.assays.paired` for why -- in short, a pooled ratio has no spread, keeps the
+    # animal-to-animal variance the paired seeds were chosen to cancel, and lets a diverged
+    # trial in one medium quietly turn the comparison into one between different animals.
+    # The 1.27x and 1.29x this file first published were pooled ratios and carried no error
+    # bar at all; the seed sd on a span in this model is about +-0.44.
+    spans, span_sd = {}, {}
     for lab, *_ in ARMS:
         a, b = agg.get((lab, "agar")), agg.get((lab, "buffer"))
-        if not a or not b:
-            print("  %s span: not measurable, an end is missing" % lab)
+        m, s, n = paired(a, b, "freq")
+        if n < len(SEEDS):
+            print("  %s span: only %d of %d seeds have both ends -- withheld"
+                  % (lab, n, len(SEEDS)))
             continue
-        fa, fb = mean(a, "freq"), mean(b, "freq")
-        spans[lab] = fb / max(fa, 1e-9)
-        print("  %s %.3f -> %.3f Hz, span %.2fx   (animal %.2fx, so %.0f%% of the way)"
-              % (lab, fa, fb, spans[lab], ANIMAL["buffer"] / ANIMAL["agar"],
-                 100.0 * (spans[lab] - 1.0) / (ANIMAL["buffer"] / ANIMAL["agar"] - 1.0)))
+        spans[lab], span_sd[lab] = m, s
+        print("  %s %.3f -> %.3f Hz, span %.2f +-%.2fx  (animal %.2fx, so %.0f%% of the way)"
+              % (lab, mean(a, "freq"), mean(b, "freq"), m, s,
+                 ANIMAL["buffer"] / ANIMAL["agar"],
+                 100.0 * (m - 1.0) / (ANIMAL["buffer"] / ANIMAL["agar"] - 1.0)))
 
     if len(spans) == len(ARMS):
         lab_ship, lab_casc = ARMS[0][0], ARMS[1][0]
         widened = spans[lab_casc] - spans[lab_ship]
+        # The threshold was a bare 0.15 against a number with no spread. It is still 0.15,
+        # but a difference smaller than the seed scatter is now named as unresolvable rather
+        # than reported as "nothing", which are different claims.
+        scatter = max(span_sd[lab_ship], span_sd[lab_casc])
         print("\n  VERDICT")
-        if widened > 0.15:
+        if abs(widened) <= scatter:
+            print("  The spans differ by %+.2fx against a seed scatter of %.2fx, so this run"
+                  % (widened, scatter))
+            print("  cannot tell them apart. That is not the same as their being equal, and")
+            print("  it is not evidence for the cascade's argument either. What the run does")
+            print("  say is that neither arm is anywhere near the animal's %.2fx."
+                  % (ANIMAL["buffer"] / ANIMAL["agar"]))
+        elif widened > 0.15:
             print("  The cascade's span is wider by %.2fx. The phase does follow the load,"
                   % widened)
             print("  which is the mechanism the cascade was built for and the argument")
