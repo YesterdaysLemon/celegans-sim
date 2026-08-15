@@ -64,10 +64,19 @@ spontaneous reversals is the same suppression wearing a flattering assay). Every
 else: chemotaxis index/approach/weathervane no effect at n=12 (resolution 0.085);
 thermotaxis no effect at n=3 (resolution 16 mm — uninformative, honestly); aerotaxis "O2
 lowest reached" nominally worse at +1.47 [+0.06, +2.88] but n=2 and the CI grazes zero —
-thin. **What adoption needs now is attribution:** the config bundles the cascade and the
-amine arm, and a halved reversal rate must be assigned to one, the other, or their
-interaction before any default moves. The paired attribution runs (cascade-only and
-amine-only, triage + chemotaxis) were launched 2026-08-14; read those tables next.
+thin. **Attribution ran (2026-08-15), and it points at the amine arm.** Amine-only reproduces
+the full configuration's suppression almost exactly at the point estimate (triage −1.5
+vs the config's −1.5; chemotaxis reversals −3.0 vs −2.8), while cascade-only comes in
+weaker (−1.2 triage, −0.8 chemotaxis). Every attribution CI includes zero — the arms ran
+at n=4–6 against the full run's n=12, so this is *suggestive attribution, not a
+confirmed one* — but the mechanism reads clean: on bare agar `load_gain=60` holds
+dopamine at ceiling, which is the permanent-on-food state, and an animal that believes
+it is on food everywhere suppresses reversals the way fed animals do. **The food/load
+confound is therefore not an accounting worry — it has a measured behavioural
+signature**, and separating basal dopamine from the load response is now THE adoption
+blocker, exactly where `SensoryParams.load_gain`'s docstring said to look. Powering the
+amine-only chemotaxis arm to n=12 would confirm the attribution; resolving the confound
+would moot it.
 
 *(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
 below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
