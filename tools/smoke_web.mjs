@@ -153,6 +153,51 @@ try {
     check(vp.name, errors.length === 0, `console errors: ${errors.slice(0, 3).join(' | ')}`);
     check(vp.name, failed.length === 0, `failed requests: ${failed.slice(0, 3).join(' | ')}`);
 
+    /* #164's occlusion budget, measured in the DEFAULT state -- before anything below
+     * opens the disclosure trays -- because the budget is about what a visitor sees
+     * first: floating containers within 40% of the dish at 320px / 35% above, buttons
+     * within 25%. Union by grid sampling, since overlapping rectangles must not double-
+     * count. */
+    if (vp.touch) {
+      const occl = await page.evaluate(() => {
+        const dish = document.getElementById('dish').getBoundingClientRect();
+        const cover = (els) => {
+          const rects = els.map((e) => e.getBoundingClientRect())
+            .filter((r) => r.width > 0 && r.height > 0);
+          const N = 64;
+          let hit = 0;
+          for (let a = 0; a < N; a++) {
+            for (let b = 0; b < N; b++) {
+              const x = dish.left + (a + 0.5) * dish.width / N;
+              const y = dish.top + (b + 0.5) * dish.height / N;
+              if (rects.some((r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)) hit++;
+            }
+          }
+          return hit / (N * N);
+        };
+        return {
+          containers: cover([...document.querySelectorAll('#dish .floating')]),
+          buttons: cover([...document.querySelectorAll('#dish .floating button')]),
+        };
+      });
+      const cap = vp.width <= 320 ? 0.40 : 0.35;
+      check(vp.name, occl.containers <= cap,
+            `floating chrome covers ${(occl.containers * 100).toFixed(1)}% of the dish `
+            + `(budget ${cap * 100}%)`);
+      check(vp.name, occl.buttons <= 0.25,
+            `buttons cover ${(occl.buttons * 100).toFixed(1)}% of the dish (budget 25%)`);
+    }
+
+    // The rest of this pass exercises controls that live in the trays. Wherever the
+    // disclosure buttons are visible (narrow OR coarse -- the tablet gets them too),
+    // open the TOOLS tray the way a visitor would; the layer checks below open the
+    // layers tray themselves, because the accordion means only one is open at a time.
+    const hasTrays = await page.evaluate(() => {
+      const b = document.getElementById('b-tools');
+      return !!b && b.getBoundingClientRect().width > 0;
+    });
+    if (hasTrays) await page.evaluate(() => document.getElementById('b-tools').click());
+
     const missing = await page.evaluate((ids) => ids.filter((id) => {
       const e = document.getElementById(id);
       if (!e) return true;
@@ -170,10 +215,14 @@ try {
     // the other dish (.arena-only, hidden by data-dish) are excluded here and asserted
     // in the arena pass below -- hidden-on-purpose and hidden-by-regression must not be
     // conflated, in either direction.
-    const layers = await page.evaluate(() => {
+    const layers = await page.evaluate((trays) => {
+      if (trays) document.getElementById('b-layers').click();     // accordion: opens layers
       const all = [...document.querySelectorAll('[data-layer]:not(.arena-only)')];
-      return { total: all.length, shown: all.filter((e) => e.getBoundingClientRect().width > 0).length };
-    });
+      const out = { total: all.length,
+                    shown: all.filter((e) => e.getBoundingClientRect().width > 0).length };
+      if (trays) document.getElementById('b-tools').click();      // hand the plate back
+      return out;
+    }, hasTrays);
     check(vp.name, layers.total > 0, 'no layer toggles in the page at all');
     check(vp.name, layers.shown === layers.total,
           `${layers.shown} of ${layers.total} layer toggles visible`);
@@ -406,6 +455,28 @@ try {
                 'the selection did not survive using the action buttons');
           check(vp.name, acted.restored && acted.clean,
                 'Restore/un-plot did not return the panel to its starting state');
+
+          /* #163: the actions must be WITH the graph they act on. With the neuron
+           * canvas scrolled into view, the labelled buttons sit under it, inside the
+           * same viewport -- not a footer's screen-length away -- and the hint's
+           * wording points at where they actually are. */
+          const together = await page.evaluate(async () => {
+            const nc = document.getElementById('c-neurons');
+            nc.scrollIntoView({ block: 'center' });
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const cr = nc.getBoundingClientRect();
+            const br = document.getElementById('b-plot').getBoundingClientRect();
+            return {
+              gap: br.top - cr.bottom,
+              inView: br.top >= 0 && br.bottom <= innerHeight && cr.top >= 0,
+              hint: document.getElementById('neuron-hint').textContent,
+            };
+          });
+          check(vp.name, together.inView && together.gap >= 0 && together.gap < 160,
+                `the neuron actions are not with the graph: gap ${Math.round(together.gap)}px, `
+                + `inView=${together.inView}`);
+          check(vp.name, !/below\b/.test(together.hint) || together.gap >= 0,
+                `the hint says "below" but the actions are not: "${together.hint}"`);
         }
       }
 

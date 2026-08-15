@@ -586,6 +586,32 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
   #b-plot { display: none; }
 }
 
+/* The neuron panel's own action row -- Plot/Ablate/Restore live here on touch layouts,
+   moved in by controls.js, because on a phone the footer is a full screen away from the
+   selection those buttons act on (#163). Empty (and zero-height) when unused. */
+.pactions { display: flex; gap: 7px; padding: 0 11px; flex: 0 0 auto; }
+.pactions:not(:empty) { padding-bottom: 9px; }
+.pactions button { flex: 1 1 auto; }
+
+/* The dish-chrome disclosures (#164): on desktop there is room for every control, so
+   the toggles hide and the trays are simply open. On narrow or coarse layouts the trays
+   start closed -- the JS owns the state -- and the dish is a dish again. The trays are
+   an ACCORDION with the whole dish to themselves: on a 320px plate an open tools tray
+   physically reaches the layers row, so opening one hides the other cluster outright
+   (controls.js sets #dish[data-tray]) rather than letting two trays fight over 295px. */
+.disclose { display: none; }
+@media (pointer: coarse), (max-width: 1080px) {
+  .disclose { display: inline-flex; align-items: center; }
+  .disclose[aria-expanded="false"] + .chips,
+  .disclose[aria-expanded="false"] + .traywrap { display: none; }
+  #dish[data-tray="tools"] .floating.tr { display: none; }
+  #dish[data-tray="layers"] .floating.bl { display: none; }
+}
+.traywrap { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+@media (max-width: 1080px) {
+  .traywrap { flex-direction: row; flex-wrap: wrap; align-items: center; }
+}
+
 /* --- keyboard -------------------------------------------------------------------- */
 /* Every interactive thing here is either a <button> or a <canvas tabindex=0>, and the
    panel headers use `all: unset`, which throws the focus ring away with everything else.

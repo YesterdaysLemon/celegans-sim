@@ -430,6 +430,42 @@ export function wire() {
   // disables itself while the capture runs (specimen.js owns its lifecycle).
   el('b-preserve').addEventListener('click', () => startPreserve());
 
+  /* The neuron action buttons act on a selection made in the neuron panel, so on touch
+   * layouts they LIVE in the neuron panel -- on a phone the footer is a full screen
+   * away from the thing they act on (#163). appendChild moves the nodes, listeners and
+   * all; the footer keeps them beside a mouse, where they sit with Ablate's mode
+   * toggle. Re-run on pointer-capability changes (convertibles). */
+  const footerNeurons = el('b-ablate').parentElement;
+  const placeNeuronActions = () => {
+    const home = coarse() ? el('neuron-actions') : footerNeurons;
+    if (!home) return;
+    for (const id of ['b-plot', 'b-ablate', 'b-restore']) {
+      const b = el(id);
+      if (b && b.parentElement !== home) home.appendChild(b);
+    }
+  };
+  placeNeuronActions();
+  matchMedia('(pointer: coarse)').addEventListener?.('change', placeNeuronActions);
+
+  /* The dish-chrome disclosures (#164): on phones the layer chips and the camera/zoom/
+   * dropper tray start closed -- eight chips were a third of the dish -- and these two
+   * buttons open them. An accordion: a 320px dish cannot seat both trays at once, so
+   * the open one gets the plate and the other cluster steps aside (the CSS reads
+   * #dish[data-tray]). Desktop never shows the toggles; its trays are simply open. */
+  const TRAYS = { 'b-layers': 'layers', 'b-tools': 'tools' };
+  const setTray = (which) => {
+    el('dish').dataset.tray = which || '';
+    for (const [id, name] of Object.entries(TRAYS)) {
+      const open = name === which;
+      el(id)?.setAttribute('aria-expanded', String(open));
+      el(id)?.setAttribute('aria-pressed', String(open));
+    }
+  };
+  for (const [id, name] of Object.entries(TRAYS)) {
+    el(id)?.addEventListener('click', () =>
+      setTray(el(id).getAttribute('aria-expanded') === 'true' ? '' : name));
+  }
+
   el('b-worm-add').addEventListener('click', () => {
     if (!S.engine) return;
     const i = S.engine.addWorm();
@@ -624,7 +660,7 @@ function wireNeuronPanel() {
       `${n.name}, ${n.cls}, ${n.kind}${n.modality ? ', ' + n.modality : ''}. ` +
       `Neuron ${i + 1} of ${S.meta.neurons.length}. Enter to ${S.ablateMode ? 'ablate' : 'plot'}.`);
     el('neuron-hint').textContent = coarse()
-      ? `${n.name} selected — Plot / Ablate below`
+      ? `${n.name} selected — Plot / Ablate under the graph`
       : (S.ablateMode ? 'Enter to ablate' : 'Enter to plot');
     updateNeuronActions();
   };
