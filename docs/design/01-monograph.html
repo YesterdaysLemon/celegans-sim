@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design 1 — The Monograph</title>
+<!-- Design language 1 of 5: THE MONOGRAPH. A 19th-century zoology plate: paper, ink,
+     serifs, hairline rules, numbered figures. The reconstruction as scholarship.
+     Self-contained demo -- fake data, no imports, open via file://. -->
+<style>
+:root {
+  --paper: #f6f1e5; --paper-2: #efe8d8; --ink: #221d15; --ink-soft: #5d5442;
+  --rule: #b9ad93; --accent: #7c2d12; --track-b: #8a5a00;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+#page { max-width: 1180px; margin: 0 auto; padding: 26px 30px 60px; }
+header { text-align: center; border-bottom: 3px double var(--ink); padding-bottom: 14px; }
+header h1 { font-size: 30px; letter-spacing: 0.12em; margin: 0; font-weight: 500; }
+header .sub { font-style: italic; color: var(--ink-soft); margin-top: 4px; }
+header .trackb { font-variant: small-caps; letter-spacing: 0.2em; color: var(--track-b);
+  font-size: 12px; margin-top: 6px; }
+.stats { display: flex; justify-content: center; gap: 30px; margin: 14px 0 8px;
+  font-size: 13px; color: var(--ink-soft); }
+.stats b { color: var(--ink); font-weight: 600; font-variant-numeric: oldstyle-nums; }
+main { display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; margin-top: 20px; }
+figure { margin: 0; }
+figcaption { font-size: 12.5px; font-style: italic; color: var(--ink-soft);
+  margin-top: 8px; line-height: 1.5; }
+figcaption b { font-style: normal; font-variant: small-caps; letter-spacing: 0.08em;
+  color: var(--ink); }
+.plate { border: 1px solid var(--ink); padding: 10px; background: var(--paper-2);
+  box-shadow: inset 0 0 0 3px var(--paper-2), inset 0 0 0 4px var(--rule); }
+canvas { display: block; width: 100%; }
+.panel { border-top: 1px solid var(--rule); padding-top: 10px; margin-bottom: 18px; }
+.panel h2 { font-size: 13px; font-weight: 600; font-variant: small-caps;
+  letter-spacing: 0.14em; margin: 0 0 8px; }
+.panel h2 small { color: var(--ink-soft); letter-spacing: 0.02em; font-variant: normal;
+  font-style: italic; float: right; font-weight: 400; }
+footer { margin-top: 26px; border-top: 3px double var(--ink); padding-top: 10px;
+  display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
+button { font: inherit; font-size: 13px; background: none; border: 1px solid var(--ink);
+  padding: 3px 14px; color: var(--ink); border-radius: 0; cursor: pointer; }
+button:hover { background: var(--ink); color: var(--paper); }
+.cap { font-variant: small-caps; letter-spacing: 0.1em; color: var(--ink-soft); }
+footer .note { margin-left: auto; font-style: italic; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div id="page">
+  <header>
+    <h1>CELEGANS&mdash;SIM</h1>
+    <div class="sub">being a faithful reconstruction of the nematode, drawn from its own anatomy</div>
+    <div class="trackb">plate the second &middot; the arena &middot; nothing herein is a claim about the animal</div>
+  </header>
+  <div class="stats">
+    <span>t = <b>412.6 s</b></span><span>speed <b>231 &micro;m/s</b></span>
+    <span>undulation <b>0.64 Hz</b></span><span>pumping <b>247 min<sup>&minus;1</sup></b></span>
+    <span>eggs <b>7</b></span>
+  </div>
+  <main>
+    <figure>
+      <div class="plate"><canvas id="dish" width="640" height="560"></canvas></div>
+      <figcaption><b>Fig. 1.</b> The specimen upon its plate of agar, food shewn as
+      stippled lawns; the track of its passage in fine line. Engraved from life at
+      thirty-one minutes.</figcaption>
+    </figure>
+    <div>
+      <div class="panel">
+        <h2>Fig. 2 — The Nervous System <small>302 cells</small></h2>
+        <canvas id="neurons" width="430" height="120"></canvas>
+      </div>
+      <div class="panel">
+        <h2>Fig. 3 — Curvature, head to tail <small>20 s</small></h2>
+        <canvas id="kymo" width="430" height="110"></canvas>
+      </div>
+      <div class="panel">
+        <h2>Fig. 4 — Membrane potential <small>DB01 · VB01 · AVBL</small></h2>
+        <canvas id="trace" width="430" height="100"></canvas>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <span class="cap">Apparatus</span>
+    <button>Pause</button><button>Reset</button>
+    <span class="cap">Medium</span>
+    <button style="background:var(--ink);color:var(--paper)">Agar</button>
+    <button>Viscous</button><button>Buffer</button>
+    <span class="note">rendered at one-and-one-tenth times the true rate</span>
+  </footer>
+</div>
+<script>
+// Fake data, drawn in the language: ink on paper, hatching, stipple.
+const D = document.getElementById('dish').getContext('2d');
+const INK = '#221d15', SOFT = '#5d5442', PAPER = '#efe8d8';
+function dish(t) {
+  const w = 640, h = 560, cx = w/2, cy = h/2, R = 250;
+  D.clearRect(0,0,w,h);
+  // engraved plate: concentric hairlines
+  D.strokeStyle = '#cdc2a8';
+  for (let r = R; r > 0; r -= 14) { D.beginPath(); D.arc(cx,cy,r,0,7); D.lineWidth = r===R?1.4:0.4; D.stroke(); }
+  D.strokeStyle = INK; D.lineWidth = 1.6; D.beginPath(); D.arc(cx,cy,R,0,7); D.stroke();
+  // stippled lawns
+  const lawns = [[cx-90,cy-70,62],[cx+95,cy+55,48]];
+  D.fillStyle = SOFT;
+  let s = 7;
+  for (const [lx,ly,lr] of lawns) for (let i=0;i<420;i++) {
+    s = (s*16807)%2147483647; const a=(s/2147483647)*6.28;
+    s = (s*16807)%2147483647; const rr=Math.sqrt(s/2147483647)*lr;
+    D.fillRect(lx+Math.cos(a)*rr, ly+Math.sin(a)*rr, 1.1, 1.1);
+  }
+  // trail
+  D.strokeStyle = '#a99c7f'; D.lineWidth = 0.8; D.beginPath();
+  for (let i=0;i<160;i++){ const u=i/160;
+    D.lineTo(cx-150+u*210+Math.sin(u*9+t*0.2)*16, cy+90-u*130+Math.cos(u*7)*12); }
+  D.stroke();
+  // the worm: double ink stroke, like an engraving
+  const px=[],py=[];
+  for (let i=0;i<=48;i++){ const u=i/48;
+    px.push(cx+60-u*95); py.push(cy-40+Math.sin(u*4.4-t*2.6)*16*(0.55+0.45*Math.sin(u*3.14))); }
+  D.lineCap='round';
+  for (const [wd,col] of [[7,PAPER],[5.6,INK]]) {
+    D.strokeStyle=col; D.beginPath();
+    for(let i=0;i<=48;i++){const wdd=Math.sin((i/48)*3.14)*0.75+0.35; D.lineWidth=wd*wdd; D.lineTo(px[i],py[i]);}
+    D.stroke();
+  }
+  // head stipple
+  D.fillStyle = PAPER; D.beginPath(); D.arc(px[0],py[0],1.6,0,7); D.fill();
+}
+const N = document.getElementById('neurons').getContext('2d');
+(function neurons(){ let s=3;
+  for (let r=0;r<6;r++) for (let c=0;c<50;c++){ s=(s*16807)%2147483647; const v=s/2147483647;
+    N.fillStyle = v>0.86?'#221d15':v>0.5?'#7d7259':'#c9bda1';
+    N.beginPath(); N.arc(10+c*8.4, 12+r*19, 2.6, 0, 7); N.fill(); }
+})();
+const K = document.getElementById('kymo').getContext('2d');
+const T = document.getElementById('trace').getContext('2d');
+function panels(t){
+  K.clearRect(0,0,430,110);
+  for (let x=0;x<430;x+=3) for (let y=0;y<110;y+=4){
+    const v = Math.sin(x*0.055 - y*0.09 - t*2.2);
+    K.fillStyle = v>0.25?'#221d15':v<-0.25?'#8a7c60':'#efe8d8';
+    if (Math.abs(v)>0.25) K.fillRect(x,y,2.2,3.2);
+  }
+  T.clearRect(0,0,430,100);
+  T.strokeStyle='#b9ad93'; T.lineWidth=0.7;
+  for (const y of [25,50,75]) { T.beginPath(); T.moveTo(0,y); T.lineTo(430,y); T.stroke(); }
+  const styles=[['#221d15',1.4,0],['#7c2d12',1.1,2.1],['#5d5442',1.1,4.2]];
+  for (const [c,wd,ph] of styles){ T.strokeStyle=c; T.lineWidth=wd; T.beginPath();
+    for(let x=0;x<430;x++){ T.lineTo(x, 50 - Math.sin(x*0.05+t*2.4+ph)*16 - Math.sin(x*0.013+ph)*8); }
+    T.stroke(); }
+}
+let t=0; (function loop(){ t+=0.016; dish(t); panels(t); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

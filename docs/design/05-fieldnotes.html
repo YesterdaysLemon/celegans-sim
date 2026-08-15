@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design 5 — Field Notes</title>
+<!-- Design language 5 of 5: FIELD NOTES. A hobbyist's notebook: kraft paper, index
+     cards held by tape, pencil sketches, handwriting in the margins. The labor-of-love
+     made visible. Self-contained demo -- fake data, no imports, open via file://. -->
+<style>
+:root {
+  --kraft: #e8dcc2; --card: #fdfaf1; --pencil: #4a4438; --soft: #8a8171;
+  --red: #c94f3d; --blue: #3d6bc9; --green: #4f8a52; --tape: rgba(233,214,153,0.75);
+  --hand: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', 'Chalkboard SE', cursive;
+  font-family: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--pencil);
+  background: var(--kraft);
+  background-image: repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0 2px, transparent 2px 4px),
+    radial-gradient(1200px 500px at 30% -10%, rgba(255,255,255,0.35), transparent 60%); }
+#book { max-width: 1200px; margin: 0 auto; padding: 24px 28px 60px; }
+header h1 { font-family: var(--hand); font-size: 34px; margin: 0; transform: rotate(-1.2deg); }
+header .sub { font-family: var(--hand); color: var(--soft); font-size: 15px;
+  transform: rotate(-0.6deg); margin-top: -2px; }
+header .warn { display: inline-block; font-family: var(--hand); color: var(--red);
+  font-size: 14px; margin-top: 6px; transform: rotate(0.8deg);
+  border-bottom: 2px solid var(--red); }
+.stats { display: flex; gap: 14px; margin: 18px 0 8px; flex-wrap: wrap; }
+.sticky { font-family: var(--hand); font-size: 13px; background: #fff9c9;
+  padding: 8px 12px 10px; box-shadow: 1px 3px 8px rgba(60,50,30,0.25);
+  transform: rotate(-1.5deg); }
+.sticky:nth-child(2n) { transform: rotate(1.2deg); background: #d9ecd0; }
+.sticky:nth-child(3n) { transform: rotate(-0.5deg); background: #f7d9d0; }
+.sticky b { font-size: 17px; }
+main { display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; margin-top: 16px; }
+.card { position: relative; background: var(--card); padding: 12px;
+  box-shadow: 0 4px 14px rgba(60,50,30,0.25); }
+.card::before { content: ''; position: absolute; top: -12px; left: 50%; width: 90px;
+  height: 24px; transform: translateX(-50%) rotate(-2deg); background: var(--tape);
+  box-shadow: 0 1px 3px rgba(60,50,30,0.2); }
+.card.tilt-l { transform: rotate(-0.8deg); }
+.card.tilt-r { transform: rotate(0.7deg); }
+.card h2 { font-family: var(--hand); font-size: 16px; margin: 0 0 6px; font-weight: 400; }
+.card h2 small { color: var(--soft); font-size: 12px; }
+canvas { display: block; width: 100%; }
+.margin-note { font-family: var(--hand); color: var(--blue); font-size: 14px;
+  transform: rotate(-1.4deg); margin: 10px 4px; }
+.margin-note.red { color: var(--red); transform: rotate(0.9deg); }
+.side .card { margin-bottom: 26px; }
+footer { margin-top: 26px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+button { font-family: var(--hand); font-size: 14px; background: var(--card);
+  border: 1.6px solid var(--pencil); border-radius: 8px 14px 9px 12px / 12px 9px 14px 8px;
+  padding: 6px 16px; color: var(--pencil); cursor: pointer;
+  box-shadow: 1px 2px 6px rgba(60,50,30,0.2); }
+button.on { background: #f3e9c8; border-width: 2.4px; }
+button:hover { transform: rotate(-1deg); }
+</style>
+</head>
+<body>
+<div id="book">
+  <header>
+    <h1>the worm notebook :3</h1>
+    <div class="sub">celegans-sim &mdash; 302 neurons, 95 muscles, one petri dish, much love</div>
+    <div class="warn">arena pages = track B!! nothing here is about the real animal!</div>
+  </header>
+  <div class="stats">
+    <div class="sticky">time<br><b>412.6 s</b></div>
+    <div class="sticky">speed<br><b>231 µm/s</b></div>
+    <div class="sticky">wiggle<br><b>0.64 Hz</b></div>
+    <div class="sticky">population<br><b>10 / 10</b></div>
+    <div class="sticky">born · died<br><b>142 · 136</b></div>
+    <div class="sticky">energy<br><b>0.61</b> (hungry!)</div>
+  </div>
+  <main>
+    <div>
+      <div class="card tilt-l">
+        <h2>the dish today <small>(26 mm across)</small></h2>
+        <canvas id="dish" width="640" height="520"></canvas>
+      </div>
+      <div class="margin-note">→ the little one by the top lawn hatched at t=390,
+        still skinny + short! growing tho :3</div>
+      <div class="margin-note red">!! spiral skater showed up again in buffer,
+        MUST preserve one for the museum</div>
+    </div>
+    <div class="side">
+      <div class="card tilt-r">
+        <h2>neurons lighting up <small>302 of them</small></h2>
+        <canvas id="neurons" width="420" height="96"></canvas>
+      </div>
+      <div class="card tilt-l">
+        <h2>the wave, head→tail <small>last 20 s</small></h2>
+        <canvas id="kymo" width="420" height="104"></canvas>
+      </div>
+      <div class="card tilt-r">
+        <h2>three cells i'm watching <small>DB01, VB01, AVBL</small></h2>
+        <canvas id="trace" width="420" height="96"></canvas>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <button class="on">pause</button><button>reset</button>
+    <button class="on">agar</button><button>gooey</button><button>water</button>
+    <button style="margin-left:auto">preserve this one!</button>
+    <button class="on">→ museum</button>
+  </footer>
+</div>
+<script>
+const PEN='#4a4438', SOFT='#8a8171', RED='#c94f3d', BLU='#3d6bc9', GRN='#4f8a52';
+const D=document.getElementById('dish').getContext('2d');
+// hand-drawn wobble helper
+const wob=(x,y,s,ph)=>[x+Math.sin(y*0.05+ph)*s, y+Math.cos(x*0.06+ph)*s];
+function dish(t){
+  const w=640,h=520,cx=w/2,cy=h/2,R=228;
+  D.clearRect(0,0,w,h);
+  // petri dish: two slightly-off circles, pencil
+  D.strokeStyle=PEN; D.lineWidth=2;
+  for (const [rr,ph] of [[R,0.3],[R-6,1.7]]){
+    D.beginPath();
+    for(let a=0;a<=64;a++){const th=a/64*6.283;
+      const [x,y]=wob(cx+Math.cos(th)*rr, cy+Math.sin(th)*rr, 2.2, ph);
+      a?D.lineTo(x,y):D.moveTo(x,y);}
+    D.closePath(); D.stroke(); }
+  // lawns: colored-pencil hatching
+  for (const [lx,ly,lr] of [[cx-80,cy-60,56],[cx+88,cy+58,44]]){
+    D.strokeStyle='rgba(79,138,82,0.5)'; D.lineWidth=2.4;
+    for(let yy=-lr;yy<lr;yy+=5){ const half=Math.sqrt(Math.max(0,lr*lr-yy*yy));
+      D.beginPath(); D.moveTo(lx-half+Math.sin(yy)*2, ly+yy+1.5*Math.sin(yy*0.7));
+      D.lineTo(lx+half+Math.sin(yy*1.3)*2, ly+yy); D.stroke(); }
+    D.strokeStyle=GRN; D.lineWidth=1.6; D.beginPath();
+    for(let a=0;a<=40;a++){const th=a/40*6.283;
+      const [x,y]=wob(lx+Math.cos(th)*lr,ly+Math.sin(th)*lr,2.5,a);
+      a?D.lineTo(x,y):D.moveTo(x,y);} D.closePath(); D.stroke(); }
+  // an egg cluster, circled with an arrow
+  D.fillStyle='#efe6cd'; D.strokeStyle=SOFT;
+  for(const [ex,ey] of [[cx-24,cy+52],[cx-10,cy+60],[cx+4,cy+50]]){
+    D.beginPath(); D.ellipse(ex,ey,6,4,0.5,0,7); D.fill(); D.stroke(); }
+  D.strokeStyle=BLU; D.lineWidth=1.6; D.beginPath();
+  for(let a=0;a<=40;a++){const th=a/40*6.283;
+    const [x,y]=wob(cx-10+Math.cos(th)*34,cy+54+Math.sin(th)*22,2,a*0.4);
+    a?D.lineTo(x,y):D.moveTo(x,y);} D.closePath(); D.stroke();
+  // the worms: pencil doubled lines, one adult one tiny juvenile
+  const worm=(x0,y0,len,amp,col,ph)=>{
+    D.lineCap='round';
+    for (const off of [0,1.5]){
+      D.strokeStyle=col; D.beginPath();
+      for(let i=0;i<=40;i++){const u=i/40;
+        const x=x0+u*len, y=y0+off+Math.sin(u*4.2-t*2.6+ph)*amp*(0.55+0.45*Math.sin(u*3.14));
+        D.lineWidth=4.4*(Math.sin(u*3.14)*0.7+0.3);
+        i?D.lineTo(x,y):D.moveTo(x,y);}
+      D.stroke(); }
+  };
+  worm(cx-120,cy-30,108,15,PEN,0);
+  worm(cx-52,cy-92,54,8,RED,1.8);       // the juvenile: short AND skinny :3
+  // arrow to the juvenile
+  D.strokeStyle=BLU; D.lineWidth=1.8; D.beginPath();
+  D.moveTo(cx+40,cy-140); D.quadraticCurveTo(cx-4,cy-136,cx-20,cy-104); D.stroke();
+  D.beginPath(); D.moveTo(cx-14,cy-112); D.lineTo(cx-20,cy-104); D.lineTo(cx-10,cy-102); D.stroke();
+  D.font='15px "Segoe Print","Bradley Hand",cursive'; D.fillStyle=BLU;
+  D.fillText('baby!!', cx+44, cy-136);
+}
+const N=document.getElementById('neurons').getContext('2d');
+function neurons(t){ N.clearRect(0,0,420,96); let s=13;
+  for(let r=0;r<4;r++)for(let c=0;c<42;c++){ s=(s*16807)%2147483647;
+    const v=(s/2147483647+Math.sin(t*3+c*0.45+r))*0.5;
+    N.strokeStyle=v>0.72?RED:v>0.4?PEN:'#cfc6ae'; N.lineWidth=1.4;
+    N.beginPath(); N.arc(10+c*9.7,12+r*23,3.1,0.3,6); N.stroke();
+    if(v>0.72){N.fillStyle='rgba(201,79,61,0.4)'; N.fill();} } }
+const K=document.getElementById('kymo').getContext('2d');
+function kymo(t){ K.clearRect(0,0,420,104);
+  for(let x=0;x<420;x+=5)for(let y=0;y<104;y+=6){
+    const v=Math.sin(x*0.05-y*0.09-t*2.2);
+    if(Math.abs(v)>0.3){ K.strokeStyle=v>0?'rgba(201,79,61,0.65)':'rgba(61,107,201,0.65)';
+      K.lineWidth=2; K.beginPath(); K.moveTo(x,y+4); K.lineTo(x+4,y);
+      K.stroke(); } } }
+const T=document.getElementById('trace').getContext('2d');
+function trace(t){ T.clearRect(0,0,420,96);
+  T.strokeStyle='#d8cfb6'; T.lineWidth=1;
+  for(const y of [24,48,72]){T.beginPath();T.moveTo(0,y);T.lineTo(420,y);T.stroke();}
+  const chans=[[PEN,0],[RED,2.1],[BLU,4.2]];
+  for(const [c,ph] of chans){ T.strokeStyle=c; T.lineWidth=1.8; T.beginPath();
+    for(let x=0;x<420;x+=2){ const [xx,yy]=wob(x,48-Math.sin(x*0.05+t*2.4+ph)*16,0.8,ph);
+      T.lineTo(xx,yy); } T.stroke(); } }
+let t=0;(function loop(){t+=0.016;dish(t);neurons(t);kymo(t);trace(t);requestAnimationFrame(loop);})();
+</script>
+</body>
+</html>
