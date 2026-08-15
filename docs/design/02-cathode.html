@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design 2 — Cathode</title>
+<!-- Design language 2 of 5: CATHODE. A lab oscilloscope: one phosphor, scanlines,
+     afterglow, corner ticks. Every number is a trace; anything not-green is an alarm.
+     Self-contained demo -- fake data, no imports, open via file://. -->
+<style>
+:root {
+  --bg: #030905; --phos: #37ff8f; --dim: #14663c; --faint: #0a3320;
+  --alarm: #ffb347; --grid: #06341c;
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--phos); overflow-x: hidden; }
+body::after { content: ''; position: fixed; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.22) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply; }
+#crt { max-width: 1220px; margin: 0 auto; padding: 18px 22px 40px;
+  text-shadow: 0 0 6px rgba(55,255,143,0.55); }
+header { display: flex; gap: 24px; align-items: baseline;
+  border-bottom: 1px solid var(--dim); padding-bottom: 8px; }
+h1 { font-size: 17px; margin: 0; letter-spacing: 0.22em; }
+h1::after { content: '▮'; animation: blink 1.1s steps(1) infinite; margin-left: 6px; }
+@keyframes blink { 50% { opacity: 0; } }
+.mode { color: var(--alarm); text-shadow: 0 0 6px rgba(255,179,71,0.5); font-size: 12px; }
+.stats { display: flex; gap: 26px; margin: 12px 0; font-size: 12px; color: var(--dim); }
+.stats b { color: var(--phos); font-size: 16px; letter-spacing: 0.08em; }
+main { display: grid; grid-template-columns: 1.45fr 1fr; gap: 18px; }
+.scope { position: relative; border: 1px solid var(--dim); padding: 8px; }
+.scope::before, .scope::after, .scope .t::before, .scope .t::after {
+  content: ''; position: absolute; width: 12px; height: 12px; border: 2px solid var(--phos); }
+.scope::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+.scope::after { top: -2px; right: -2px; border-left: 0; border-bottom: 0; }
+.scope .t::before { bottom: -2px; left: -2px; border-right: 0; border-top: 0; }
+.scope .t::after { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+.label { position: absolute; top: -8px; left: 14px; background: var(--bg);
+  padding: 0 8px; font-size: 11px; letter-spacing: 0.18em; color: var(--phos); }
+canvas { display: block; width: 100%; }
+.side .scope { margin-bottom: 16px; }
+footer { margin-top: 18px; display: flex; gap: 10px; font-size: 12px; align-items: center; }
+button { font: inherit; font-size: 12px; letter-spacing: 0.12em; background: none;
+  color: var(--dim); border: 1px solid var(--dim); padding: 4px 12px; cursor: pointer; }
+button.on, button:hover { color: var(--phos); border-color: var(--phos);
+  text-shadow: 0 0 6px rgba(55,255,143,0.55); }
+.readout { margin-left: auto; color: var(--dim); }
+.readout b { color: var(--phos); }
+</style>
+</head>
+<body>
+<div id="crt">
+  <header>
+    <h1>CELEGANS-SIM // SCOPE</h1>
+    <span class="mode">TRACK-B ARENA — NOT THE ANIMAL</span>
+    <span class="mode" style="margin-left:auto">CH1 ARMED</span>
+  </header>
+  <div class="stats">
+    <span>T+ <b>0412.6</b>s</span><span>VEL <b>231</b>µm/s</span>
+    <span>UND <b>0.64</b>Hz</span><span>PMP <b>247</b>/min</span>
+    <span>POP <b>10</b>/10</span><span>EGG <b>07</b></span><span>NRG <b>0.61</b></span>
+  </div>
+  <main>
+    <div class="scope"><span class="t"></span><span class="label">DISH · 45MM</span>
+      <canvas id="dish" width="660" height="540"></canvas></div>
+    <div class="side">
+      <div class="scope"><span class="t"></span><span class="label">NEURONS · 302</span>
+        <canvas id="neurons" width="440" height="110"></canvas></div>
+      <div class="scope"><span class="t"></span><span class="label">KYMOGRAPH · 20S</span>
+        <canvas id="kymo" width="440" height="120"></canvas></div>
+      <div class="scope"><span class="t"></span><span class="label">V-MEMBRANE · DB01 VB01 AVBL</span>
+        <canvas id="trace" width="440" height="110"></canvas></div>
+    </div>
+  </main>
+  <footer>
+    <button class="on">RUN</button><button>HALT</button><button>ZERO</button>
+    <button class="on">AGAR</button><button>VISC</button><button>BUFR</button>
+    <span class="readout">SWEEP <b>1.0×</b> · PHOSPHOR <b>P31</b></span>
+  </footer>
+</div>
+<script>
+const P = '#37ff8f', DIM = '#14663c', FAINT = '#0a3320', ALARM = '#ffb347';
+const D = document.getElementById('dish').getContext('2d');
+const trail = [];
+function dish(t) {
+  const w=660,h=540,cx=w/2,cy=h/2,R=240;
+  // afterglow: fade, do not clear
+  D.fillStyle = 'rgba(3,9,5,0.16)'; D.fillRect(0,0,w,h);
+  D.strokeStyle = FAINT; D.lineWidth = 1;
+  for (let g=-5;g<=5;g++){ D.beginPath(); D.moveTo(cx+g*48,cy-R); D.lineTo(cx+g*48,cy+R); D.stroke();
+    D.beginPath(); D.moveTo(cx-R,cy+g*48); D.lineTo(cx+R,cy+g*48); D.stroke(); }
+  D.strokeStyle = DIM; D.lineWidth = 1.4; D.beginPath(); D.arc(cx,cy,R,0,7); D.stroke();
+  // lawns as dim raster discs
+  D.fillStyle = 'rgba(20,102,60,0.35)';
+  for (const [lx,ly,lr] of [[cx-85,cy-60,58],[cx+90,cy+62,44]])
+    for (let y=-lr;y<lr;y+=4){ const half=Math.sqrt(lr*lr-y*y); D.fillRect(lx-half,ly+y,half*2,1.4); }
+  // the worm: bright phosphor trace with glow
+  D.shadowColor = P; D.shadowBlur = 9;
+  D.strokeStyle = P; D.lineCap='round';
+  D.beginPath();
+  for (let i=0;i<=48;i++){ const u=i/48;
+    const x = cx+55-u*100, y = cy-30+Math.sin(u*4.4-t*2.6)*17*(0.55+0.45*Math.sin(u*3.14));
+    D.lineWidth = 4.6*(Math.sin(u*3.14)*0.75+0.3);
+    i?D.lineTo(x,y):D.moveTo(x,y); }
+  D.stroke();
+  D.shadowBlur = 0;
+}
+const N = document.getElementById('neurons').getContext('2d');
+function neurons(t){
+  N.fillStyle='rgba(3,9,5,0.35)'; N.fillRect(0,0,440,110);
+  let s=11;
+  for (let r=0;r<5;r++) for (let c=0;c<50;c++){ s=(s*16807)%2147483647;
+    const v=(s/2147483647+Math.sin(t*3+c*0.4+r))*0.5;
+    N.fillStyle = v>0.72?P:v>0.35?DIM:FAINT;
+    N.fillRect(8+c*8.6, 10+r*20, 4, 4); }
+}
+const K = document.getElementById('kymo').getContext('2d');
+function kymo(t){
+  K.fillStyle='rgba(3,9,5,0.3)'; K.fillRect(0,0,440,120);
+  for (let x=0;x<440;x+=2) for (let y=0;y<120;y+=5){
+    const v = Math.sin(x*0.05 - y*0.085 - t*2.2);
+    if (v>0.2){ K.fillStyle = v>0.65?P:DIM; K.fillRect(x,y,1.6,3.4); }
+  }
+}
+const T = document.getElementById('trace').getContext('2d');
+function trace(t){
+  T.fillStyle='rgba(3,9,5,0.35)'; T.fillRect(0,0,440,110);
+  T.strokeStyle=FAINT; for(const y of [28,55,82]){T.beginPath();T.moveTo(0,y);T.lineTo(440,y);T.stroke();}
+  const chans=[[P,1.6,0],[DIM,1.2,2.1],[ALARM,1.0,4.2]];
+  for (const [c,wd,ph] of chans){ T.strokeStyle=c; T.lineWidth=wd;
+    T.shadowColor=c; T.shadowBlur=4; T.beginPath();
+    for(let x=0;x<440;x++) T.lineTo(x, 55 - Math.sin(x*0.05+t*2.4+ph)*17 - Math.sin(x*0.012+ph)*7);
+    T.stroke(); }
+  T.shadowBlur=0;
+}
+let t=0; (function loop(){ t+=0.016; dish(t); neurons(t); kymo(t); trace(t); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
