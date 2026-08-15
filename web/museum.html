@@ -110,6 +110,8 @@ try {
   .jar .name { font-size: 12px; color: var(--text-primary); margin: 8px 0 2px;
                font-weight: 600; overflow-wrap: anywhere; }
   .jar .prov { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+  .jar .about { font-size: 11.5px; color: var(--text-secondary); line-height: 1.55;
+                margin-top: 6px; }
   #shelf .empty { font-size: 13px; color: var(--text-muted); }
 </style>
 
@@ -199,6 +201,14 @@ function jar(spec) {
     + `${dev} · ${spec.frames.length} frames`
     + (spec.captured ? ` · ${spec.captured.slice(0, 10)}` : '');
   card.appendChild(prov);
+  // Communal jars ship with a label: what this animal is and why it was kept. A
+  // visitor's own catches have no 'about' and skip it.
+  if (spec.about) {
+    const ab = document.createElement('div');
+    ab.className = 'about';
+    ab.textContent = spec.about;
+    card.appendChild(ab);
+  }
   shelf.appendChild(card);
 
   // Fit the whole cycle: bounds over every frame, once.
@@ -233,26 +243,30 @@ function jar(spec) {
   requestAnimationFrame(drawJar);
 }
 
-const jars = [];
-try { jars.push(...JSON.parse(localStorage.getItem('celegans-specimens') || '[]')); }
-catch (e) { /* a corrupt shelf shows as empty, not as a broken page */ }
+/* The site's own jars come FIRST, in index order -- the owner's directive: a visitor
+ * with an empty localStorage should walk into a stocked wing, not an empty one. Their
+ * own catches follow, newest first. */
+const communal = [], mine = [];
 try {
   const idx = await fetch('specimens/index.json', { cache: 'no-cache' });
   if (idx.ok) {
     for (const f of await idx.json()) {
       try {
         const r = await fetch(`specimens/${f}`, { cache: 'no-cache' });
-        if (r.ok) jars.push(await r.json());
+        if (r.ok) communal.push(await r.json());
       } catch (e) { /* a missing jar is a gap on the shelf, not a broken shelf */ }
     }
   }
 } catch (e) { /* no communal shelf on this deployment */ }
+try { mine.push(...JSON.parse(localStorage.getItem('celegans-specimens') || '[]')); }
+catch (e) { /* a corrupt shelf shows as empty, not as a broken page */ }
 
+const jars = [...communal, ...mine.reverse()];
 if (!jars.length) {
   shelf.innerHTML = '<p class="empty">Nothing preserved yet. Find an animal worth '
     + 'keeping and press <strong>Preserve</strong>.</p>';
 } else {
-  for (const s of jars.reverse()) {
+  for (const s of jars) {
     if (s && Array.isArray(s.frames) && s.frames.length) jar(s);
   }
 }
