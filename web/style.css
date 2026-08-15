@@ -491,7 +491,10 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
      stay -- one swipeable row tucked under the mode switch, same treatment as the stats,
      where they used to be a wrapping block that buried the top half of the dish. */
   .floating.tr {
-    top: 52px; left: 10px; right: 10px;
+    /* Below the mode switch, measured rather than guessed: at touch sizing the Dark/
+       Light seg is 10px offset + 48px tall, and parking the chips at 52px left them
+       intersecting it by a few pixels (#156 counted the pairs). */
+    top: 66px; left: 10px; right: 10px;
     align-items: flex-start;
     max-width: calc(100% - 20px);
   }
@@ -557,6 +560,18 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
   /* Three mouse gestures, described on the layout that has no mouse -- and at this width
      the line runs straight through the zoom controls. */
   .dish-hint { display: none; }
+}
+
+/* The narrowest phones: the footer's transport block was pushing the first measurement
+   panel to 1.77 viewport heights at 320x568 against #156's 1.7 ceiling. The savings come
+   out of chrome, not out of targets: tighter footer padding and row gaps, and slider
+   TRACKS at 36px -- a slider's hit area is its whole width, which is 140px, so the 44px
+   rule it inherits above is tallness for tallness' sake. Buttons keep their 44px. */
+@media (max-width: 480px) {
+  footer { padding: 6px 10px; gap: 8px 12px; }
+  .group { gap: 5px; }
+  input[type="range"] { height: 36px; }
+  .legend { font-size: 10px; gap: 7px; }
 }
 
 /* --- keyboard -------------------------------------------------------------------- */
