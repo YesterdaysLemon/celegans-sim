@@ -97,12 +97,14 @@ export function drawNeurons() {
 export function neuronAt(cv, clientX, clientY) {
   if (!layout) return null;
   const r = cv.getBoundingClientRect();
-  // The layout is built in the canvas's backing-store pixels, which are devicePixelRatio
-  // times the CSS pixels a mouse event reports. Comparing the two directly meant that on
-  // any HiDPI display the hit test was out by a factor of two.
-  const sx = cv.width / Math.max(r.width, 1), sy = cv.height / Math.max(r.height, 1);
-  const x = (clientX - r.left) * sx, y = (clientY - r.top) * sy;
-  let best = null, bd = 81;
+  // The layout is built in CSS pixels: fitCanvas scales the backing store by
+  // devicePixelRatio but puts the same factor into the context transform, so it hands
+  // buildLayout the element's CSS size and every pts[i] is in those units -- the same
+  // units a mouse event reports. So the offset into the element is the whole conversion.
+  // Scaling it by the ratio of the two sizes, as this did, is a no-op at dpr 1 and puts
+  // the hit test out by a factor of two on every HiDPI display, which is most laptops.
+  const x = clientX - r.left, y = clientY - r.top;
+  let best = null, bd = 81;                      // (9 CSS px)^2 -- a target bigger than the dot
   layout.pts.forEach((p, i) => {
     const d = (p.x - x) ** 2 + (p.y - y) ** 2;
     if (d < bd) { bd = d; best = i; }
@@ -115,8 +117,10 @@ export function neuronAt(cv, clientX, clientY) {
 export function neuronCentre(cv, i) {
   if (!layout || !layout.pts[i]) return null;
   const r = cv.getBoundingClientRect();
-  const sx = Math.max(r.width, 1) / cv.width, sy = Math.max(r.height, 1) / cv.height;
-  return { clientX: r.left + layout.pts[i].x * sx, clientY: r.top + layout.pts[i].y * sy };
+  // Same units as neuronAt, and the exact inverse of it: add the element's origin, nothing
+  // else. It had the reciprocal of that function's error, so feeding one into the other
+  // came out right and only the tooltip's position on screen was wrong.
+  return { clientX: r.left + layout.pts[i].x, clientY: r.top + layout.pts[i].y };
 }
 
 /* -------------------------------------------------------------------- muscles ----- */
