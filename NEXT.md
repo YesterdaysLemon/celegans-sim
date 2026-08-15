@@ -170,12 +170,26 @@ measured, then asserted in `wasm/morphology.test.mjs`). Development is runtime p
 (`setDevelopment`), never the genome: the first draft scaled the control points and
 generations shrank 0.55× each — the correction is on the record in the mechanism.
 
-**1c. The buffer skater wants an instrument.** The owner's dish, switched to buffer,
-evolved coiled lineages that spin and skate in long arcs (>1500 µm/s bursts; sighting
-recorded in `wasm/arena.mjs`). Not an exhibit until measured: a buffer-medium arena run
-logging net displacement per drag power and per-worm curvature means, to catch skaters
-forming and price their transport against undulators. Likely a 2D+RFT+no-collision
-niche — exactly what the museum exists for.
+**1c. The buffer skater wants an instrument — and now has one.** The owner's dish,
+switched to buffer, evolved coiled lineages that spin and skate in long arcs (>1500 µm/s
+bursts; sighting recorded in `wasm/arena.mjs`). Not an exhibit until measured, and
+`wasm/skate.mjs` is the instrument: the full living plate in buffer, logging per animal
+per 30 s window the net midpoint displacement, the integrated drag dissipation (the
+metabolism's own currency), their ratio (transport: mm bought per unit drag energy), the
+signed and absolute curvature means, and net body-axis revolutions. A window is flagged
+SKATER on coil + roll + displacement (|kbar| ≥ 3 /mm, |turns| ≥ 2, net ≥ 0.10 mm — the
+cohorts sit far apart, so the thresholds are calibration, not biology), and a first flag
+snapshots the animal's full heritable state for transplant-and-preserve. `SKATE_MEDIUM=agar`
+is the control arm, so "skating is a buffer niche" is testable rather than assumed.
+First hunts (2026-08-15, seeds 41/43/47): a NULL — one dish ran the sighting's full
+protocol (10 evolved animals into buffer, 1,200 s of attrition) and every window read
+as an honest undulator; no skater formed, so the sighting stands as a sighting and the
+trap stays set. The hunts did measure three ecology facts, recorded in the tool's
+header: buffer-from-birth starves founders before their first lawn, the showcase
+scarcity is a founder lottery on agar (3 of 4 seeds extinct pre-hatch), and even an
+evolved dish stops laying in buffer — which bounds any future hunt at ~1,200 s of
+attrition unless the plate gets richer or a human tops up lawns, as the owner's
+browser dish had.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
