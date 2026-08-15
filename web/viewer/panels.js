@@ -94,7 +94,14 @@ export function drawNeurons() {
 }
 
 // Hit-test in the neuron panel. Returns an index or null.
-export function neuronAt(cv, clientX, clientY) {
+//
+// `radius` is the acceptance distance in CSS px: 9 by default (about twice the dot, the
+// mouse's target), and callers with a finger pass more -- a fingertip is a ~16 px
+// instrument and holding it to 9 made the grid a dexterity test (#158). Nearest-wins
+// keeps a bigger radius from stealing a cell that another dot is closer to, and a tap
+// farther than the radius from everything returns null rather than silently choosing a
+// distant neuron.
+export function neuronAt(cv, clientX, clientY, radius = 9) {
   if (!layout) return null;
   const r = cv.getBoundingClientRect();
   // The layout is built in CSS pixels: fitCanvas scales the backing store by
@@ -104,7 +111,7 @@ export function neuronAt(cv, clientX, clientY) {
   // Scaling it by the ratio of the two sizes, as this did, is a no-op at dpr 1 and puts
   // the hit test out by a factor of two on every HiDPI display, which is most laptops.
   const x = clientX - r.left, y = clientY - r.top;
-  let best = null, bd = 81;                      // (9 CSS px)^2 -- a target bigger than the dot
+  let best = null, bd = radius * radius;
   layout.pts.forEach((p, i) => {
     const d = (p.x - x) ** 2 + (p.y - y) ** 2;
     if (d < bd) { bd = d; best = i; }

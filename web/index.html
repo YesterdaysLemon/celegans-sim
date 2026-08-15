@@ -200,6 +200,11 @@ try {
 
     <div class="group" role="group" aria-label="Neurons">
       <span class="cap" aria-hidden="true">Neurons</span>
+      <!-- The touch flow's commit button: a tap on the grid only SELECTS a neuron (no
+           hover exists to preview with), and Plot/Ablate -- labelled with the selected
+           cell's name -- do the acting. Hidden where a fine pointer makes hover-then-
+           click the better contract. -->
+      <button id="b-plot" disabled>Plot</button>
       <button id="b-ablate" aria-pressed="false">Ablate</button>
       <button id="b-restore" disabled>Restore</button>
     </div>

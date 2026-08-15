@@ -349,6 +349,66 @@ try {
       check(vp.name, dropper.rep === 'repellent' && dropper.back === 'food',
             `the bottle selector did not take: ${dropper.rep} / ${dropper.back}`);
 
+      /* #158's touch contract, driven through a real synthetic tap on the viewports
+       * that emulate a touchscreen: the first tap on the neuron grid SELECTS -- it must
+       * never plot or ablate -- the selection persists and is visibly labelled, and the
+       * explicit Plot / Ablate / Restore buttons are what commit, each against the
+       * standing selection. */
+      if (vp.touch && started) {
+        const target = await page.evaluate(async () => {
+          const { neuronCentre } = await import('/viewer/panels.js');
+          const nc = document.getElementById('c-neurons');
+          nc.scrollIntoView({ block: 'center' });
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const c = neuronCentre(nc, 42);
+          return c ? { x: c.clientX, y: c.clientY } : null;
+        });
+        check(vp.name, !!target, 'no neuron centre to tap (panel layout missing)');
+        if (target) {
+          const pre = await page.evaluate(() => ({
+            selected: window.__sim.selected.length,
+            ablated: [...window.__sim.ablations.values()].reduce((a, s) => a + s.size, 0),
+          }));
+          await page.touchscreen.tap(target.x, target.y);
+          await new Promise((r) => setTimeout(r, 350));
+          const tap = await page.evaluate(() => ({
+            hover: window.__sim.hover,
+            selected: window.__sim.selected.length,
+            ablated: [...window.__sim.ablations.values()].reduce((a, s) => a + s.size, 0),
+            plotLabel: document.getElementById('b-plot').textContent,
+            plotEnabled: !document.getElementById('b-plot').disabled,
+            ablateLabel: document.getElementById('b-ablate').textContent,
+          }));
+          check(vp.name, tap.hover === 42,
+                `the tap selected neuron ${tap.hover}, aimed at 42`);
+          check(vp.name, tap.selected === pre.selected && tap.ablated === pre.ablated,
+                'the FIRST tap plotted or ablated -- it must only select');
+          check(vp.name, tap.plotEnabled && /Plot \S+/.test(tap.plotLabel)
+                && /Ablate \S+/.test(tap.ablateLabel),
+                `the action buttons are not labelled with the selection: `
+                + `"${tap.plotLabel}" / "${tap.ablateLabel}"`);
+          const acted = await page.evaluate(() => {
+            document.getElementById('b-plot').click();
+            const plotted = window.__sim.selected.includes(42);
+            document.getElementById('b-ablate').click();
+            const dead = [...window.__sim.ablations.values()].some((s) => s.has(42));
+            const hoverHeld = window.__sim.hover === 42;
+            document.getElementById('b-restore').click();
+            const restored = ![...window.__sim.ablations.values()].some((s) => s.has(42));
+            // Leave the panel as found: un-plot the trace.
+            document.getElementById('b-plot').click();
+            return { plotted, dead, hoverHeld, restored,
+                     clean: !window.__sim.selected.includes(42) };
+          });
+          check(vp.name, acted.plotted, 'Plot did not plot the selected neuron');
+          check(vp.name, acted.dead, 'Ablate did not ablate the selected neuron');
+          check(vp.name, acted.hoverHeld,
+                'the selection did not survive using the action buttons');
+          check(vp.name, acted.restored && acted.clean,
+                'Restore/un-plot did not return the panel to its starting state');
+        }
+      }
+
       // Collapsing a panel has to report its state, not just look different.
       const panel = await page.evaluate(() => {
         const h = document.querySelector('.panel .phead');

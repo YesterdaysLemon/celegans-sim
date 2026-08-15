@@ -178,6 +178,43 @@ export function clampFocus() {
   return false;
 }
 
+/* A live question, not a page-load constant: a convertible flips it when the keyboard
+ * detaches. Everything touch-specific in the neuron flow branches on this, so the same
+ * build serves both instruments. */
+const coarse = () => matchMedia('(pointer: coarse)').matches;
+
+/* Silence one cell in the focused animal -- the one mutation the neuron panel can do,
+ * hoisted to module level because two flows commit it: the mouse's ablate-mode click,
+ * and the touch flow's explicit Ablate button (#158). */
+function ablateCell(i) {
+  const cells = ablated();
+  if (cells.has(i)) return;                  // ablation is not undone one cell at a time
+  cells.add(i);
+  if (S.engine) S.engine.setAblated(S.focus, [...cells]);
+  else send({ cmd: 'ablate', neurons: [S.meta.neurons[i].name] });
+  updateAblateUI();
+}
+
+/* The touch flow's action row: Plot and Ablate applied to the persistent selection.
+ * The buttons carry the selected cell's NAME, because "applied to the current
+ * selection" only means something if you can see which one that is (#158). On fine
+ * pointers Plot is hidden by CSS and Ablate keeps its mode behaviour, so this only
+ * dresses the coarse half. */
+function updateNeuronActions() {
+  const has = S.hover != null && S.meta;
+  const name = has ? S.meta.neurons[S.hover].name : null;
+  const bp = el('b-plot');
+  if (bp) {
+    bp.disabled = !has;
+    bp.textContent = has ? `Plot ${name}` : 'Plot';
+  }
+  if (coarse()) {
+    const ba = el('b-ablate');
+    ba.disabled = !has;
+    ba.textContent = has ? `Ablate ${name}` : 'Ablate';
+  }
+}
+
 function updateAblateUI() {
   const b = el('b-ablate');
   const many = S.engine && S.engine.worms.length > 1;
@@ -188,6 +225,7 @@ function updateAblateUI() {
   el('neuron-hint').textContent = S.ablateMode
     ? (many ? `click a neuron to silence it in worm ${S.focus + 1}` : 'click a neuron to silence it')
     : (n ? `${n} ablated${many ? ' in worm ' + (S.focus + 1) : ''}` : 'hover a neuron');
+  updateNeuronActions();
 }
 
 /* ------------------------------------------------------------------------- mode ---- */
@@ -452,7 +490,15 @@ export function wire() {
     e.target.setAttribute('aria-valuetext', `${label} real time`);
     send({ cmd: 'rate', value: v });
   });
-  el('b-ablate').addEventListener('click', () => { S.ablateMode = !S.ablateMode; updateAblateUI(); });
+  el('b-ablate').addEventListener('click', () => {
+    // Touch has no hover to arm a mode with: Ablate acts on the standing selection,
+    // labelled with its name, and the first TAP on the grid never ablated anything.
+    if (coarse()) {
+      if (S.hover != null) ablateCell(S.hover);
+      return;
+    }
+    S.ablateMode = !S.ablateMode; updateAblateUI();
+  });
   // Restore is about the focused animal and only that one: the others keep both their
   // dead cells and the record of them.
   el('b-restore').addEventListener('click', () => {
@@ -509,7 +555,14 @@ function wireNeuronPanel() {
     showTip(e, describe(i));
     el('neuron-hint').textContent = 'click to plot';
   });
-  nc.addEventListener('mouseleave', () => { S.hover = null; hideTip(); });
+  // A tap's selection survives the pointer leaving; a mouse's hover does not. The tap
+  // fires synthetic mouse events, so both departure paths guard on the pointer kind --
+  // clearing on the synthetic mouseleave would un-select the cell the moment the finger
+  // that chose it lifted (#158's "remains inspectable after the pointer leaves").
+  nc.addEventListener('mouseleave', () => {
+    if (coarse()) return;
+    S.hover = null; hideTip();
+  });
 
   const toggleTrace = (i) => {
     const at = S.selected.indexOf(i);
@@ -521,19 +574,32 @@ function wireNeuronPanel() {
 
   const activate = (i) => {
     if (i == null) return;
-    if (S.ablateMode) {
-      const cells = ablated();
-      if (cells.has(i)) return;                  // ablation is not undone one cell at a time
-      cells.add(i);
-      if (S.engine) S.engine.setAblated(S.focus, [...cells]);
-      else send({ cmd: 'ablate', neurons: [S.meta.neurons[i].name] });
-      updateAblateUI();
-      return;
-    }
+    if (S.ablateMode) { ablateCell(i); return; }
     toggleTrace(i);
   };
 
-  nc.addEventListener('click', (e) => activate(neuronAt(nc, e.clientX, e.clientY)));
+  /* Two pointers, two contracts (#158). A mouse click ACTS -- hover already previewed.
+   * A tap has no hover, so it SELECTS: the ring and tooltip are the preview, the
+   * selection persists, and the labelled Plot/Ablate buttons commit. A tap that lands
+   * near nothing (within the fingertip's 16 px) clears the selection rather than
+   * guessing a distant cell. */
+  nc.addEventListener('click', (e) => {
+    if (coarse()) {
+      const i = neuronAt(nc, e.clientX, e.clientY, 16);
+      S.hover = i;
+      if (i == null) hideTip();
+      else announce(i);
+      updateNeuronActions();
+      return;
+    }
+    activate(neuronAt(nc, e.clientX, e.clientY));
+  });
+
+  // The touch flow's Plot half; hidden by CSS where a fine pointer makes it redundant.
+  const bPlot = el('b-plot');
+  if (bPlot) bPlot.addEventListener('click', () => {
+    if (S.hover != null) { toggleTrace(S.hover); updateNeuronActions(); }
+  });
 
   // The keyboard drives the same cursor the mouse does -- S.hover -- so the highlight the
   // renderer already draws is the focus indicator, and there is no second notion of
@@ -557,7 +623,10 @@ function wireNeuronPanel() {
     nc.setAttribute('aria-label',
       `${n.name}, ${n.cls}, ${n.kind}${n.modality ? ', ' + n.modality : ''}. ` +
       `Neuron ${i + 1} of ${S.meta.neurons.length}. Enter to ${S.ablateMode ? 'ablate' : 'plot'}.`);
-    el('neuron-hint').textContent = S.ablateMode ? 'Enter to ablate' : 'Enter to plot';
+    el('neuron-hint').textContent = coarse()
+      ? `${n.name} selected — Plot / Ablate below`
+      : (S.ablateMode ? 'Enter to ablate' : 'Enter to plot');
+    updateNeuronActions();
   };
 
   nc.addEventListener('keydown', (e) => {
@@ -574,5 +643,8 @@ function wireNeuronPanel() {
     S.hover = i;
     announce(i);
   });
-  nc.addEventListener('blur', () => { S.hover = null; hideTip(); });
+  nc.addEventListener('blur', () => {
+    if (coarse()) return;                        // same persistence rule as mouseleave
+    S.hover = null; hideTip();
+  });
 }

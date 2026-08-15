@@ -579,6 +579,13 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
   .legend { font-size: 10px; gap: 7px; }
 }
 
+/* The touch flow's Plot button: redundant beside a fine pointer, whose hover-preview and
+   direct click are the better contract, so it only appears where fingers do. `coarse`
+   rather than width, because a touchscreen laptop at desktop width still taps (#158). */
+@media (pointer: fine) {
+  #b-plot { display: none; }
+}
+
 /* --- keyboard -------------------------------------------------------------------- */
 /* Every interactive thing here is either a <button> or a <canvas tabindex=0>, and the
    panel headers use `all: unset`, which throws the focus ring away with everything else.
