@@ -26,13 +26,16 @@ const at = (...p) => path.join(ROOT, ...p);
  *
  * PER_WORM_MEASURED is the allocator's real per-animal stride, block headers and 16-byte
  * granularity included. PER_WORM_DECLARED is the sum of the StaticArray dimensions in
- * `class Worm`; the difference between them is that overhead, 60 bytes an array.
+ * `class Worm`; the difference between them is block headers, rounding, and the Worm
+ * object's own scalar fields -- which is why the metabolism and morphology work moved
+ * the measured stride (each new f64 field grows the object) without moving the declared
+ * array sum at all.
  *
  * If AssemblyScript changes its object layout these move, and this check is meant to go red
  * when they do -- the point is that the number in the documents is a measurement of the
  * runtime that shipped, not a folk memory of one that did.
  */
-const PER_WORM_MEASURED = 239952;   // bytes, ptrV stride between consecutive animals
+const PER_WORM_MEASURED = 240208;   // bytes, ptrV stride between consecutive animals
 const PER_WORM_DECLARED = 238486;   // bytes, summed StaticArray dimensions in class Worm
 const SHARED_SCRATCH = 140776;      // bytes, module-level per-step scratch, paid once
 const N_WORM_ARRAYS = 23;
@@ -295,8 +298,16 @@ const N = 64;
   const overhead = median - declared;
   // Consistent with per-object bookkeeping rather than with an array having come back:
   // 16-byte block headers plus up to 15 bytes of rounding on each array, plus the Worm
-  // object's own fields. The smallest array that could hide in here is `genes` at 120 B.
-  const plausible = overhead > 0 && overhead < 64 * wormArrays.length;
+  // object's own scalar fields -- and the object is no longer small. The metabolism and
+  // morphology work gave every animal a few dozen new f64 fields and pointers, which is
+  // ~600 B of object before any array is counted, so the old 64-bytes-an-array budget
+  // (calibrated when the object was thin) went red on growth that is real and declared.
+  // The allowance is 96 B an array now. That is NOT the guard against a hidden array:
+  // the exact `median === PER_WORM_MEASURED` pin one line down is, because any new
+  // allocation moves the measured stride and that constant is updated by a person
+  // looking at what moved. This bound only rejects gross drift -- an overhead that
+  // doubles is an array that came back, whatever the constant says.
+  const plausible = overhead > 0 && overhead < 96 * wormArrays.length;
 
   report(
     `MEASURED -- ptrV stride across ${N} animals`,

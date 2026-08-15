@@ -263,7 +263,7 @@ cheap, and it is worth writing down what it made possible while that is fresh.
 
 **Animals are cheap, and they are not free.** The 302×302 matrices are *anatomy*:
 read-only, identical for every worm, shared. A second animal duplicates only state -- but
-that state is **239,952 bytes, 234 kB**, measured off the allocator's own per-worm stride
+that state is **240,208 bytes, 235 kB**, measured off the allocator's own per-worm stride
 by `node wasm/memory.mjs`. This paragraph claimed a few kilobytes for a long time, and so
 did two other places; nobody had measured it, and it was out by a factor of a hundred
 (#33).
@@ -2825,7 +2825,7 @@ table's five rows fix themselves at once.
   and five ablation phenotypes come out of it. See `worm/pharynx.py`.
 - ~~Multi-worm. The engine is one `Simulation` object; nothing prevents several.~~
   **Done with the WebAssembly port.** The connectome is read-only and shared, so a second
-  animal duplicates only state -- 239,952 bytes of it, 234 kB, measured; the viewer runs n
+  animal duplicates only state -- 240,208 bytes of it, 235 kB, measured; the viewer runs n
   of them and focuses one. This is what makes the population direction at the top of this
   file thinkable, at the budget set out there.
 
