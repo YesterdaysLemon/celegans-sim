@@ -10,7 +10,10 @@
 
 name: viewer
 
-# PAUSED AT THE JOBS, NOT AT THE TRIGGERS. See `CI_ENABLED` below.
+# DEFAULT ON, WITH AN OFF-SWITCH -- the pause below is history, kept because it explains
+# the gate's design. The repository is public now and standard runners are free, so the
+# gate's polarity is flipped: jobs run unless the repository variable CI_ENABLED is set to
+# the literal string 'false'.
 #
 # This account's Actions minutes are exhausted, so every push and every pull request was
 # starting a run that died in seconds having executed no steps at all -- the API reports
@@ -30,10 +33,9 @@ name: viewer
 # the Actions service before a runner is allocated, so it consumes no minutes and reports
 # `skipped` rather than a red cross.
 #
-# Re-enable everything by setting the repository variable CI_ENABLED to `true` (Settings ->
-# Secrets and variables -> Actions -> Variables). Nothing else needs editing, and nothing in
-# the jobs was weakened to make anything pass. Until then the checks run locally -- see
-# "Running the checks yourself" in the README.
+# Nothing in the jobs was ever weakened to make anything pass, and the local path --
+# "Running the checks yourself" in CONTRIBUTING.md -- still works and is still the gate
+# that counts when Actions cannot run.
 
 on:
   push:
@@ -49,10 +51,17 @@ on:
             'package.json', 'package-lock.json', '.github/workflows/viewer.yml']
   workflow_dispatch:
 
+# One run per branch at a time; a superseded push cancels the run it replaced instead of
+# both running to completion. Runs on main itself always finish, so every merge keeps a
+# complete record (#144).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   viewer:
     name: static checks and browser smoke test
-    if: ${{ vars.CI_ENABLED == 'true' }}
+    if: ${{ vars.CI_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +113,7 @@ jobs:
 
   server-transport:
     name: the Python WebSocket reaches the viewer
-    if: ${{ vars.CI_ENABLED == 'true' }}
+    if: ${{ vars.CI_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +136,7 @@ jobs:
 
   conformance:
     name: the port still reproduces the Python
-    if: ${{ vars.CI_ENABLED == 'true' }}
+    if: ${{ vars.CI_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
