@@ -40,6 +40,7 @@ export function send(msg) {
     else if (msg.cmd === 'pause') eng.running = false;
     else if (msg.cmd === 'rate') eng.rate = msg.value;
     else if (msg.cmd === 'drop_food') eng.dropFood(msg.x, msg.y, msg.r);
+    else if (msg.cmd === 'drop_repellent') eng.dropRepellent(msg.x, msg.y, msg.r);
     else if (msg.cmd === 'poke') eng.poke(msg.where, msg.strength);
     else if (msg.cmd === 'medium') {
       const h = eng.head.scalars;

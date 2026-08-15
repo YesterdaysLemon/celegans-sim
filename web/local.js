@@ -266,6 +266,16 @@ export class LocalEngine {
     this.meta.world.patches.push({ x, y, r, kind: 'food' });
     return true;
   }
+  /* The dropper's other bottle. A repellent drop goes straight into the live field --
+   * no patch object, no cached shapes, no 16-lawn cap -- because since the fields went
+   * dynamic the field IS the state: it diffuses, decays and blows downwind like
+   * anything else on the plate, and the animals smell it through the same sensedRep
+   * path as the seeded noxious drop. Amount matches the rot miasma's scale so one
+   * squeeze reads clearly without walling off half the dish. */
+  dropRepellent(x, y, r = 2.5) {
+    this.E.depositRepellent(x, y, r, 0.6);
+    return true;
+  }
   poke(where, strength) {
     for (const w of this.worms) this.E.pokeWorm(w, where === 'anterior' ? 1 : 0, strength);
   }

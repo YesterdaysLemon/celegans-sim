@@ -232,6 +232,21 @@ try {
       check(vp.name, themed.every(Boolean),
             'a mode switch did not carry painter, chrome and persistence together');
 
+      // The dropper: two bottles, visible, and selecting one changes what double-click
+      // does (the state the dblclick handler reads).
+      const dropper = await page.evaluate(() => {
+        const bottles = [...document.querySelectorAll('[data-drop]')];
+        const shown = bottles.filter((b) => b.getBoundingClientRect().width > 0).length;
+        document.querySelector('[data-drop="repellent"]').click();
+        const rep = window.__sim.dropper;
+        document.querySelector('[data-drop="food"]').click();
+        return { total: bottles.length, shown, rep, back: window.__sim.dropper };
+      });
+      check(vp.name, dropper.total === 2 && dropper.shown === 2,
+            `${dropper.shown} of ${dropper.total} dropper bottles visible`);
+      check(vp.name, dropper.rep === 'repellent' && dropper.back === 'food',
+            `the bottle selector did not take: ${dropper.rep} / ${dropper.back}`);
+
       // Collapsing a panel has to report its state, not just look different.
       const panel = await page.evaluate(() => {
         const h = document.querySelector('.panel .phead');
@@ -498,6 +513,16 @@ try {
           tab.click();
           for (let i = 0; i < 120 && !(S.meta && S.meta.arena); i++) await sleep(250);
           await sleep(3000);
+          // The weather knob must actually reach the policy: read the wind before,
+          // drag the slider, read it after. Restored to 1x so the rest of the pass
+          // runs the dish it started with.
+          const windBefore = S.engine.arena.opt.wind;
+          const rw = document.getElementById('r-weather');
+          rw.value = '2';
+          rw.dispatchEvent(new Event('input', { bubbles: true }));
+          const windAfter = S.engine.arena.opt.wind;
+          rw.value = '1';
+          rw.dispatchEvent(new Event('input', { bubbles: true }));
           const out = {
             skipped: false,
             dish: document.getElementById('app').dataset.dish,
@@ -505,9 +530,14 @@ try {
               .filter((e) => e.getBoundingClientRect().width > 0).length,
             chipsTotal: document.querySelectorAll('[data-layer].arena-only').length,
             tiles: document.getElementById('s-pop').getBoundingClientRect().width > 0,
+            weather: rw.getBoundingClientRect().width > 0,
+            windMoved: Math.abs(windAfter - windBefore * 2) < 1e-12
+              && Math.abs(S.engine.arena.opt.wind - windBefore) < 1e-12,
             pop: S.engine && S.engine.worms ? S.engine.worms.length : 0,
             styled: S.worms.length > 0
               && S.worms.every((w) => w.style && w.id !== undefined),
+            // The tweezers' runtime half: the export the shift-drag calls.
+            tweezers: typeof S.engine.E.translateWorm === 'function',
             tArena: S.frame ? S.frame.t : 0,
             tBefore,
           };
@@ -553,6 +583,10 @@ try {
                 `the arena dish is not running: pop ${arena.pop}, t ${arena.tArena}`);
           check(vp.name, arena.styled,
                 'arena worms arrived without style/id -- dynasty and trails are broken');
+          check(vp.name, arena.weather, 'the weather slider is not visible on the arena dish');
+          check(vp.name, arena.windMoved,
+                'the weather slider did not scale the policy wind (or did not restore)');
+          check(vp.name, arena.tweezers, 'translateWorm is missing from the runtime exports');
           check(vp.name, arena.backDish === 'animal' && arena.tBack >= arena.tBefore,
                 `switching back restarted the animal dish: t ${arena.tBefore} -> ${arena.tBack}`);
         }

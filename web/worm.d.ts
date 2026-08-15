@@ -576,6 +576,13 @@ declare namespace __AdaptedExports {
    */
   export function pokeWorm(w: number, anterior: number, strength: number): void;
   /**
+   * assembly/index/translateWorm
+   * @param w `i32`
+   * @param dx `f64`
+   * @param dy `f64`
+   */
+  export function translateWorm(w: number, dx: number, dy: number): void;
+  /**
    * assembly/index/ptrNodesX
    * @param w `i32`
    * @returns `usize`
