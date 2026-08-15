@@ -85,7 +85,11 @@ try {
     </div>
 
     <div class="floating tr">
-      <div class="chips" role="group" aria-label="Layers">
+      <!-- On phones the chips hide behind this until asked for: eight chips were a
+           third of the dish (#164). Hidden on desktop, where there is room to spare. -->
+      <button class="chip disclose" id="b-layers" aria-pressed="false"
+              aria-expanded="false" aria-controls="layer-tray">Layers</button>
+      <div class="chips" id="layer-tray" role="group" aria-label="Layers">
         <button class="chip" data-layer="food" aria-pressed="true"><i class="sw food"></i>Food</button>
         <button class="chip" data-layer="attractant" aria-pressed="true"><i class="sw att"></i>Attractant</button>
         <button class="chip" data-layer="repellent" aria-pressed="true"><i class="sw rep"></i>Repellent</button>
@@ -98,6 +102,9 @@ try {
     </div>
 
     <div class="floating bl">
+      <button class="chip disclose" id="b-tools" aria-pressed="false"
+              aria-expanded="false" aria-controls="tools-tray">Camera &amp; tools</button>
+      <div class="traywrap" id="tools-tray">
       <div class="seg" role="group" aria-label="Camera">
         <button data-cam="follow" aria-pressed="true" title="Keep the animal in frame">Follow</button>
         <button data-cam="free" aria-pressed="false" title="Stay put; drag to pan">Free</button>
@@ -120,6 +127,7 @@ try {
         <button data-drop="repellent" aria-pressed="false" aria-label="Drop repellent"
                 title="Double-click drops a dose of repellent">Repellent</button>
       </div>
+      </div>
     </div>
 
     <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop &middot; shift&#8209;drag a worm to move it</span>
@@ -132,6 +140,12 @@ try {
            can read. Arrow keys walk the grid; Enter plots, or ablates in ablate mode. -->
       <div class="pbody"><canvas id="c-neurons" tabindex="0" role="application"
            aria-label="Nervous system: 302 neurons, head to tail. Arrow keys to inspect, Enter to plot."></canvas></div>
+      <!-- Where Plot/Ablate/Restore LIVE on touch layouts: on phones the footer sits a
+           full screen away from this panel, and actions on a selection belong beside
+           the thing selected (#163). controls.js moves the buttons here on coarse
+           pointers and returns them to the footer beside a mouse; empty and unstyled
+           when unused. -->
+      <div class="pactions" id="neuron-actions"></div>
     </section>
 
     <section class="panel" data-panel="muscle" style="--basis:104px">
