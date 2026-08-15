@@ -26,7 +26,14 @@ function preserving() { return active !== null; } // kept private until a caller
 void preserving;
 
 export function startPreserve() {
-  if (active || !S.engine || !S.worms.length) return false;
+  // Say no OUT LOUD (#138): a silently-discarded click is a button the user cannot
+  // distinguish from a broken one. The socket feed has no engine to read genes and
+  // morphology out of, so the button is disabled with a reason in app.js's ?server
+  // branch; these warnings cover the remaining arms (capture already running, no
+  // animal yet).
+  if (active) { console.warn('preserve: a capture is already running'); return false; }
+  if (!S.engine) { console.warn('preserve: no local engine (socket mode)'); return false; }
+  if (!S.worms.length) { console.warn('preserve: no animal on the plate yet'); return false; }
   active = { frames: [], lastT: -1 };
   const b = el('b-preserve');
   if (b) { b.disabled = true; b.textContent = 'Preserving…'; }
@@ -38,7 +45,11 @@ export function samplePreserve() {
   if (!active) return;
   const f = S.worms[S.focus];
   if (!f) { finish(null); return; }                    // the subject died mid-capture
-  if (f.t < active.lastT) { active.frames = []; }      // dish was reset under us
+  // A reset starts the capture over: frames AND the timestamp. Clearing only the frames
+  // (#137) left lastT at its pre-reset value, so the guard below rejected every sample
+  // until dish time climbed back past it -- the button sat wedged at "Preserving…" for
+  // exactly the dish time at the moment of reset (measured: 301 s for a reset at 300 s).
+  if (f.t < active.lastT) { active.frames = []; active.lastT = -1; }
   if (active.lastT >= 0 && f.t - active.lastT < SAMPLE_DT) return;
   active.lastT = f.t;
 

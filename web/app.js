@@ -98,6 +98,13 @@ async function switchDish(name) {
 
 if (location.search.includes('server')) {
   el('dish-tabs').style.display = 'none';    // the socket feeds one animal; no second dish
+  // Preserve needs the local engine to read genes and morphology; over the socket there
+  // is none, and an enabled button that silently does nothing is worse than a disabled
+  // one that says why (#138).
+  const pv = el('b-preserve');
+  pv.disabled = true;
+  pv.title = 'Preserving needs the local engine; the ?server feed has no worm state '
+    + 'to read. Load the viewer without ?server to preserve specimens.';
   connect();
 } else {
   S.switchDish = switchDish;
