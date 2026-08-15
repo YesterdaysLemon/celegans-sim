@@ -61,7 +61,7 @@ import dataclasses
 
 import numpy as np
 
-from tools.assays import pooled
+from tools.assays import paired, pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
 from worm.params import Params
@@ -191,9 +191,16 @@ def main():
             st, tau, st * tau, mean(g, "freq"), mean(g, "twi"),
             mean(g, "wavelength"), len(g))
         if shipped:
-            line += "   (shipped %+.3f Hz, TWI %+.3f)" % (
-                mean(g, "freq") - mean(shipped, "freq"),
-                mean(g, "twi") - mean(shipped, "twi"))
+            # Differences taken per seed and averaged, not between two pooled means. The
+            # seeds are the same in both arms by construction, so pairing cancels most of
+            # the animal-to-animal variance rather than adding the two arms' -- and it gives
+            # the difference a spread, which is the only thing that makes "same frequency to
+            # well inside the seed scatter" a checkable claim rather than an assertion. See
+            # `tools.assays.paired`.
+            df, df_sd, n = paired(shipped, g, "freq", op="diff")
+            dt_, dt_sd, _ = paired(shipped, g, "twi", op="diff")
+            line += "   (shipped %+.3f +-%.3f Hz, TWI %+.3f +-%.3f, %d paired)" % (
+                df, df_sd, dt_, dt_sd, n)
         print(line)
     if shipped:
         print("\n  Shipped (1 stage, 0.28 s): %.3f Hz, TWI %+.3f, n=%d."

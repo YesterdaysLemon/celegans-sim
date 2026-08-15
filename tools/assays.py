@@ -264,6 +264,60 @@ def pooled(fn, jobs, procs=10, timeout=2400):
     return [out[i] for i in sorted(out)]
 
 
+def paired(cell_a, cell_b, field, op="ratio"):
+    """Compare two cells of a sweep seed by seed, and return (mean, sd, seeds).
+
+    `cell_a` and `cell_b` are lists of result dicts carrying a `seed` key -- the two arms of
+    a comparison, the shape every sweep in tools/ already builds. The statistic is computed
+    *within* each seed and those values are then averaged, rather than the two cells being
+    pooled first and one pooled number divided by the other.
+
+    WHY THIS EXISTS, AND WHY IT IS NOT A STYLE PREFERENCE.
+
+    Every span this project has published -- the cascade's 1.27x against 1.29x, the lag
+    sweep's 1.29x to 1.40x, force-velocity's 1.27x to 1.17x -- was a ratio of two pooled
+    means, and a ratio of two means has **no error bar at all**. `tools/reach_span.py` was
+    the first to pair, and the typical seed sd it found is **+-0.44** on a quantity whose
+    interesting differences are 0.02 to 0.10. So those orderings were never resolvable, and
+    nothing said so, because the number had no spread attached for anyone to look at.
+
+    Three separate defects, all cured by pairing, and the third is the one that bites:
+
+      * **no spread.** A bare ratio invites a reader to believe its last digit. Averaging
+        per-seed values gives a sd for free, which is the only thing that makes a threshold
+        like `2*sd` meaningful rather than decorative;
+      * **animal-to-animal variance stays in.** The seeds are the same in both arms by
+        construction -- `tools/compare.py`'s common-random-numbers argument, applied to
+        sweeps -- so pairing cancels most of the variance instead of adding the two arms';
+      * **survivorship bias.** Pooling lets the two ends come from different seed subsets.
+        When a buffer trial diverges and its agar partner does not, the numerator loses a
+        seed the denominator keeps, and the ratio silently becomes a comparison between
+        different animals. Divergence is not hypothetical here: `tools/force_velocity.py`
+        records buffer blowing up at every value it first tried.
+
+    `op` is "ratio" for b/a and "diff" for b-a. Ratios skip seeds whose denominator is
+    within 1e-12 of zero rather than returning an infinity that `np.nanmean` will not
+    filter. Seeds present in only one cell are skipped entirely and the returned count says
+    how many actually paired, so a caller can withhold a comparison that lost an arm --
+    which is the point, and is what a pooled ratio can never notice.
+
+    Returns (nan, nan, 0) when nothing pairs.
+    """
+    a = {r["seed"]: r for r in cell_a or ()}
+    b = {r["seed"]: r for r in cell_b or ()}
+    vals = []
+    for s in sorted(set(a) & set(b)):
+        lo, hi = a[s][field], b[s][field]
+        if op == "ratio":
+            if abs(lo) > 1e-12 and np.isfinite(lo) and np.isfinite(hi):
+                vals.append(hi / lo)
+        elif np.isfinite(lo) and np.isfinite(hi):
+            vals.append(hi - lo)
+    if not vals:
+        return float("nan"), float("nan"), 0
+    return float(np.mean(vals)), float(np.std(vals)), len(vals)
+
+
 # ------------------------------------------------------------------------ chemotaxis
 def _clean_plate(attractant=1.0):
     """A plate with one lawn and nothing else -- no obstacles, no repellent, no clutter."""
