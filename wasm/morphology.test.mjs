@@ -115,6 +115,45 @@ test('the clamp holds against wild control points', () => {
   assert.equal(E.getMorph(plain, 0), 1.0);
 });
 
+test('development scales the phenotype and NEVER the genome', () => {
+  // The seed-41 lesson, pinned: growth once scaled the control points themselves, so
+  // eggs inherited their parent's age and generations shrank 0.55x each. Genotype and
+  // development are separate runtime state now, and this is the contract.
+  const E = engine();
+  const w = E.createWorm(11, 0, 0, 0);
+  const genome = [1.6, 1.4, 1.2, 1.0, 0.9, 1.1, 1.3, 1.5, 1.2, 1.0, 0.8, 0.9];
+  E.setMorphology(w, ...genome);
+  E.setDevelopment(w, 0.5);
+  assert.equal(E.getDevelopment(w), 0.5);
+  for (let i = 0; i < 12; i++) {
+    assert.equal(E.getMorph(w, i), genome[i],
+      `development leaked into genome control ${i}`);
+  }
+  // A juvenile laid this egg; the child must inherit the GENOME, at adult development.
+  const egg = E.forceLay(w);
+  assert.ok(egg >= 0);
+  const kid = E.hatchEgg(egg, 99, 0.0);
+  assert.ok(kid >= 0);
+  assert.equal(E.getDevelopment(kid), 1.0, 'age must not be heritable');
+  for (let i = 0; i < 12; i++) {
+    assert.equal(E.getMorph(kid, i), genome[i],
+      `the egg carried a developmental state at control ${i}`);
+  }
+  // And development does real mechanical work: a half-scale animal moves differently.
+  const run = (dev) => {
+    const E2 = engine();
+    const a = E2.createWorm(7, 0, 0, 0);
+    E2.setMorphology(a, ...genome);
+    E2.setDevelopment(a, dev);
+    E2.stepAll(6 * STEPS_PER_S);
+    const f64 = new Float64Array(E2.memory.buffer);
+    return [f64[(E2.ptrNodesX(a) >> 3) + 24], f64[(E2.ptrNodesY(a) >> 3) + 24]];
+  };
+  const [ax, ay] = run(1.0), [bx, by] = run(0.5);
+  assert.ok(Math.hypot(ax - bx, ay - by) > 0.05,
+    'a juvenile should not move exactly like the adult of the same genome');
+});
+
 test('eggs carry a snapshot: hatchlings develop it, later parent mutation cannot reach it', () => {
   const E = engine();
   const w = E.createWorm(9, 0, 0, 0);

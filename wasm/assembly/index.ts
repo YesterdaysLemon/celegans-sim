@@ -425,11 +425,16 @@ class World {
     return true;
   }
 
-  /* A finite food deposit: `amount` spread evenly over the in-dish cells within r of
-   * (x, y). Two passes -- count, then credit -- so the division is by the cells that
-   * will actually take the food and the sum over the plate rises by exactly `amount`
-   * (to rounding) unless the circle falls entirely off the dish. */
+  /* A finite deposit into any field: `amount` spread evenly over the in-dish cells
+   * within r of (x, y). Two passes -- count, then credit -- so the division is by the
+   * cells that will actually take it and the sum over the plate rises by exactly
+   * `amount` (to rounding) unless the circle falls entirely off the dish. Food deposits
+   * are corpses and lawn regrowth; repellent deposits are the rot miasma, which the
+   * field's own decay then fades. */
   deposit(x: f64, y: f64, r: f64, amount: f64): f64 {
+    return this.depositInto(this.food, x, y, r, amount);
+  }
+  depositInto(target: StaticArray<f64>, x: f64, y: f64, r: f64, amount: f64): f64 {
     const g = this.g;
     const i0 = <i32>Math.max(0, Math.floor((y - r + this.extent) / this.h));
     const i1 = <i32>Math.min(<f64>(g - 1), Math.floor((y + r + this.extent) / this.h));
@@ -454,7 +459,7 @@ class World {
         const dx = cx - x, dy = cy - y;
         if (dx * dx + dy * dy <= r * r
             && Math.sqrt(cx * cx + cy * cy) <= this.extent) {
-          unchecked(this.food[i * g + j] += per);
+          unchecked(target[i * g + j] += per);
         }
       }
     }
@@ -1030,6 +1035,15 @@ class Worm {
    * (five dense n x n arrays), which is why these are built on demand, not per worm. */
   ownMorph: bool = false;
   morphCtl: StaticArray<f64> = new StaticArray<f64>(12);   // clamped control points
+  /* Developmental scale: PHENOTYPE, never inherited. morphCtl is the genome -- it is
+   * what eggs snapshot -- and this multiplies the BUILT mechanics only, so a juvenile
+   * is a scaled-down copy of the adult its genes describe. The first draft of growth
+   * scaled morphCtl itself, and eggs then inherited their parent's developmental state:
+   * a juvenile's child hatched with juvenile-scaled genes and shrank again, 0.55 per
+   * generation, measured before this field existed (arena shakedown, seed 41: width
+   * mean 0.35 by t=90 against a juvenile floor of 0.55). Development is not heritable,
+   * and now it cannot be. */
+  morphDev: f64 = 1.0;
   mRho: StaticArray<f64> | null = null;        // n           scaled drag weights
   mMaskRho: StaticArray<f64> | null = null;    // n*n
   mMaskSqrt: StaticArray<f64> | null = null;   // n*n
@@ -2275,6 +2289,14 @@ export function addFood(x: f64, y: f64, r: f64, d: f64, att: f64, ls: f64): void
 export function depositFood(x: f64, y: f64, r: f64, amount: f64): f64 {
   return world.deposit(x, y, r, amount);
 }
+/* The same finite-deposit mechanism aimed at the repellent field: the corpse-rot
+ * miasma. Unlike food, the repellent field diffuses and decays in stepFields, so a
+ * deposit here spreads and fades on its own -- a rotting body fouls its patch of plate
+ * for a while and the plate forgets. Conservation contract is depositFood's at the
+ * moment of deposit: returns what the plate took, 0 if the circle misses the dish. */
+export function depositRepellent(x: f64, y: f64, r: f64, amount: f64): f64 {
+  return world.depositInto(world.repellent, x, y, r, amount);
+}
 /* How many lawns the plate is carrying, and how many it turned away. A patch is a megabyte
  * of cached field shape now, so `addFood` can refuse (see MAX_FOOD_PATCHES); a caller that
  * draws a marker for every lawn it asked for -- the viewer does -- has to be able to find
@@ -2661,12 +2683,31 @@ function morphProfile(ctl: StaticArray<f64>, base: i32, s: f64): f64 {
  * sqrt(w_k) -- the mask that shares ONE factor of rho between two lever arms -- and
  * rho_max_off by the width at the rearmost of the two joints, mirroring
  * Body._precompute_masks line for line. */
-function applyMorphology(wm: Worm, ctl: StaticArray<f64>): void {
+function applyMorphology(wm: Worm, ctl: StaticArray<f64>, dev: f64): void {
   const n = G.N_LINKS, J = G.N_JOINTS;
   for (let i = 0; i < 12; i++) {
     unchecked(wm.morphCtl[i] = clamp(unchecked(ctl[i]), 0.25, 4.0));
   }
-  const c = wm.morphCtl;
+  wm.morphDev = clamp(dev, 0.05, 1.0);
+  /* The effective controls the mechanics are built from: genome times development --
+   * ALLOMETRICALLY, because a uniform scale is mechanically invisible at zero Reynolds
+   * (muscle moment, elastic torque and drag all scaled by s leaves qdot = D^-1 F
+   * exactly where it was; measured by this file's own test before this comment was
+   * written). Development therefore scales the three profiles by different powers of
+   * size, the way bodies do: width (drag goes with perimeter) by s, muscle (force goes
+   * with cross-section) by s^2, stiffness (a pressurised shell) by s^3. A juvenile is
+   * weak and floppy RELATIVE to its drag -- genuinely disadvantaged in the intake
+   * contest -- and grows into strength. All still clamped to the genome's own
+   * envelope. The pharynx does not scale: a juvenile eats at adult rate, a stated
+   * first cut. */
+  const d1 = wm.morphDev;
+  const d2 = d1 * d1;
+  const d3 = d2 * d1;
+  const c = new StaticArray<f64>(12);
+  for (let i = 0; i < 12; i++) {
+    const pow = i < 4 ? d3 : i < 8 ? d1 : d2;
+    unchecked(c[i] = clamp(unchecked(wm.morphCtl[i]) * pow, 0.25, 4.0));
+  }
 
   const rho = new StaticArray<f64>(n);
   const maskRho = new StaticArray<f64>(n * n);
@@ -2731,8 +2772,19 @@ export function setMorphology(w: i32,
   unchecked(ctl[6] = wd2); unchecked(ctl[7] = wd3);
   unchecked(ctl[8] = mu0); unchecked(ctl[9] = mu1);
   unchecked(ctl[10] = mu2); unchecked(ctl[11] = mu3);
-  applyMorphology(byId(w), ctl);
+  const worm = byId(w);
+  applyMorphology(worm, ctl, worm.morphDev);   // setting the genome keeps the age
 }
+/* Developmental scale, phenotype only: rebuilds this animal's mechanics as its genome
+ * times `s`, without touching the genome -- getMorph and the egg snapshot keep
+ * returning the heritable controls. Growth drivers ramp this from a juvenile fraction
+ * toward 1.0; it clamps at [0.05, 1.0] because development shrinks a body plan, it
+ * does not exceed it. */
+export function setDevelopment(w: i32, s: f64): void {
+  const worm = byId(w);
+  applyMorphology(worm, worm.morphCtl, s);
+}
+export function getDevelopment(w: i32): f64 { return byId(w).morphDev; }
 export function clearMorphology(w: i32): void {
   const wm = byId(w);
   wm.ownMorph = false;
@@ -3225,7 +3277,8 @@ export function hatchEgg(i: i32, seed: i32, heading: f64): i32 {
   /* Inherited morphology develops the same way: the egg's control points are rebuilt
    * into the hatchling's own mechanics through the one builder every path uses. */
   const em = unchecked(world.eggM[i]);
-  if (em !== null) applyMorphology(wm, em);
+  if (em !== null) applyMorphology(wm, em, 1.0);   // genes arrive; age starts at adult
+                                                   // until a growth driver says otherwise
   world.takeEgg(i);
   return id;
 }

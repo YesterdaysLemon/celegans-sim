@@ -21,11 +21,17 @@
 import { LocalEngine } from './local.js';
 import { makeArena } from './arena-policy.js';
 
-/* The browser dish's defaults: metabolism and morphology mutation on, because this dish
- * is the showcase -- the plate economy and the drifting bodies are what it is FOR. The
- * node driver defaults both off for controlled experiments; that asymmetry is policy
- * surface, not drift, and both read the same makeArena. */
-const BROWSER_OPTS = { metab: 0.1, mmut: 0.08, seed: 1 };
+/* The browser dish's defaults: metabolism, morphology mutation, corpse rot, lawn
+ * regrowth and juvenile development all on, because this dish is the showcase -- the
+ * plate economy and the drifting bodies are what it is FOR. The tax is set to BITE
+ * (metabT 150 against the original 240; the owner watched a dish idle at energy 0.99
+ * with zero starvations and called it correctly: too much food on average), and the
+ * plate is throughput-limited -- a slow regrowth tap against a stock ten camped animals
+ * can outdrink. The node driver defaults everything off for controlled experiments and
+ * replayable recorded runs; that asymmetry is policy surface, not drift, and both read
+ * the same makeArena. */
+const BROWSER_OPTS = { metab: 0.1, metabT: 150, mmut: 0.08, seed: 1,
+                       rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90 };
 
 const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
 
@@ -82,6 +88,9 @@ export class ArenaEngine extends LocalEngine {
       if (at >= 0) this.worms.splice(at, 1);
       this._widthCache.delete(id);
     };
+    // A growth step rescales the animal's whole morphology, so its cached width profile
+    // is stale the moment it fires.
+    this.arena.onGrowth = (id) => this._buildWidth(id);
     this.meta.world.patches = this.arena.seedPlate();
     this.arena.spawnFounders();
   }
@@ -96,8 +105,11 @@ export class ArenaEngine extends LocalEngine {
    * and draw at the anatomy's own radius. */
   _buildWidth(id) {
     if (!this.E.hasOwnMorphology(id)) return;
-    const cp = [this.E.getMorph(id, 4), this.E.getMorph(id, 5),
-                this.E.getMorph(id, 6), this.E.getMorph(id, 7)];
+    // Drawn width is the EFFECTIVE width: genome times developmental scale, matching
+    // what the mechanics were built from -- a juvenile looks as small as it is.
+    const dev = this.E.getDevelopment(id);
+    const cp = [this.E.getMorph(id, 4) * dev, this.E.getMorph(id, 5) * dev,
+                this.E.getMorph(id, 6) * dev, this.E.getMorph(id, 7) * dev];
     const n = this.nNodes;
     const w = new Float32Array(n);
     for (let k = 0; k < n; k++) {
@@ -118,8 +130,7 @@ export class ArenaEngine extends LocalEngine {
       this.simT += ran;
       if (this.simT - this._policyT >= 0.25) {
         this._policyT = this.simT;
-        this.arena.tick(this.simT);
-        this.arena.fadeCorpses();
+        this.arena.tick(this.simT);   // reap, hatch, regrow, rot, grow
       }
       if (!this._intakeT || this.simT - this._intakeT > 8) {
         this._intakeT = this.simT;

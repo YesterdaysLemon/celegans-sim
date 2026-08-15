@@ -47,8 +47,9 @@ export function drawDish() {
   // drawn over the worm that laid it reads as something the worm is carrying.
   if (S.layers.eggs && S.eggs && S.eggs.n) drawEggs(ctx, X, Y, scale);
 
-  // Corpse markers, arena only: a fading amber bloom where a body became food. The food
-  // itself is real and stays in the food field until eaten -- only the marker fades.
+  // Corpse markers, arena only: a fading amber bloom where a body became food -- and a
+  // soured olive one once it rots, when the policy has vented its repellent miasma. The
+  // food itself is real and stays in the food field until eaten; only the marker fades.
   if (S.layers.corpses && S.corpses && S.corpses.length) {
     const now = S.frame ? S.frame.t : 0;
     for (const c of S.corpses) {
@@ -56,9 +57,10 @@ export function drawDish() {
       if (age < 0 || age > 90) continue;
       const a = 0.5 * (1 - age / 90);
       const R = 2.0 * scale;
+      const tint = c.rotted ? '150,155,80' : '217,164,65';
       const g = ctx.createRadialGradient(X(c.x), Y(c.y), 0, X(c.x), Y(c.y), R);
-      g.addColorStop(0, `rgba(217,164,65,${a})`);
-      g.addColorStop(1, 'rgba(217,164,65,0)');
+      g.addColorStop(0, `rgba(${tint},${a})`);
+      g.addColorStop(1, `rgba(${tint},0)`);
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(X(c.x), Y(c.y), R, 0, Math.PI * 2); ctx.fill();
     }
