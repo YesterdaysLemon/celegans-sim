@@ -60,9 +60,9 @@ same animal.
 | Curvature, r.m.s. | **4.53 ± 0.05 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
 | Curvature, peak | **13.2 ± 1.2 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
 | Wave direction | **head → tail** | head → tail | — |
-| Muscle resting potential | **−31 to −24 mV** | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
-| Resting potentials | **−62 to −12 mV** | −75 to −25 mV | several, see `params.py` |
-| Swimming efficiency U/c | **0.076** | 0.08 ± 0.01 | Shen et al. 2012 |
+| Muscle resting potential | **−22.0 mV** *(a point, not a range)* | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
+| Resting potentials | **−62 to −12 mV**, median −39 | −75 to −25 mV | several, see `params.py` |
+| Swimming efficiency U/c | **0.051 ± 0.002** *(low)* | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
 | Crawling speed (net) | **0.309 ± 0.051 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
@@ -71,10 +71,13 @@ same animal.
 | Undulation frequency, agar | **0.66 ± 0.01 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
 | Wavelength, agar | **0.86 ± 0.02 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
 
-Curvature, wave direction and the membrane potentials land on the measured values; the
-gait's timing does not, and [docs/model.md](docs/model.md) says exactly how far off and
-why — including a long section titled *what it does not get right*, kept in front rather
-than buried, because a simulation that oversells itself is worse than useless.
+Curvature, wave direction and the neuron resting potentials land on the measured values;
+the muscle rest is a point at `v_half` by construction and sits 2 mV shy of the band, the
+swimming efficiency runs low, and the gait's timing is off — and
+[docs/model.md](docs/model.md) says exactly how far and why, including a long section
+titled *what it does not get right*, kept in front rather than buried, because a
+simulation that oversells itself is worse than useless. (Three of these rows spent months
+quoting numbers no tool had produced; the correction is part of the record there too.)
 
 ## Two tracks, never blurred
 
