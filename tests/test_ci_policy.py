@@ -280,11 +280,33 @@ NO_CI_NEEDED = {
         "later and blaming the wrong change. In practice the archive is append-only "
         "history and should not drift at all.",
     ".gitignore": "affects no job's inputs",
+    ".claude/settings.json": "agent-harness configuration -- registers the SessionStart "
+                             "hook. Nothing in the suite or the viewer reads it; it "
+                             "configures the tool that edits the repo, not the repo.",
+    ".claude/hooks/session-start.sh": "agent-harness configuration -- the stale-checkpoint "
+                                      "guard for remote containers. Runs before a session, "
+                                      "never inside any job.",
+    "docs/niche-museum.md": "prose -- a pointer to web/museum.md, where the catalogue "
+                            "lives so the site can serve it. The content IS gated at the "
+                            "new address: tools/smoke_web.mjs renders museum.html from "
+                            "web/museum.md and fails if the wings do not appear, and "
+                            "web/** schedules the viewer workflow.",
     "Dockerfile": "not built by any workflow; the cache-policy job runs nginx:alpine "
                   "directly against docker/nginx.conf",
     "tools/fetch_raw.sh": "fetches the raw upstream sources by hand; the pinned copies "
                           "under data/ are what CI builds from",
 }
+
+# The design docket: an owner-commissioned exploration of five chrome languages, each a
+# self-contained demo with fake data and no imports -- deliberately disconnected from the
+# app precisely so that trying a look cannot break the viewer. Nothing a job could
+# usefully execute; if one is ever adopted, the adoption lands in web/ where every gate
+# already applies.
+NO_CI_NEEDED.update({
+    f"docs/design/{name}": "design-language demo; see the docket block comment above"
+    for name in ("DOCKET.md", "01-monograph.html", "02-cathode.html", "03-poster.html",
+                 "04-observatory.html", "05-fieldnotes.html")
+})
 
 
 def _tracked_files() -> list[str]:
