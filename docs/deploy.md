@@ -102,19 +102,21 @@ are **two ways to feed it**, and the default is the one with no server in it:
 Everything downstream of `send()` is shared: the two paths differ in where the numbers come
 from and in nothing else. [web/README.md](../web/README.md) has the module map.
 
-**The dish has three looks**, and they are more than a palette swap — each is a different
-claim about what you are looking at:
+**The viewer has two modes**, and each binds a dish painter to a chrome language — a
+different claim about what you are looking at, spoken consistently from plate to panel:
 
-- **Digital** — this is data. Near-black plate, a fixed grid, the body tinted by signed
-  curvature so the travelling wave reads as a wave rather than a wiggle.
-- **Cartoon** — this is a diagram. Flat fills, a heavy ink outline, segment ticks and one
-  obvious eye. Nothing is shaded, so nothing implies depth the model does not have.
-- **Realistic** — this is an animal on a plate. Grainy warm agar with a vignette, a
-  translucent amber body with a gut line, a specular flank, a contact shadow, and the
-  pharynx visible as a paler bulb behind the nose.
+- **Dark** — this is data, on an instrument. Near-black plate, a fixed grid, the body
+  tinted by signed curvature so the travelling wave reads as a wave rather than a wiggle;
+  around it, terminal chrome — monospace, phosphor-green actives, corner-ticked panels.
+- **Light** — this is an animal, in a paper. Grainy warm agar with a vignette, a
+  translucent amber body with a gut line, a specular flank, a contact shadow, the pharynx
+  a paler bulb behind the nose; around it, paper chrome — serif, ink rules, small-caps
+  panel titles.
 
-Only the dish changes. The panels stay in the data palette in all three, because they are
-measurements and should not be dressed up.
+The *data* does not change with the mode: series colours, the diverging curvature ramp
+and the sequential activation ramp are identical in both, because a measurement should
+not change meaning with the decor. The choice persists in the browser and the museum page
+follows it. (A third look, cartoon, was retired when the modes landed.)
 
 All three chemical fields draw **in the dish** and composite by weight rather than
 painting over one another, so a lawn sitting inside an attractant gradient shows as both —
@@ -126,7 +128,7 @@ The camera **follows** the animal with a deadzone, or you can **drag to pan** an
 detaches by itself; scroll or the zoom buttons change the window, and the minimap shows
 where that window sits in the dish. Every side panel collapses from its header, and the
 whole rail folds away for a full-width view of the animal. `f` toggles follow, `h` hides
-the rail, `1`/`2`/`3` switch the look.
+the rail, `1`/`2` switch the mode.
 
 Four measurement views: all 302 neurons ordered head to tail and coloured by activation,
 hover for identity and click to plot; the four muscle quadrants; a scrolling curvature

@@ -1,19 +1,24 @@
-/* The three looks of the dish.
+/* The two looks of the dish, one per mode.
  *
  * They are not a palette swap. Each is a different claim about what you are looking at:
  *
  *   digital     this is data. Near-black plate, a fixed grid, the body tinted by signed
- *               curvature so the travelling wave reads as a wave.
- *   cartoon     this is a diagram. Flat fills, heavy outlines, one obvious eye. Nothing
- *               is shaded, so nothing suggests depth that the model does not have.
+ *               curvature so the travelling wave reads as a wave. The dark mode's dish,
+ *               and deliberately untouched by the mode work: the plate rendering is the
+ *               project's face and is locked.
  *   realistic   this is an animal on a plate. Warm agar, a translucent amber body with a
- *               gut line and a specular edge, bacterial lawn as a mottled film.
+ *               gut line and a specular edge, bacterial lawn as a mottled film. The
+ *               light mode's dish.
  *
- * Only the dish changes. The panels stay in the data palette in every mode, because they
- * are measurements and should not be dressed up.
+ * A third look, cartoon, lived here until the modes landed -- flat fills, heavy
+ * outlines, one obvious eye. It was retired by the owner (least favourite, and a
+ * two-mode world has no middle slot); the painter went with it. See worm.js.
+ *
+ * Only the dish changes with the mode. The panels stay in the data palette in both,
+ * because they are measurements and should not be dressed up.
  *
  * This module holds the *palettes* only. The body painters live in worm.js and are keyed
- * by the same three names; keeping them apart is what lets dish.js depend on both without
+ * by the same names; keeping them apart is what lets dish.js depend on both without
  * either depending on the other.
  */
 
@@ -58,22 +63,6 @@ const THEMES = {
       food:       { tint: [25, 158, 112], alpha: 0.80, gamma: 2.1 },
       repellent:  { tint: [208, 59, 59],  alpha: 0.80, gamma: 2.1 },
     },
-  },
-
-  cartoon: {
-    plate: '#f2ead8',
-    rim: () => '#2b2722',
-    gridMajor: 'rgba(43,39,34,0.20)',
-    gridMinor: 'rgba(43,39,34,0.08)',
-    trail: 'rgba(43,39,34,0.22)',
-    obstacle: ['#cbbfa6', '#2b2722'],
-    egg: ['#fdf6e3', '#2b2722'],
-    fields: {
-      attractant: { tint: [120, 176, 240], alpha: 0.55, gamma: 1.3 },
-      food:       { tint: [124, 196, 122], alpha: 0.80, gamma: 0.75 },
-      repellent:  { tint: [232, 118, 108], alpha: 0.72, gamma: 0.9 },
-    },
-    dark: true,          // chrome-on-light: the scale bar and minimap need ink, not chalk
   },
 
   realistic: {

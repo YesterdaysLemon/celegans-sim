@@ -13,6 +13,18 @@
      The chrome is the shared stylesheet, so the museum reads as a wing of the same
      instrument. -->
 <link rel="stylesheet" href="style.css">
+<!-- The museum follows the viewer's mode -- one localStorage key, read before first
+     paint so a light-mode visitor never sees the dark hall flash. There is no toggle
+     here; you choose the mode in the viewer and the museum agrees. -->
+<script>
+try {
+  var m = localStorage.getItem('celegans-mode');
+  if (m !== 'light' && m !== 'dark') {
+    m = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  document.documentElement.dataset.mode = m;
+} catch (e) { document.documentElement.dataset.mode = 'dark'; }
+</script>
 <style>
   #app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "dish";
          grid-template-rows: auto minmax(0, 1fr); }
@@ -50,6 +62,12 @@
     text-decoration: none; white-space: nowrap;
   }
   .doors a:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+  /* The paper hall: the shared variables do most of it; these are the local rules where
+     a hard-coded dark value would otherwise survive into light mode. Amber headings
+     darken to an ink-compatible ochre -- #fab219 on cream is a whisper. */
+  html[data-mode="light"] #hall h2 { color: #9a6a10; }
+  html[data-mode="light"] .doors a:hover { background: rgba(34,29,21,0.08); }
+  html[data-mode="light"] .jar canvas { background: #e9e1cf; }
 </style>
 </head>
 <body>

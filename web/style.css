@@ -4,11 +4,24 @@
    (neuron activation, muscle tension), diverging blue-red with a neutral grey midpoint
    for signed curvature, and the fixed categorical order for identity.
 
-   The dish has three looks -- digital, cartoon, realistic -- and they are more than a
-   palette swap: each is a different claim about what you are looking at. Digital says
-   "this is data", cartoon says "this is a diagram", realistic says "this is an animal on
-   a plate". The chrome around the dish stays the same in all three, because the controls
-   are not part of the illusion. */
+   Two modes, one switch (html[data-mode], set by controls.js -- on the root element,
+   not body, because the canvas renderers read their colours off documentElement's
+   computed style and must see the light palette too). A mode binds a dish painter to a
+   chrome language:
+
+     dark    the digital plate under terminal chrome -- monospace, phosphor-green
+             actives, corner-ticked panels, a blinking cursor in the brand. The plate
+             rendering itself is locked and untouched; the terminal look is for the
+             instruments around it.
+     light   the realistic plate under paper chrome -- serif, ink on paper, hairline
+             and double rules, small-caps panel titles. A white paper about an animal,
+             with the animal alive in the middle of it.
+
+   The chrome speaks the mode's language; the data does not. Series colours, the
+   diverging curvature ramp and the sequential activation ramp are identical in both
+   modes, because a measurement should not change meaning with the decor. Dark is the
+   default and everything below is written in it; the light block at the end of the
+   file re-states only what changes. */
 
 :root {
   color-scheme: dark;
@@ -37,9 +50,14 @@
   --dorsal:  #e66767;    /* diverging warm pole */
   --ventral: #3987e5;    /* diverging cool pole */
 
-  --radius: 10px;
+  /* The chrome's active colour -- pressed buttons, focus rings, the slider thumb. A
+     phosphor green that is deliberately NOT one of the six series colours: a control
+     that is on must never look like a data series that is high. */
+  --accent: #3ddc97;
+
+  --radius: 8px;
   --gap: 10px;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -80,6 +98,19 @@ header {
 
 .brand { display: flex; align-items: baseline; gap: 10px; }
 .brand h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+/* The terminal's cursor, parked after the brand: the one animated flourish the dark
+   chrome allows itself. steps(1) so it blinks rather than fades -- a cursor that fades
+   is a loading spinner. Removed under reduced motion and in light mode. */
+.brand h1::after {
+  content: "\258C";              /* left half block */
+  margin-left: 5px;
+  color: var(--accent);
+  animation: brand-cursor 1.1s steps(1, end) infinite;
+}
+@keyframes brand-cursor { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .brand h1::after { animation: none; opacity: 1; }
+}
 .brand .sub { font-size: 12px; color: var(--text-muted); }
 /* One instrument, two plates. The dish tabs live in the brand row; which dish is on
  * stage is the app's data-dish attribute, and everything arena-specific -- the Track B
@@ -98,8 +129,9 @@ header {
 }
 .museum-door:hover { background: rgba(217, 164, 65, 0.12); color: var(--text-primary); }
 #app:not([data-dish="arena"]) .arena-only { display: none; }
-#dish-tabs button[aria-pressed="true"] { background: var(--series-1); }
-#app[data-dish="arena"] #dish-tabs button[aria-pressed="true"] { background: var(--warning); color: #1c1913; }
+/* The arena tab keeps its solid amber when selected -- Track B's colour, a fence the
+   mode work does not move -- while the animal tab takes the ordinary phosphor active. */
+#app[data-dish="arena"] #dish-tabs button[aria-pressed="true"] { background: var(--warning); color: #1c1913; box-shadow: none; }
 
 .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 
@@ -118,6 +150,9 @@ header {
 .stat .value {
   font-size: 16px; font-weight: 600; line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  /* A faint phosphor bloom on the readouts -- the terminal look at its most restrained.
+     The text stays white; only the halo is green. Light mode removes it. */
+  text-shadow: 0 0 8px rgba(61, 220, 151, 0.20);
 }
 .stat .value small { font-size: 10px; font-weight: 500; color: var(--text-muted); }
 
@@ -206,7 +241,11 @@ header {
   border: 0; background: transparent; border-radius: 6px;
   padding: 4px 10px; font-size: 11px; color: var(--text-secondary);
 }
-.seg button[aria-pressed="true"] { background: var(--series-1); color: #fff; }
+.seg button[aria-pressed="true"] {
+  background: rgba(61, 220, 151, 0.14);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(61, 220, 151, 0.45);
+}
 .seg button.ghost { color: var(--text-muted); }
 .seg button.ghost:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
 
@@ -277,6 +316,21 @@ aside {
 .panel.collapsed { flex: 0 0 auto; }
 .panel.collapsed .pbody { display: none; }
 
+/* Corner ticks: the terminal chrome's registration marks, one at the top-left and one
+   at the bottom-right of every instrument panel. Two pseudo-elements, no extra markup;
+   pointer-events off so they never eat a click meant for the header. Light mode drops
+   them -- paper has rules, not ticks. */
+.panel::before, .panel::after {
+  content: "";
+  position: absolute;
+  width: 9px; height: 9px;
+  border: 0 solid rgba(61, 220, 151, 0.45);
+  pointer-events: none;
+  z-index: 2;
+}
+.panel::before { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.panel::after  { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
 .phead {
   all: unset;
   display: flex; align-items: center; gap: 7px;
@@ -331,13 +385,15 @@ button {
 }
 button:hover { background: #2a2a28; color: var(--text-primary); }
 button[aria-pressed="true"] {
-  background: var(--series-1); border-color: var(--series-1); color: #fff;
+  background: rgba(61, 220, 151, 0.14);
+  border-color: rgba(61, 220, 151, 0.55);
+  color: var(--accent);
 }
 button:disabled { opacity: 0.45; cursor: default; }
 button.play { min-width: 74px; font-weight: 600; color: var(--text-primary); }
 .seg button, .chip { cursor: pointer; }
 
-input[type="range"] { width: 116px; accent-color: var(--series-1); }
+input[type="range"] { width: 116px; accent-color: var(--accent); }
 
 /* The scrubber takes whatever width the footer has left. It is the one control here that
    is a position in something rather than a value, so a fixed 116px would make a minute of
@@ -464,7 +520,7 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
    panel headers use `all: unset`, which throws the focus ring away with everything else.
    One rule, applied to all of them, so tabbing through the viewer is followable. */
 :where(button, [tabindex], input, .phead):focus-visible {
-  outline: 2px solid var(--series-1);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -511,3 +567,116 @@ input[type="range"] { width: 116px; accent-color: var(--series-1); }
                   border-radius: 2px; overflow: hidden; }
 #senses .s-fill { display: block; height: 100%; border-radius: 2px;
                   transition: width 80ms linear; }
+
+/* --- light mode: the paper chrome -------------------------------------------------- */
+/* Ink on paper around the realistic plate: serif, hairline and double rules, small-caps
+   panel titles, buttons as ink-outlined boxes. Almost everything re-stated here is a
+   custom property, so most of the file above needs no light-mode twin; the handful of
+   structural rules below are the ones where the paper genuinely disagrees with the
+   terminal, plus explicit removals of the terminal's decorations (glow, ticks, cursor).
+
+   The data palette is deliberately NOT re-stated: the six series colours, the diverging
+   curvature poles and the status colours are mid-tone by design and hold on both grounds. */
+html[data-mode="light"] {
+  color-scheme: light;
+
+  --plane:          #f6f1e5;
+  --surface-1:      #fbf8f0;
+  --surface-2:      #efe8d8;
+  --text-primary:   #221d15;
+  --text-secondary: #45403a;
+  --text-muted:     #877f6e;
+  --gridline:       #ddd3bf;
+  --baseline:       #c8bda6;
+  --border:         rgba(34, 29, 21, 0.22);
+
+  /* On paper the accent is the ink itself: an active control is a filled box, not a
+     glowing one. */
+  --accent: #221d15;
+
+  --radius: 4px;
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+}
+
+/* The terminal's decorations, switched off. */
+html[data-mode="light"] .stat .value { text-shadow: none; }
+html[data-mode="light"] .panel::before,
+html[data-mode="light"] .panel::after { content: none; }
+html[data-mode="light"] .brand h1::after { content: none; }
+
+/* The paper's own structure: a double rule under the masthead and over the colophon. */
+html[data-mode="light"] header {
+  border-bottom: 3px double rgba(34, 29, 21, 0.45);
+  padding-bottom: 9px;
+}
+html[data-mode="light"] footer {
+  border: 1px solid var(--border);
+  border-top: 3px double rgba(34, 29, 21, 0.45);
+}
+
+html[data-mode="light"] .phead h2 {
+  text-transform: none;
+  font-variant-caps: small-caps;
+  letter-spacing: 0.09em;
+  font-size: 12.5px;
+}
+
+html[data-mode="light"] button {
+  background: var(--surface-1);
+  border: 1px solid rgba(34, 29, 21, 0.5);
+  border-radius: 3px;
+  color: var(--text-primary);
+}
+html[data-mode="light"] button:hover { background: var(--surface-2); color: var(--text-primary); }
+html[data-mode="light"] button[aria-pressed="true"] {
+  background: #221d15;
+  border-color: #221d15;
+  color: #f6f1e5;
+}
+html[data-mode="light"] button:disabled { opacity: 0.4; }
+
+/* Segmented controls keep their internal buttons borderless -- the ink border belongs
+   to the group -- and a pressed segment is a filled ink box, not a phosphor pane. */
+html[data-mode="light"] .seg {
+  background: rgba(251, 248, 240, 0.92);
+  border-color: rgba(34, 29, 21, 0.35);
+}
+html[data-mode="light"] .seg button { border: 0; background: transparent; color: var(--text-secondary); }
+html[data-mode="light"] .seg button[aria-pressed="true"] {
+  background: #221d15;
+  color: #f6f1e5;
+  box-shadow: none;
+}
+html[data-mode="light"] .seg button.ghost:hover { background: rgba(34, 29, 21, 0.10); color: #221d15; }
+html[data-mode="light"] .zoomrow {
+  background: rgba(251, 248, 240, 0.92);
+  border-color: rgba(34, 29, 21, 0.35);
+}
+html[data-mode="light"] .zoomrow .sq { border: 0; background: transparent; }
+html[data-mode="light"] .zoomrow .sq:hover { background: rgba(34, 29, 21, 0.10); color: #221d15; }
+html[data-mode="light"] .chip {
+  background: rgba(251, 248, 240, 0.92);
+  border-color: rgba(34, 29, 21, 0.30);
+}
+
+/* Track B's amber, darkened to an ochre the cream ground can carry. Only the *chrome*
+   uses of the colour -- the warning line and the arena tab -- not the --warning variable
+   itself, which the charts use as a status colour and which stays put in both modes. */
+html[data-mode="light"] .brand .warn { color: #9a6a10; }
+html[data-mode="light"] #app[data-dish="arena"] #dish-tabs button[aria-pressed="true"] {
+  background: #b98a1e; color: #fff;
+}
+
+html[data-mode="light"] .museum-door { border-color: rgba(160, 110, 20, 0.55); }
+html[data-mode="light"] .museum-door:hover { background: rgba(217, 164, 65, 0.18); color: #221d15; }
+
+html[data-mode="light"] #tooltip {
+  background: #fbf8f0;
+  border-color: rgba(34, 29, 21, 0.4);
+  box-shadow: 0 2px 10px rgba(34, 29, 21, 0.15);
+}
+html[data-mode="light"] #banner { background: rgba(246, 241, 229, 0.96); }
+
+/* The egg swatch is parchment-coloured, which on parchment is invisible. */
+html[data-mode="light"] .sw.egg { background: #a4906a; }
+html[data-mode="light"] .sw.trail { background: #6a6254; }
