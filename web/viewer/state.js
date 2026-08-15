@@ -8,8 +8,11 @@
 
 const css = getComputedStyle(document.documentElement);
 export const C = (name) => css.getPropertyValue(name).trim();
-export const SERIES = [C('--series-1'), C('--series-2'), C('--series-3'),
-                       C('--series-4'), C('--series-5'), C('--series-6')];
+/* Series colours are read PER CALL, not cached at load: the light palette darkens
+ * series-4 for the paper's contrast floor (#157), and a snapshot taken in whichever
+ * mode the page happened to load in would paint the wrong ink after a switch. The
+ * computed-style object is live; the lookup is cheap. */
+export const seriesColor = (i) => C(`--series-${i + 1}`);
 
 export const S = {
   meta: null, frame: null, field: null,

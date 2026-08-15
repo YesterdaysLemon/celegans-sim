@@ -5,7 +5,7 @@
  * nothing about themes and nothing about transports -- they are handed numbers.
  */
 
-import { S, C, el, SERIES, fitCanvas, visible, ablated } from './state.js';
+import { S, C, el, seriesColor, fitCanvas, visible, ablated } from './state.js';
 import { seq, divRgb } from './scales.js';
 
 /* ------------------------------------------------------------------- neurons ------ */
@@ -79,7 +79,7 @@ export function drawNeurons() {
     }
     const sel = S.selected.indexOf(i);
     if (sel >= 0) {
-      ctx.strokeStyle = SERIES[sel]; ctx.lineWidth = 2;
+      ctx.strokeStyle = seriesColor(sel); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 2.2, 0, Math.PI * 2); ctx.stroke();
     } else if (S.hover === i) {
       // The cursor ring in the chrome's own foreground colour: white on the terminal,
@@ -88,7 +88,7 @@ export function drawNeurons() {
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 2.2, 0, Math.PI * 2); ctx.stroke();
     }
   }
-  ctx.fillStyle = C('--text-muted'); ctx.font = '10px system-ui';
+  ctx.fillStyle = C('--text-muted'); ctx.font = C('--font-canvas');
   ctx.fillText('head', 12, h - 4);
   ctx.textAlign = 'right'; ctx.fillText('tail', w - 10, h - 4); ctx.textAlign = 'left';
 }
@@ -135,7 +135,7 @@ export function drawMuscles() {
   const padL = 40, padT = 6, padB = 14, gap = 2;
   const rowH = (h - padT - padB) / 4;
   const cellW = (w - padL - 10) / 24;
-  ctx.font = '10px system-ui';
+  ctx.font = C('--font-canvas');
   quads.forEach((q, r) => {
     ctx.fillStyle = C('--text-muted');
     ctx.fillText(q, 8, padT + rowH * r + rowH / 2 + 3);
@@ -222,7 +222,7 @@ export function drawKymo() {
   const padT = 6, padL = 34, padB = 6;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, padL, padT, w - padL - 8, h - padT - padB);
-  ctx.fillStyle = C('--text-muted'); ctx.font = '10px system-ui';
+  ctx.fillStyle = C('--text-muted'); ctx.font = C('--font-canvas');
   ctx.fillText('head', 4, padT + 8);
   ctx.fillText('tail', 6, h - padB - 1);
 }
@@ -242,7 +242,7 @@ export function drawTraces() {
   ctx.strokeStyle = C('--gridline'); ctx.lineWidth = 1;
   for (const v of [0, -40, -80]) {
     ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(w - padR, Y(v)); ctx.stroke();
-    ctx.fillStyle = C('--text-muted'); ctx.font = '10px system-ui';
+    ctx.fillStyle = C('--text-muted'); ctx.font = C('--font-canvas');
     ctx.fillText(`${v}`, 6, Y(v) + 3);
   }
 
@@ -252,7 +252,7 @@ export function drawTraces() {
   S.selected.forEach((idx, k) => {
     const t = S.traces[k];
     if (!t || !t.length) return;
-    ctx.strokeStyle = SERIES[k]; ctx.lineWidth = 2;
+    ctx.strokeStyle = seriesColor(k); ctx.lineWidth = 2;
     ctx.lineJoin = 'round'; ctx.beginPath();
     for (let i = 0; i < t.length; i++) (i ? ctx.lineTo(X(i), Y(t[i])) : ctx.moveTo(X(i), Y(t[i])));
     ctx.stroke();
@@ -261,12 +261,12 @@ export function drawTraces() {
   // Direct label at the live end of each line, so identity never rests on colour alone.
   labels.sort((a, b) => a.y - b.y);
   let prev = -1e9;
-  ctx.font = '600 10px system-ui';
+  ctx.font = `600 ${C('--font-canvas')}`;
   ctx.textAlign = 'right';
   for (const L of labels) {
     const y = Math.max(prev + 11, Math.max(padT + 9, Math.min(h - padB - 2, L.y)));
     prev = y;
-    ctx.fillStyle = SERIES[L.k];
+    ctx.fillStyle = seriesColor(L.k);
     ctx.fillText(S.meta.neurons[L.idx].name, w - padR - 2, y - 3);
   }
   ctx.textAlign = 'left';

@@ -286,6 +286,54 @@ try {
       check(vp.name, themed.every(Boolean),
             'a mode switch did not carry painter, chrome and persistence together');
 
+      /* #157's contrast floors, measured in the page against the live tokens, in BOTH
+       * modes: sequential extrema and the diverging neutral at >= 3:1 on the panel
+       * surface (graphics), the muted canvas-label ink at >= 4.5:1 (small text), and
+       * every categorical series at >= 3:1. The scales module is imported by URL --
+       * same specifier the app resolves, so it is the same module instance and the
+       * same palette the panels are drawn from. */
+      const contrastRows = await page.evaluate(async () => {
+        const { paletteReport } = await import('./viewer/scales.js');
+        const lum = (rgb) => {
+          const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+          return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+        };
+        const parse = (s) => {
+          const m = s.match(/rgb\((\d+)[, ]+(\d+)[, ]+(\d+)/);
+          if (m) return [+m[1], +m[2], +m[3]];
+          const h = s.replace('#', '');
+          return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+        };
+        const cr = (a, b) => {
+          const la = lum(parse(a)), lb = lum(parse(b));
+          return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+        };
+        const out = [];
+        for (const m of ['dark', 'light']) {
+          document.querySelector(`button[data-mode="${m}"]`).click();
+          const surf = getComputedStyle(document.documentElement)
+            .getPropertyValue('--surface-1').trim();
+          const p = paletteReport();
+          out.push({ m, what: 'seq-lo', cr: cr(p.lo, surf), floor: 3 });
+          out.push({ m, what: 'seq-hi', cr: cr(p.hi, surf), floor: 3 });
+          out.push({ m, what: 'div-mid', cr: cr(p.mid, surf), floor: 3 });
+          const muted = getComputedStyle(document.documentElement)
+            .getPropertyValue('--text-muted').trim();
+          out.push({ m, what: 'canvas-label', cr: cr(muted, surf), floor: 4.5 });
+          for (let i = 1; i <= 6; i++) {
+            const c = getComputedStyle(document.documentElement)
+              .getPropertyValue(`--series-${i}`).trim();
+            out.push({ m, what: `series-${i}`, cr: cr(c, surf), floor: 3 });
+          }
+        }
+        document.querySelector('button[data-mode="dark"]').click();
+        return out;
+      });
+      for (const row of contrastRows) {
+        check(vp.name, row.cr >= row.floor,
+              `${row.m} ${row.what} contrast ${row.cr.toFixed(2)}:1, floor ${row.floor}:1`);
+      }
+
       // The dropper: two bottles, visible, and selecting one changes what double-click
       // does (the state the dblclick handler reads).
       const dropper = await page.evaluate(() => {
