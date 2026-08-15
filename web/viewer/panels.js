@@ -91,7 +91,29 @@ export function drawNeurons() {
   ctx.fillStyle = C('--text-muted'); ctx.font = C('--font-canvas');
   ctx.fillText('head', 12, h - 4);
   ctx.textAlign = 'right'; ctx.fillText('tail', w - 10, h - 4); ctx.textAlign = 'left';
+
+  /* The activity legend (#165): what the colour MEANS, drawn by sampling the same live
+   * seq() the dots were just painted with -- one pixel-column per step -- so it cannot
+   * drift from the renderer and it re-answers on the next frame when the mode flips
+   * the luminance direction. That flip is exactly why it exists: high activity is
+   * lighter than the surface in dark mode and darker in light mode, both correct, and
+   * only a labelled scale makes both readable as the same fact. */
+  const lw = Math.min(90, Math.floor(w * 0.3)), lh = 5;
+  const lx = Math.round((w - lw) / 2), ly = h - 10;
+  for (let i = 0; i < lw; i++) {
+    ctx.fillStyle = seq(i / (lw - 1));
+    ctx.fillRect(lx + i, ly, 1, lh);
+  }
+  ctx.fillStyle = C('--text-muted');
+  ctx.textAlign = 'right'; ctx.fillText('low', lx - 5, h - 4);
+  ctx.textAlign = 'left'; ctx.fillText('high', lx + lw + 5, h - 4);
+  legend = { x0: lx, x1: lx + lw - 1, y: ly + Math.floor(lh / 2) };
 }
+
+/* Where the legend was last drawn, in the canvas's CSS pixels -- for the smoke check
+ * that reads the endpoint pixels back and compares them with seq(0)/seq(1). */
+let legend = null;
+export function activityLegend() { return legend; }
 
 // Hit-test in the neuron panel. Returns an index or null.
 //
