@@ -199,6 +199,10 @@ class Senses:
         self._head_hist = np.zeros((self._head_delay_n + 1, body_n_links - 1))
         self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
+        # The clamp experiment's output channel: a conductance vector when
+        # proprio_conductance > 0, None in current mode. Set by every sense() call;
+        # None here so a reader before the first step sees "off" rather than an error.
+        self.prop_g = None
         # Every one-minus-a-decay below is `-expm1(-x)` rather than `1 - exp(-x)`, and the
         # reason is reproducibility rather than accuracy.
         #
@@ -463,10 +467,26 @@ class Senses:
                 wa = (1.0 - swim) * wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
-        prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
-        if wave_gain < 1.0:
-            prop_I[self._omega_wave_body] *= wave_gain
-        I += prop_I
+        if p.proprio_conductance > 0.0:
+            # THE CLAMP EXPERIMENT (SensoryParams.proprio_conductance): the stretch
+            # receptor as the channel it is. Rectified -- the receptor opens for its
+            # preferred bend and closes otherwise, so nothing here can hyperpolarise --
+            # and saturating in the same tanh the current path uses, so the conductance
+            # is bounded and the adaptation keeps its meaning. The current injection for
+            # the body pools is REPLACED, not supplemented; the engine hands this to
+            # NervousSystem.step as a conductance towards proprio_E_rev, where it shunts
+            # and saturates instead of driving the cell through the rail.
+            g = np.tanh(np.maximum(raw - self.prop_adapt, 0.0)) \
+                * p.proprio_conductance * self.g_scale_prop
+            if wave_gain < 1.0:
+                g[self._omega_wave_body] *= wave_gain
+            self.prop_g = g
+        else:
+            self.prop_g = None
+            prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
+            if wave_gain < 1.0:
+                prop_I[self._omega_wave_body] *= wave_gain
+            I += prop_I
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.

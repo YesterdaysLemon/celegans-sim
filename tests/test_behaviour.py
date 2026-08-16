@@ -863,3 +863,87 @@ def test_the_worm_still_travels_on_a_lawn():
         "on a lawn the animal covered %.2f mm of track and got %.2f mm from where it "
         "started (net/path %.3f): it is thrashing rather than travelling"
         % (path, net, net_path))
+
+
+def test_proprio_conductance_ships_off_and_replaces_the_current_when_on():
+    """The clamp experiment (SensoryParams.proprio_conductance) ships off, and on is a
+    mode switch, not a supplement.
+
+    Off: the default is 0.0, sense() never sets a conductance, and the current path is
+    the shipped one (the conformance gate holds the stronger claim -- the WASM runtime
+    still matches freshly recorded Python trajectories, which it could not if the off
+    state had moved). On: the body proprioceptive current is REMOVED from the returned
+    vector, the conductance appears in its place -- rectified, so nothing in it can
+    hyperpolarise -- and it touches only the cells the receptive fields name.
+    """
+    import dataclasses
+
+    base = Params()
+    assert base.sensory.proprio_conductance == 0.0
+    treatment = dataclasses.replace(
+        base, sensory=dataclasses.replace(base.sensory, proprio_conductance=5.0))
+
+    def drive(sim):
+        # A bent, forward-going animal: enough to make the proprioceptive term real.
+        nodes = sim.body.nodes()
+        curvature = np.linspace(-4.0, 4.0, sim.p.body.n_links - 1)
+        return sim.senses.sense(
+            sim.world, nodes, np.zeros((len(nodes), 2)),
+            curvature, sim.nervous.activation())
+
+    off = Simulation(base, seed=0, world=bare_world(base))
+    on = Simulation(treatment, seed=0, world=bare_world(treatment))
+    I_off, I_on = drive(off), drive(on)
+    assert off.senses.prop_g is None, "the off state grew a conductance"
+    g = on.senses.prop_g
+    assert g is not None and np.all(g >= 0.0), "the stretch channel must rectify"
+    assert float(g.max()) > 0.0, "a bent body opened no channel at all"
+
+    prop_targets = (np.abs(on.senses.W_b).sum(axis=1)
+                    + np.abs(on.senses.W_a).sum(axis=1)) > 0
+    assert np.allclose(g[~prop_targets], 0.0, atol=1e-12), (
+        "the stretch conductance leaked outside the proprioceptive pools")
+    # The current the off animal injects into those pools is gone from the on animal --
+    # replaced, not doubled up. Everyone else's current is untouched.
+    assert np.allclose(I_on[~prop_targets], I_off[~prop_targets], atol=1e-10)
+    assert not np.allclose(I_on[prop_targets], I_off[prop_targets]), (
+        "the on state still injects the body proprioceptive current")
+
+
+def test_proprio_conductance_cannot_pin_the_rail():
+    """The clamp claim itself: a channel drives a cell towards its reversal and never
+    past it, however strong, where a current at the same absurdity pins the v_clamp rail.
+
+    Both arms get a 100x-absurd drive. The current animal reaches the upper rail --
+    that is the saturation v_clamp's comment documents, made deliberate. The
+    conductance animal's proprioceptive pool must stay at its reversal (0 mV) plus
+    whatever the other inputs add, far short of the +45 mV rail: self-limiting by
+    construction, with no tuning doing the limiting.
+    """
+    import dataclasses
+
+    base = Params()
+    hot_I = dataclasses.replace(
+        base, sensory=dataclasses.replace(base.sensory, proprio_gain=3000.0))
+    hot_g = dataclasses.replace(
+        base, sensory=dataclasses.replace(base.sensory, proprio_conductance=500.0))
+
+    def peak_pool_v(p):
+        sim = Simulation(p, seed=0, world=bare_world(p))
+        pool = np.unique(np.concatenate(
+            (sim.senses.db, sim.senses.vb, sim.senses.da, sim.senses.va)))
+        peak = -np.inf
+        for _ in range(int(3.0 / sim.dt)):
+            sim.step()
+            peak = max(peak, float(sim.nervous.V[pool].max()))
+        return peak
+
+    rail_hi = base.neural.v_clamp[1]
+    v_current = peak_pool_v(hot_I)
+    v_conduct = peak_pool_v(hot_g)
+    assert v_current >= rail_hi - 1e-6, (
+        "the absurd current no longer pins the rail (%.1f mV): this test's premise "
+        "changed, re-derive it" % v_current)
+    assert v_conduct < 10.0, (
+        "the stretch conductance drove its pool to %.1f mV, past its own 0 mV "
+        "reversal: it is not self-limiting" % v_conduct)

@@ -159,7 +159,8 @@ class Simulation:
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
                                   self.modulators, load=load)
 
-        self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance())
+        self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance(),
+                          g_exc=self.senses.prop_g, E_exc=self.p.sensory.proprio_E_rev)
         self.muscles.step(self.nervous.s,
                           rate_scale=self.modulators.muscle_rate_scale())
 

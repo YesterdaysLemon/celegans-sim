@@ -1411,6 +1411,21 @@ class SensoryParams:
     touch_habituation_tau: float = 60.0   # s   recovery from habituation
     food_gain: float = 11.0          # pA  dopaminergic mechanosensation of the bacterial lawn
     proprio_gain: float = 30.0       # pA per unit normalised curvature
+    # THE CLAMP EXPERIMENT (H2 in the research log's reflex-gain hypotheses). Real
+    # stretch receptors are ion channels: opening one moves the cell towards a reversal
+    # potential and never past it, where injected current drives motor neurons onto the
+    # v_clamp rail at the extremes of every cycle (the saturation v_clamp's own comment
+    # accepts). With proprio_conductance > 0 the body A/B proprioceptive drive becomes a
+    # rectified saturating conductance -- g = tanh(relu(drive)) * this, towards
+    # proprio_E_rev -- REPLACING the current injection for those pools. Rectified,
+    # because a channel opens for its preferred bend and closes otherwise: the
+    # dorsal/ventral pair then genuinely alternates instead of push-pulling through one
+    # shared signed current. Self-limiting by construction, so the drive no longer needs
+    # to be tuned to avoid pinning. 0 = off, the shipped current path untouched. The
+    # head reflex keeps its own current path either way -- it is a different map,
+    # calibrated separately, and one experiment changes one thing.
+    proprio_conductance: float = 0.0  # nS per unit saturated drive; 0 = current mode
+    proprio_E_rev: float = 0.0        # mV  stretch-receptor reversal (non-selective cation)
     # Wen et al. (2012) Neuron 76:750 showed by localised body restraint that B-type motor
     # neurons transduce the curvature of the region *anterior* to them, over roughly
     # 200 um -- a fifth of the body. Boyle et al.'s 2012 model, which predates that result,
