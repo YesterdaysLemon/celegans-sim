@@ -106,6 +106,29 @@ docstrings, `worm/params.py::MediumParams`, and `docs/runtime-parity.md`.)*
 > larger than the head reflex's entire budget, on a body with almost no drag on it. Both the
 > additive frame and the floor frame are dead.
 
+**1½. The clamp experiment ran, and split its hypothesis in half.** H2 (research log,
+reflex-gain hypotheses) said proprioceptive input should be a conductance, not a current —
+premised on motor neurons pinning the v_clamp rail under drive. Both halves now measured
+(`SensoryParams.proprio_conductance`, default 0/off; instrument
+`tools/clamp_occupancy.py`, 3 seeds × 30 s, both sweeps 2026-08-16). **The premise is
+null**: at shipped defaults the A/B cord pools spend ~0% of sampled steps within 0.5 mV
+of either rail — the v_clamp comment's rail touches are brief extremes, not occupancy.
+**The prediction survives on its own merits**: translating the signed current as a *pair*
+of half-wave-rectified saturating conductances (preferred bend → excitatory toward 0 mV,
+anti-preferred → inhibitory toward E_inh — reciprocal inhibition through channels) matches
+or beats the current on every gait guardrail: dv_corr −0.73 → −0.82, TWI +0.87 → +0.91,
+speed 0.304 → 0.361 mm/s at 5 nS, frequency untouched, 3/3 seeds forward, plateau above
+~10 nS. The first cut rectified away the inhibitory half and paid for it (dv_corr
+collapsed to −0.06, a third of the speed gone) — the signed current's hyperpolarising
+half was real push-pull, and the record keeps both sweeps. Self-limiting is proven at
+absurdity (500 nS peaks the pool under 10 mV where 3000 pA pins +45 mV; pinned in
+`tests/test_behaviour.py`). **Adoption is open and is not this item**: Track A discipline
+wants reference evidence (whole-cell motor-neuron recordings under bend, if the
+literature has them) plus the scorecard/ethogram baseline protocol item 2 already
+demands, and the runtime has no conductance path yet
+([`docs/runtime-parity.md`](docs/runtime-parity.md)) — a Python-only default is not a
+default.
+
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
 number in the model. **The argument it was built for was refuted** — it does not fix gait

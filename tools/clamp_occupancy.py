@@ -19,6 +19,26 @@ Modes: `current` is the shipped animal; a bare number is a proprio_conductance i
 Run:  PYTHONPATH=. .venv/bin/python tools/clamp_occupancy.py current 5 10 20 40
       (each arm runs SEEDS x MEASURE s; ~a minute a trial, parallel)
 
+THE RECORD (both sweeps 2026-08-16, seeds 0/1/3, agar). First, the excitatory-only cut:
+
+  mode       B@lo   B@hi   A@lo   A@hi |  freq  wave    twi dvcorr  k_rms    mm/s
+  current      0%     0%     0%     0% |  0.68  0.84  +0.87  -0.73   4.45   0.304
+  2..80 nS     0%     0%     0%     0% |  0.66  0.79  +0.65  -0.06..-0.29  ~3.1   ~0.19
+
+H2's premise is NULL at shipped defaults -- the cord pools do not occupy the rail --
+and rectifying away the inhibitory half collapsed the antagonism: the signed current's
+hyperpolarising half was real push-pull. Second, with the reciprocal-inhibition arm:
+
+  mode       B@lo   B@hi   A@lo   A@hi |  freq  wave    twi dvcorr  k_rms    mm/s
+  current      0%     0%     0%     0% |  0.68  0.84  +0.87  -0.73   4.45   0.304
+  5            0%     0%     0%     0% |  0.67  0.79  +0.90  -0.81   4.43   0.361
+  10           0%     0%     0%     0% |  0.68  0.78  +0.91  -0.82   4.57   0.325
+  20..80      0%     0%     0%     0% |  0.68  0.75  +0.90  -0.82   4.66   ~0.30
+
+The channel translation matches or beats the current on every guardrail once both
+halves are kept, plateauing above ~10 nS (the tanh saturates the drive, so g stops
+mattering). 5 nS is the speed optimum of this sweep.
+
 TRACK A: this is reference-worm physiology. The measurement decides nothing by itself;
 adoption of a conductance default is a separate decision against reference evidence.
 """
