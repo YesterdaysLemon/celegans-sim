@@ -1004,6 +1004,18 @@ try {
               && S.worms.every((w) => w.style && w.id !== undefined),
             // The tweezers' runtime half: the export the shift-drag calls.
             tweezers: typeof S.engine.E.translateWorm === 'function',
+            // The lineage panel: on stage with the arena, fed by a pedigree that has at
+            // least the founders in it, drawing into a real canvas box.
+            lineage: (() => {
+              const p = document.querySelector('[data-panel="lineage"]');
+              const cv = document.getElementById('c-lineage');
+              return {
+                shown: !!p && p.getBoundingClientRect().width > 0,
+                canvas: !!cv && cv.getBoundingClientRect().height > 4,
+                pedigree: S.engine.arena && S.engine.arena.pedigree
+                  ? S.engine.arena.pedigree.size : 0,
+              };
+            })(),
             tArena: S.frame ? S.frame.t : 0,
             tBefore,
           };
@@ -1012,6 +1024,8 @@ try {
           await sleep(1200);
           out.tBack = S.frame ? S.frame.t : 0;
           out.backDish = document.getElementById('app').dataset.dish;
+          out.lineageHiddenBack = document.querySelector('[data-panel="lineage"]')
+            .getBoundingClientRect().width === 0;
           return out;
         });
         /* The museum. Its collection is museum.md rendered client-side; a fetch failure
@@ -1053,6 +1067,12 @@ try {
           check(vp.name, arena.windMoved,
                 'the weather slider did not scale the policy wind (or did not restore)');
           check(vp.name, arena.tweezers, 'translateWorm is missing from the runtime exports');
+          check(vp.name, arena.lineage.shown && arena.lineage.canvas,
+                `the lineage panel is not on stage with the arena: ${JSON.stringify(arena.lineage)}`);
+          check(vp.name, arena.lineage.pedigree >= 4,
+                `the pedigree holds ${arena.lineage.pedigree} animals; even the founders are missing`);
+          check(vp.name, arena.lineageHiddenBack,
+                'the lineage panel stayed visible on the reference dish, which has no descent');
           check(vp.name, arena.backDish === 'animal' && arena.tBack >= arena.tBefore,
                 `switching back restarted the animal dish: t ${arena.tBefore} -> ${arena.tBack}`);
         }

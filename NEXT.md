@@ -191,6 +191,23 @@ evolved dish stops laying in buffer — which bounds any future hunt at ~1,200 s
 attrition unless the plate gets richer or a human tops up lawns, as the owner's
 browser dish had.
 
+**1d. The dish has sex now, and the descent is on screen.** Recombination landed
+2026-08-16 as policy (`web/arena-policy.js`, `ARENA_RECOMB`/`ARENA_RECOMB_R`):
+fertilisation happens at hatch with the nearest living animal within radius — each gene,
+each of the 3,935 weights (by ratio, where the lineages differ) and each morphology
+control on a fair coin, before mutation; no mate in radius is selfing, the asexual path
+untouched. Default off, and off consumes no rng — recorded runs keep replaying
+(verified byte-identical against the pre-sex tree); on forks the stream by design.
+Dynasty follows the laying parent. The first sex-on shakedown (seed 1, 300 s): 19
+matings across 19 births, recombined wiring visible to the drift instrument. Alongside
+it the pedigree — every animal's parent, birth, death and dynasty, bounded — feeds a
+live lineage panel in the viewer (`drawLineage`): one life-line per animal coloured by
+dynasty, descent as a vertical stroke at birth, so a selective sweep is legible as the
+tree collapsing to one colour. Contracts in `wasm/recomb.test.mjs`. Open question for a
+cheap background run: does a sexual dish adapt faster than an asexual one at equal
+mutation supply — the classic recombination-of-beneficials argument, now askable on
+this plate.
+
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
 main line: there is no fitness scalar to game — reproduction is eat → transport → uterus

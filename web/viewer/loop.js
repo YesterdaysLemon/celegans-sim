@@ -7,7 +7,7 @@
 
 import { S, el } from './state.js';
 import { drawDish, follow } from './dish.js';
-import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, pushKymo,
+import { drawNeurons, drawMuscles, drawKymo, drawTraces, drawSenses, drawLineage, pushKymo,
          invalidateLayout } from './panels.js';
 import { updateFreq, updateStats, updatePump, updateEggs, updateDishStats } from './stats.js';
 import { buildWormSel, clampFocus, syncScrub } from './controls.js';
@@ -204,6 +204,7 @@ function tick(now) {
   drawMuscles();
   drawKymo();
   drawTraces();
+  drawLineage();
   requestAnimationFrame(tick);
 }
 

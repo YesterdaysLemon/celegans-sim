@@ -37,6 +37,9 @@ function browserOpts() {
     /* Heritable wiring, on for the showcase since the drift view exists to watch it:
      * every hatchling takes lognormal nudges on 4 of its 3,935 synapses. */
     wmut: 0.12, wmutN: 4,
+    /* Sex, on for the showcase: hatchlings recombine with the nearest neighbour, so
+     * the dynasties a visitor watches are mixing lineages, not just mutating clones. */
+    recomb: 1.0, recombR: 9,
     rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
     wind: 0.03, lawnScale: 0.6,
     seed: (Math.random() * 0x7fffffff) | 0,
@@ -49,10 +52,12 @@ function browserOpts() {
 }
 
 const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
+export const dynastyHue = HUE;   // the lineage panel colours branches the way the dish does
 
 export class ArenaEngine extends LocalEngine {
   constructor(clock, options) {
     super(clock);
+    this.dynastyHue = HUE;
     this.options = Object.assign(browserOpts(), options || {});
     this.simT = 0;
     this._policyT = 0;
