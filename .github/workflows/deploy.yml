@@ -5,11 +5,11 @@ on:
     branches: [main]
     paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
             'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
-            'web/**', 'docker/**', '.github/workflows/deploy.yml']
+            'web/**', 'docker/**', '.github/scripts/**', '.github/workflows/deploy.yml']
   pull_request:
     paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
             'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
-            'web/**', 'docker/**', '.github/workflows/deploy.yml']
+            'web/**', 'docker/**', '.github/scripts/**', '.github/workflows/deploy.yml']
   workflow_dispatch:
     inputs:
       confirm:
@@ -21,12 +21,6 @@ on:
 permissions:
   contents: read
 
-# Never cancel a rollout after the manager may have begun replacing a container. A queued
-# older SHA checks main again after it gets the lock and exits cleanly if it was superseded.
-concurrency:
-  group: celegans-production
-  cancel-in-progress: false
-
 jobs:
   validate:
     name: production image builds and conforms
@@ -37,43 +31,83 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+      # These are deliberately outside tests/: editing deployment policy must not schedule
+      # forty minutes of model simulation merely to prove the release gate parses.
+      - name: release policy and coordinator tests
+        run: node --test .github/scripts/*.test.mjs
       # The Dockerfile regenerates the model and WASM, runs their conformance comparison,
       # writes cache-busting hashes, and assembles the exact nginx production image.
       - run: docker build --tag "celegans-sim:ci-${GITHUB_SHA}" .
 
-  deploy:
-    name: notify the production deploy manager
+  coordinate:
+    name: select and await required main checks
     needs: validate
     if: >-
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') ||
        (github.event_name == 'workflow_dispatch' && inputs.confirm))
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+      deployments: read
+    outputs:
+      deploy: ${{ steps.coordinate.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      # The coordinator diffs from the last successful production environment SHA. For
+      # each workflow whose inputs changed, it accepts a successful ancestor run only if
+      # no later commit touched those inputs; otherwise it dispatches and awaits a check
+      # of current main. CI_ENABLED=false is rejected because such a run has no successful
+      # jobs. Manual confirmed deploys remain the explicit operator override.
+      - id: coordinate
+        name: prove this tree has all required CI coverage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-coordinator.mjs
+
+  deploy:
+    name: notify the production deploy manager
+    needs: coordinate
+    if: ${{ needs.coordinate.outputs.deploy == 'true' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      deployments: write
+    concurrency:
+      group: celegans-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://worm.alirezaafshan.com
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
 
-      # A queued run may be green but no longer current. The manager independently checks
-      # this invariant again before building, so a race here still fails closed.
-      - id: current
+      # Recheck after acquiring the production lock. Failure is intentional: a skipped
+      # environment job would be recorded as a successful deployment baseline even though
+      # nothing was deployed. The manager independently enforces the exact SHA as well.
+      - name: refuse a superseded release under the production lock
         shell: bash
         run: |
           latest_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
           test -n "$latest_sha"
-          if [ "$latest_sha" = "$GITHUB_SHA" ]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping superseded SHA $GITHUB_SHA; main is now $latest_sha"
+          if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+            echo "Refusing superseded SHA $GITHUB_SHA; main is now $latest_sha" >&2
+            exit 1
           fi
 
       # This is an authenticated release notification, not a forwarded GitHub event. The
       # manager allowlists the repo and branch and resets to this exact 40-character SHA.
-      - if: steps.current.outputs.deploy == 'true'
-        shell: bash
+      - shell: bash
         env:
           DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
           DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}

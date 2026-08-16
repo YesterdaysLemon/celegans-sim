@@ -149,7 +149,7 @@ def test_gait_is_reproducible_across_seeds():
     assert max(freqs) / max(min(freqs), 1e-9) < 1.6, freqs
 
 
-def test_medium_changes_the_gait():
+def test_medium_changes_the_gait(crawl):
     """The medium, and nothing else, must change how the animal moves.
 
     Fang-Yen et al. (2010) measured 0.30 Hz / 0.65 L crawling and 1.76 Hz / 1.54 L
@@ -181,12 +181,13 @@ def test_medium_changes_the_gait():
     backwards, which is exactly how this test once coexisted with a docstring claiming the
     model ran backwards. This one refuses it.
     """
-    results = {}
-    for medium in ("agar", "buffer"):
-        p = Params()
-        sim = Simulation(p, seed=3, world=bare_world(p))
-        sim.body.medium = MEDIA[medium]
-        results[medium] = analyse(sim, seconds=20.0)
+    # The module's crawl fixture is this exact seed, medium and duration.  Reusing it
+    # avoids another 40,000 whole-animal steps without changing either assay.
+    results = {"agar": crawl}
+    p = Params()
+    sim = Simulation(p, seed=3, world=bare_world(p))
+    sim.body.medium = MEDIA["buffer"]
+    results["buffer"] = analyse(sim, seconds=20.0)
     ratio = results["buffer"]["freq"] / max(results["agar"]["freq"], 1e-9)
     assert ratio > 1.15, (
         "gait modulation missing or backwards: %.3f Hz agar vs %.3f Hz buffer"
@@ -557,7 +558,35 @@ def _omega_sim(current, seed=0, tau=1.5):
     return Simulation(p, seed=seed, world=bare_world(p), placement=(0.0, 0.0, 0.35))
 
 
-def test_omega_fires_after_the_reversal_and_never_during_it():
+@pytest.fixture(scope="module")
+def omega_reversal_trace():
+    """One deterministic long trace for the two assertions that used to repeat it."""
+    sim = _omega_sim(300.0)
+    sim.run(8.0)
+    pairs, run_n, was = [], 0, sim.senses.going_forward
+    fired_while_reversing = 0
+    fired_after = 0
+    edge_window = int(120.0 / sim.dt)
+    for i in range(int(150.0 / sim.dt)):
+        sim.step()
+        now = sim.senses.going_forward
+        if i < edge_window:
+            if not now and abs(sim.senses.omega) > 1e-4:
+                fired_while_reversing += 1
+            if now and not was and abs(sim.senses.omega) > 1e-4:
+                fired_after += 1
+        if not now:
+            run_n += 1
+        elif not was:
+            pairs.append((run_n * sim.dt, sim.senses.omega))
+            run_n = 0
+        was = now
+    return dict(sim=sim, pairs=pairs,
+                fired_while_reversing=fired_while_reversing,
+                fired_after=fired_after)
+
+
+def test_omega_fires_after_the_reversal_and_never_during_it(omega_reversal_trace):
     """The turn is locked to the reversal's trailing edge, which is the whole design.
 
     RIV failed as a driver because its output is 99.5% undulation and only 0.5%
@@ -566,19 +595,8 @@ def test_omega_fires_after_the_reversal_and_never_during_it():
     a level again, and the animal would be bending while backing up rather than turning as
     it resumes -- which is not what the animal does and not what this is for.
     """
-    sim = _omega_sim(300.0)
-    sim.run(8.0)
-    fired_while_reversing = 0
-    fired_after = 0
-    was = sim.senses.going_forward
-    for _ in range(int(120.0 / sim.dt)):
-        sim.step()
-        now = sim.senses.going_forward
-        if not now and abs(sim.senses.omega) > 1e-4:
-            fired_while_reversing += 1
-        if now and not was and abs(sim.senses.omega) > 1e-4:
-            fired_after += 1
-        was = now
+    fired_while_reversing = omega_reversal_trace["fired_while_reversing"]
+    fired_after = omega_reversal_trace["fired_after"]
 
     assert fired_while_reversing == 0, (
         "the omega transient was active on %d steps while the animal was still reversing; "
@@ -586,7 +604,7 @@ def test_omega_fires_after_the_reversal_and_never_during_it():
     assert fired_after > 0, "no reversal in 120 s produced a turn at all"
 
 
-def test_omega_amplitude_follows_reversal_duration():
+def test_omega_amplitude_follows_reversal_duration(omega_reversal_trace):
     """A longer reversal must earn a deeper turn, as it does in the animal.
 
     This is not a fitted relationship -- the amplitude is the reversal's own duration
@@ -594,18 +612,8 @@ def test_omega_amplitude_follows_reversal_duration():
     angles rather than one stereotyped turn. It is worth pinning because it is the part
     of the mechanism that predicts something beyond what it was built from.
     """
-    sim = _omega_sim(300.0)
-    sim.run(8.0)
-    pairs, run_n, was = [], 0, sim.senses.going_forward
-    for _ in range(int(150.0 / sim.dt)):
-        sim.step()
-        now = sim.senses.going_forward
-        if not now:
-            run_n += 1
-        elif not was:
-            pairs.append((run_n * sim.dt, sim.senses.omega))
-            run_n = 0
-        was = now
+    sim = omega_reversal_trace["sim"]
+    pairs = omega_reversal_trace["pairs"]
 
     assert len(pairs) >= 4, "too few reversals (%d) to test the relationship" % len(pairs)
     ref = sim.p.sensory.omega_ref_reversal

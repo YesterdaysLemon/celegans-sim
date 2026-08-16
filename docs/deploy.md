@@ -82,6 +82,16 @@ do put a proxy in front of it:
 Redeploying is `docker build` and `docker run` again; there is no state to migrate, and the
 only thing that changes for a visitor is which files their browser revalidates.
 
+The hosted production workflow applies the same rule automatically. Pull requests and
+`main` first build this exact Dockerfile, including regenerated model/WASM conformance.
+Automatic rollout is separately opt-in through `DEPLOY_ENABLED=true`. Before notifying the
+deployment manager it compares the candidate with the last successful GitHub `production`
+deployment and waits only for checks whose declared inputs changed: viewer checks for
+`web/**`, Python simulations for model inputs, and both for shared WASM inputs. The range is
+cumulative across undeployed commits, so a cosmetic follow-up cannot conceal an earlier
+model change. The final job is serialized, rechecks that its SHA is still current `main`,
+and records success only after the signed deployment request returns successfully.
+
 
 ## The viewer
 
