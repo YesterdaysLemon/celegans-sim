@@ -316,6 +316,26 @@ const GATES = [
     needs: ['model'], run: sh('node --test wasm/eggs-fitness.test.mjs'),
   },
   {
+    id: 'weights', job: 'conformance', step: 'the wiring tiers mutate within their contracts',
+    covers: ['the wiring tiers mutate within their contracts'],
+    needs: ['model'], run: sh('node --test wasm/weights.test.mjs'),
+  },
+  {
+    id: 'metabolism', job: 'conformance', step: 'starvation is physics, and the plate gets the body back',
+    covers: ['starvation is physics, and the plate gets the body back'],
+    needs: ['model'], run: sh('node --test wasm/metabolism.test.mjs'),
+  },
+  {
+    id: 'morphology', job: 'conformance', step: 'development is phenotype, morphology is genome',
+    covers: ['development is phenotype, morphology is genome'],
+    needs: ['model'], run: sh('node --test wasm/morphology.test.mjs'),
+  },
+  {
+    id: 'weight-drift', job: 'conformance', step: 'the drift instrument sees what mutation did',
+    covers: ['the drift instrument sees what mutation did'],
+    needs: ['model'], run: sh('node --test wasm/weight-drift.test.mjs'),
+  },
+  {
     id: 'population', job: 'conformance', step: 'the population behaves as a population',
     covers: ['the population behaves as a population'],
     needs: ['model'], run: sh('node wasm/population.mjs'),

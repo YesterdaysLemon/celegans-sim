@@ -479,6 +479,20 @@ try {
       check(vp.name, dropper.rep === 'repellent' && dropper.back === 'food',
             `the bottle selector did not take: ${dropper.rep} / ${dropper.back}`);
 
+      // The wiring-drift toggle: present, flips the view flag both ways, and reports
+      // its state. (The drift MATH is pinned in wasm/weight-drift.test.mjs; a reference
+      // dish has only wild-type animals, so content is not assertable here.)
+      const wiring = await page.evaluate(() => {
+        const b = document.getElementById('b-wiring');
+        if (!b || b.getBoundingClientRect().width === 0) return { vis: false };
+        b.click();
+        const on = window.__sim.wiringView === true && b.getAttribute('aria-pressed') === 'true';
+        b.click();
+        return { vis: true, on, off: window.__sim.wiringView === false };
+      });
+      check(vp.name, wiring.vis && wiring.on && wiring.off,
+            `the wiring toggle did not take: ${JSON.stringify(wiring)}`);
+
       /* #158's touch contract, driven through a real synthetic tap on the viewports
        * that emulate a touchscreen: the first tap on the neuron grid SELECTS -- it must
        * never plot or ablate -- the selection persists and is visibly labelled, and the

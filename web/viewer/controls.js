@@ -10,7 +10,8 @@
 import { S, el, ablated, pruneAblations } from './state.js';
 import { theme } from './themes.js';
 import { setCam, zoom, worldAt } from './dish.js';
-import { neuronAt, neuronCentre, neuronStep, invalidateLayout } from './panels.js';
+import { neuronAt, neuronCentre, neuronStep, invalidateLayout, wiringDrift } from './panels.js';
+import { neuronTopSynapses } from '../weight-drift.js';
 import { buildLegend } from './stats.js';
 import { send } from './transport.js';
 import { count as historyCount, at as historyAt, reset as historyReset,
@@ -439,7 +440,7 @@ export function wire() {
   const placeNeuronActions = () => {
     const home = coarse() ? el('neuron-actions') : footerNeurons;
     if (!home) return;
-    for (const id of ['b-plot', 'b-ablate', 'b-restore']) {
+    for (const id of ['b-plot', 'b-ablate', 'b-restore', 'b-wiring']) {
       const b = el(id);
       if (b && b.parentElement !== home) home.appendChild(b);
     }
@@ -576,12 +577,23 @@ function wireNeuronPanel() {
 
   const describe = (i) => {
     const n = S.meta.neurons[i];
-    return `<b>${n.name}</b> &middot; ${n.cls}<br>
+    let base = `<b>${n.name}</b> &middot; ${n.cls}<br>
       <span class="k">kind</span> ${n.kind}${n.modality ? ' &middot; ' + n.modality : ''}<br>
       <span class="k">ganglion</span> ${n.ganglion}<br>
       <span class="k">transmitter</span> ${n.tx}${n.inh ? ' (inhibitory)' : ''}<br>
       <span class="k">V</span> ${S.frame.V[i].toFixed(1)} mV &nbsp;
       <span class="k">activity</span> ${(S.frame.act[i] * 100).toFixed(0)}%`;
+    // In the wiring view the tooltip names WHAT MOVED: the cell's most-drifted synapses,
+    // as ratios against wild-type. Wild-type cells say so.
+    if (S.wiringView && S.engine && S.meta.wiring) {
+      const id = S.engine.worms[S.focus];
+      const top = id === undefined ? [] : neuronTopSynapses(S.engine.E, id, S.meta.wiring, i);
+      base += top.length
+        ? '<br><span class="k">wiring</span> ' + top.map((t) =>
+            `${t.name} ×${Math.pow(2, t.log2).toFixed(2)}`).join('<br>')
+        : '<br><span class="k">wiring</span> wild-type here';
+    }
+    return base;
   };
 
   nc.addEventListener('mousemove', (e) => {
@@ -629,6 +641,17 @@ function wireNeuronPanel() {
       return;
     }
     activate(neuronAt(nc, e.clientX, e.clientY));
+  });
+
+  // Activity or wiring drift: one panel, two questions about the same 302 cells.
+  const bWiring = el('b-wiring');
+  if (bWiring) bWiring.addEventListener('click', () => {
+    S.wiringView = !S.wiringView;
+    bWiring.setAttribute('aria-pressed', String(S.wiringView));
+    const d = S.wiringView ? wiringDrift() : null;
+    el('neuron-hint').textContent = S.wiringView
+      ? (d ? 'wiring drift from wild-type — hover a neuron' : 'wild-type wiring — nothing has mutated')
+      : 'hover a neuron';
   });
 
   // The touch flow's Plot half; hidden by CSS where a fine pointer makes it redundant.

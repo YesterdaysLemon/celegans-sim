@@ -73,10 +73,12 @@
  * interesting one), and web/museum.md IV.1 holds the exhibit.
  */
 
+import fs from 'node:fs';
 import {
   engine, GENES, scaleOf, rng, normalFrom, DT,
 } from './evolve.mjs';
 import { makeArena } from '../web/arena-policy.js';
+import { makeWiring, driftLine } from '../web/weight-drift.js';
 
 const env = (k, d) => (process.env[k] !== undefined ? Number(process.env[k]) : d);
 const SECONDS = env('ARENA_SECONDS', 900);
@@ -177,6 +179,24 @@ const normal = normalFrom(rand);
 const E = engine();
 E.setNoise(1);
 
+/* The naming/baseline kit for the drift readout, built once and only if wanted: the
+ * wild-type tables and CSR endpoint maps come straight from the model file, so no
+ * reference animal has to exist on this plate to define what drift is measured from. */
+let _wiring = null;
+function WIRING() {
+  if (_wiring) return _wiring;
+  const buf = fs.readFileSync(new URL('../web/worm.model', import.meta.url));
+  const headLen = buf.readUInt32LE(8);
+  const head = JSON.parse(buf.subarray(12, 12 + headLen).toString());
+  const payloadAt = 12 + headLen;
+  _wiring = makeWiring(head, (name, Type) => {
+    const a = head.arrays[name];
+    return new Type(buf.buffer.slice(buf.byteOffset + payloadAt + a.offset,
+                                     buf.byteOffset + payloadAt + a.offset + a.bytes));
+  });
+  return _wiring;
+}
+
 const arena = makeArena(E, { genes: GENES, scaleOf }, {
   cap: CAP, founders: FOUNDERS, mut: MUT, incubation: INCUBATION,
   wmut: WMUT, wmutN: WMUT_N, mmut: MMUT,
@@ -210,6 +230,10 @@ function report() {
     .map((g) => [g, GENES.indexOf(g)]).filter(([, s]) => s >= 0);
   const carriers = WMUT > 0
     ? `  weighted ${pop.filter((id) => E.hasOwnWeights(id)).length}/${pop.length}` : '';
+  /* The weight-drift readout the seed-21 run went looking for: with wiring mutation on,
+   * say WHERE selection is in the graph, not just that carriers exist. Reads weights
+   * only -- no rng -- so recorded runs keep replaying. */
+  const wiring = WMUT > 0 ? `\n${' '.repeat(9)}${driftLine(E, pop, WIRING())}` : '';
   const shaped = MMUT > 0
     ? `  shaped ${pop.filter((id) => E.hasOwnMorphology(id)).length}/${pop.length}`
       + `  width ${(pop.reduce((a, id) => a + (E.getMorph(id, 4) + E.getMorph(id, 5)
@@ -228,7 +252,7 @@ function report() {
     + `  births ${arena.births}  deaths ${arena.deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
     + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('')
-    + carriers + shaped + metab);
+    + carriers + shaped + metab + wiring);
 }
 
 console.log(`ARENA -- ${FOUNDERS} founders, cap ${CAP}, ${SECONDS} s of dish time,`

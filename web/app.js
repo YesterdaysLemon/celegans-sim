@@ -109,6 +109,7 @@ if (location.search.includes('server')) {
   // socket protocol has neither command. The dropper hides (double-click still drops a
   // lawn, which the protocol does have) and the hint stops advertising the tweezers.
   el('dropper').style.display = 'none';
+  el('b-wiring').style.display = 'none';   // drift reads the local engine's weight tables
   el('dish-hint').innerHTML =
     'drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn';
   connect();

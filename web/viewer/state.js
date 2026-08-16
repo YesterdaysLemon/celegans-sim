@@ -25,6 +25,7 @@ export const S = {
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
   cam: 'follow',                        // 'follow' | 'free'
   dropper: 'food',                      // which bottle double-click squeezes
+  wiringView: false,                    // neuron panel shows wiring drift, not activity
   trail: [],
   kymo: null,
   traces: [], selected: [],

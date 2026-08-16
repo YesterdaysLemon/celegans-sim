@@ -11,6 +11,8 @@
  * and a stream of frames -- so the viewer does not have to care which it is talking to.
  */
 
+import { makeWiring } from './weight-drift.js';
+
 /* The .wasm has the .model's byte offsets compiled into it, so they are a matched pair:
  * a new .wasm against a cached .model would not degrade gracefully, it would read the
  * wrong offsets. Both are cached hard, so both carry a content hash -- and the manifest
@@ -126,6 +128,14 @@ export class LocalEngine {
     this.nJoints = head.ints.n_joints;
 
     this._buildMeta(head);
+    /* The wiring kit for the drift view (#B): wild-type tables and CSR endpoint maps,
+     * COPIED out of the payload -- views into wasm memory detach when the heap grows,
+     * and these are constants. ~35 kB once per engine. */
+    const pb = this._base;
+    this.meta.wiring = makeWiring(head, (name, Type) => {
+      const a = head.arrays[name];
+      return new Type(this.E.memory.buffer.slice(pb + a.offset, pb + a.offset + a.bytes));
+    });
     this._defaultPlate();
 
     for (let i = 0; i < nWorms; i++) {

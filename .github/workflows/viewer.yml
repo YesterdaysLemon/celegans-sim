@@ -204,6 +204,20 @@ jobs:
       - name: the egg measure says what it is
         run: node --test wasm/eggs-fitness.test.mjs
 
+      # Three suites that existed but ran in NOBODY'S job -- added the day the drift
+      # instrument joined them, when the gap was noticed. Local-only checks rot.
+      - name: the wiring tiers mutate within their contracts
+        run: node --test wasm/weights.test.mjs
+
+      - name: starvation is physics, and the plate gets the body back
+        run: node --test wasm/metabolism.test.mjs
+
+      - name: development is phenotype, morphology is genome
+        run: node --test wasm/morphology.test.mjs
+
+      - name: the drift instrument sees what mutation did
+        run: node --test wasm/weight-drift.test.mjs
+
       # conform.json is a *recording* of what the Python did, so it is regenerated here
       # rather than committed. A stale one does not weaken this check, it inverts it: the
       # port gets measured against a model that no longer exists.
