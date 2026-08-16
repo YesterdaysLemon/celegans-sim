@@ -221,6 +221,14 @@ try {
       <button id="b-plot" disabled>Plot</button>
       <button id="b-ablate" aria-pressed="false">Ablate</button>
       <button id="b-restore" disabled>Restore</button>
+      <!-- Activity or WIRING DRIFT: the same 302 dots, recoloured by how far each cell's
+           synapses have mutated from wild-type -- "what did selection rewire?" on the
+           panel where the wiring lives. A first draft floated this over the canvas and
+           the smoke suite caught it eating taps meant for the dots underneath. It lives
+           with the other neuron controls, and rides to the panel on touch layouts.
+           Hidden in ?server mode: drift reads the local engine's weight tables. -->
+      <button id="b-wiring" aria-pressed="false"
+              title="Colour each neuron by how far its synapses drifted from wild-type (Track B: heritable wiring exists only in the arena)">Wiring</button>
     </div>
 
     <div class="group" role="group" aria-label="Worms">

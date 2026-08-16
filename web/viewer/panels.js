@@ -7,6 +7,29 @@
 
 import { S, C, el, seriesColor, fitCanvas, visible, ablated } from './state.js';
 import { seq, divRgb } from './scales.js';
+import { driftOf } from '../weight-drift.js';
+
+/* Wiring drift of the FOCUSED animal, cached by worm id -- weights are set at hatch and
+ * never after, so a computed drift is good for the animal's whole life. Null means
+ * wild-type wiring (or no local engine), and the view says so rather than painting it. */
+const driftCache = new Map();
+export function wiringDrift() {
+  if (!S.engine || !S.meta || !S.meta.wiring) return null;
+  const id = S.engine.worms[S.focus];
+  if (id === undefined) return null;
+  if (!driftCache.has(id)) {
+    if (driftCache.size > 64) driftCache.clear();
+    const d = driftOf(S.engine.E, id, S.meta.wiring);
+    if (d) {
+      // Normalised per-neuron loads for the colour ramp, computed once with the drift.
+      let m = 0;
+      for (const v of d.perNeuron) if (v > m) m = v;
+      d.perNorm = Float32Array.from(d.perNeuron, (v) => (m > 0 ? v / m : 0));
+    }
+    driftCache.set(id, d);
+  }
+  return driftCache.get(id);
+}
 
 /* ------------------------------------------------------------------- neurons ------ */
 
@@ -58,6 +81,10 @@ export function drawNeurons() {
     layout = buildLayout(w, h); layout.w = w; layout.h = h;
   }
   const act = S.frame ? S.frame.act : null;
+  // The wiring view recolours the same dots by mutation load instead of activity; a
+  // wild-type animal shows the whole grid at zero, which is the honest picture of it.
+  const drift = S.wiringView ? wiringDrift() : null;
+  const wiringOn = S.wiringView;
   const pts = layout.pts;
   // Which cells are dead is a fact about the focused animal, so it is looked up once for
   // the panel rather than once for each of the 302 cells in it.
@@ -75,7 +102,7 @@ export function drawNeurons() {
       ctx.moveTo(p.x + q, p.y - q); ctx.lineTo(p.x - q, p.y + q);
       ctx.stroke();
     } else {
-      ctx.fillStyle = seq(a); ctx.fill();
+      ctx.fillStyle = seq(wiringOn ? (drift ? drift.perNorm[i] : 0) : a); ctx.fill();
     }
     const sel = S.selected.indexOf(i);
     if (sel >= 0) {

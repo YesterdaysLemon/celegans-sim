@@ -34,6 +34,9 @@ function browserOpts() {
   const jit = (v, r) => v + (Math.random() * 2 - 1) * r;
   return {
     metab: 0.1, metabT: 150, mmut: 0.08,
+    /* Heritable wiring, on for the showcase since the drift view exists to watch it:
+     * every hatchling takes lognormal nudges on 4 of its 3,935 synapses. */
+    wmut: 0.12, wmutN: 4,
     rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
     wind: 0.03, lawnScale: 0.6,
     seed: (Math.random() * 0x7fffffff) | 0,
