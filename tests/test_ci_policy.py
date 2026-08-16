@@ -305,8 +305,13 @@ NO_CI_NEEDED = {
                             "new address: tools/smoke_web.mjs renders museum.html from "
                             "web/museum.md and fails if the wings do not appear, and "
                             "web/** schedules the viewer workflow.",
-    "Dockerfile": "not built by any workflow; the cache-policy job runs nginx:alpine "
-                  "directly against docker/nginx.conf",
+    "Dockerfile": "the production image is built by deploy.yml on pull requests and main; "
+                  "tests/test_deploy_policy.py pins that separate release gate, while this "
+                  "table models the Python and viewer path filters",
+    ".github/workflows/deploy.yml":
+        "the release workflow self-gates on pull requests and its trigger, image-build, "
+        "current-SHA, opt-in, and signed-webhook contracts are pinned by "
+        "tests/test_deploy_policy.py",
     "tools/fetch_raw.sh": "fetches the raw upstream sources by hand; the pinned copies "
                           "under data/ are what CI builds from",
 }

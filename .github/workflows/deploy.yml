@@ -1,0 +1,93 @@
+name: production deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
+            'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
+            'web/**', 'docker/**', '.github/workflows/deploy.yml']
+  pull_request:
+    paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
+            'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
+            'web/**', 'docker/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Deploy the current main commit to worm.alirezaafshan.com
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never cancel a rollout after the manager may have begun replacing a container. A queued
+# older SHA checks main again after it gets the lock and exits cleanly if it was superseded.
+concurrency:
+  group: celegans-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: production image builds and conforms
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.confirm) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      # The Dockerfile regenerates the model and WASM, runs their conformance comparison,
+      # writes cache-busting hashes, and assembles the exact nginx production image.
+      - run: docker build --tag "celegans-sim:ci-${GITHUB_SHA}" .
+
+  deploy:
+    name: notify the production deploy manager
+    needs: validate
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.confirm))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      # A queued run may be green but no longer current. The manager independently checks
+      # this invariant again before building, so a race here still fails closed.
+      - id: current
+        shell: bash
+        run: |
+          latest_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$latest_sha"
+          if [ "$latest_sha" = "$GITHUB_SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping superseded SHA $GITHUB_SHA; main is now $latest_sha"
+          fi
+
+      # This is an authenticated release notification, not a forwarded GitHub event. The
+      # manager allowlists the repo and branch and resets to this exact 40-character SHA.
+      - if: steps.current.outputs.deploy == 'true'
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          test -n "$DEPLOY_WEBHOOK_URL"
+          test -n "$DEPLOY_WEBHOOK_SECRET"
+
+          payload="$(node -e 'const payload = { event: "push", branch: "main", repo: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA }; process.stdout.write(JSON.stringify(payload));')"
+          signature="$(node -e 'const crypto = require("crypto"); const payload = process.argv[1]; process.stdout.write("sha256=" + crypto.createHmac("sha256", process.env.DEPLOY_WEBHOOK_SECRET).update(payload).digest("hex"));' "$payload")"
+
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-time 900 \
+            --request POST "$DEPLOY_WEBHOOK_URL" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: push" \
+            --header "X-Hub-Signature-256: $signature" \
+            --data-binary "$payload"
