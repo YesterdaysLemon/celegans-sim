@@ -347,7 +347,9 @@ class NervousSystem:
 
     # ------------------------------------------------------------------------- stepping
     def step(self, I_ext: np.ndarray | None = None,
-             g_mod: np.ndarray | None = None) -> None:
+             g_mod: np.ndarray | None = None,
+             g_exc: np.ndarray | None = None, E_exc: float = 0.0,
+             g_inh: np.ndarray | None = None) -> None:
         p = self.p
         V, s = self.V, self.s
 
@@ -380,6 +382,23 @@ class NervousSystem:
             # limit. See ModulatorParams.serotonin_mod1.
             g_tot = g_tot + g_mod
             fixed = fixed + g_mod * p.E_inh
+        if g_exc is not None:
+            # Sensory-gated excitatory conductance, same contract as g_mod with the
+            # caller's reversal: the clamp experiment's stretch-receptor channel
+            # (SensoryParams.proprio_conductance). Masked like the currents are --
+            # an absent cell has no membrane to put a channel in.
+            if self._any_dead:
+                g_exc = g_exc * self.alive
+            g_tot = g_tot + g_exc
+            fixed = fixed + g_exc * E_exc
+        if g_inh is not None:
+            # And its reciprocal-inhibition half, towards the chloride reversal g_mod
+            # uses: the anti-preferred bend closing the cell down through a channel,
+            # self-limiting at E_inh the way the excitatory arm is at E_exc.
+            if self._any_dead:
+                g_inh = g_inh * self.alive
+            g_tot = g_tot + g_inh
+            fixed = fixed + g_inh * p.E_inh
         decay = np.exp(-g_tot * self.dt / self._C_nF)
 
         # Embedded membrane time constants span 0.1 ms to 150 ms across the connectome, so

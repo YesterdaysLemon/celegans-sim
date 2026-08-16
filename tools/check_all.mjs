@@ -336,6 +336,11 @@ const GATES = [
     needs: ['model'], run: sh('node --test wasm/weight-drift.test.mjs'),
   },
   {
+    id: 'recomb', job: 'conformance', step: 'sex is policy, and descent is the record',
+    covers: ['sex is policy, and descent is the record'],
+    needs: ['model'], run: sh('node --test wasm/recomb.test.mjs'),
+  },
+  {
     id: 'population', job: 'conformance', step: 'the population behaves as a population',
     covers: ['the population behaves as a population'],
     needs: ['model'], run: sh('node wasm/population.mjs'),

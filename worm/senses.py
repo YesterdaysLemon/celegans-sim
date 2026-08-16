@@ -199,6 +199,12 @@ class Senses:
         self._head_hist = np.zeros((self._head_delay_n + 1, body_n_links - 1))
         self._head_hist_i = 0
         self.prop_adapt = np.zeros(conn.n)
+        # The clamp experiment's output channels: excitatory and inhibitory conductance
+        # vectors when proprio_conductance > 0, None in current mode. Set by every
+        # sense() call; None here so a reader before the first step sees "off" rather
+        # than an error.
+        self.prop_g = None
+        self.prop_g_inh = None
         # Every one-minus-a-decay below is `-expm1(-x)` rather than `1 - exp(-x)`, and the
         # reason is reproducibility rather than accuracy.
         #
@@ -463,10 +469,39 @@ class Senses:
                 wa = (1.0 - swim) * wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
-        prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
-        if wave_gain < 1.0:
-            prop_I[self._omega_wave_body] *= wave_gain
-        I += prop_I
+        if p.proprio_conductance > 0.0:
+            # THE CLAMP EXPERIMENT (SensoryParams.proprio_conductance): the stretch
+            # receptor as the channel it is, in both halves. The preferred bend opens an
+            # excitatory conductance towards proprio_E_rev; the anti-preferred bend
+            # opens an inhibitory one towards E_inh -- reciprocal inhibition through
+            # channels, because the first cut rectified the excitatory arm only and the
+            # measurement said exactly what that costs: dorsoventral antagonism
+            # collapsed from -0.73 to -0.06 and a third of the speed went with it (the
+            # sweep is in tools/clamp_occupancy.py's record). The signed current's
+            # hyperpolarising half was doing real push-pull work, so the channel
+            # translation keeps it -- as a conductance, self-limiting at BOTH ends.
+            # Saturating in the same tanh the current path uses, so the conductance is
+            # bounded and the adaptation keeps its meaning. The current injection for
+            # the body pools is REPLACED, not supplemented; the engine hands these to
+            # NervousSystem.step, where they shunt and saturate instead of driving the
+            # cell through the rail.
+            drive = raw - self.prop_adapt
+            g = np.tanh(np.maximum(drive, 0.0)) \
+                * p.proprio_conductance * self.g_scale_prop
+            g_inh = np.tanh(np.maximum(-drive, 0.0)) \
+                * p.proprio_conductance * self.g_scale_prop
+            if wave_gain < 1.0:
+                g[self._omega_wave_body] *= wave_gain
+                g_inh[self._omega_wave_body] *= wave_gain
+            self.prop_g = g
+            self.prop_g_inh = g_inh
+        else:
+            self.prop_g = None
+            self.prop_g_inh = None
+            prop_I = np.tanh(raw - self.prop_adapt) * p.proprio_gain * self.g_scale_prop
+            if wave_gain < 1.0:
+                prop_I[self._omega_wave_body] *= wave_gain
+            I += prop_I
         # The head reflex runs whichever way the animal is going -- it is what keeps the
         # nose sweeping, and the sweep is what steering acts on. It is low-pass filtered by
         # the receptor's own kinetics, which is what keeps the loop out of its fast mode.

@@ -106,6 +106,29 @@ docstrings, `worm/params.py::MediumParams`, and `docs/runtime-parity.md`.)*
 > larger than the head reflex's entire budget, on a body with almost no drag on it. Both the
 > additive frame and the floor frame are dead.
 
+**1½. The clamp experiment ran, and split its hypothesis in half.** H2 (research log,
+reflex-gain hypotheses) said proprioceptive input should be a conductance, not a current —
+premised on motor neurons pinning the v_clamp rail under drive. Both halves now measured
+(`SensoryParams.proprio_conductance`, default 0/off; instrument
+`tools/clamp_occupancy.py`, 3 seeds × 30 s, both sweeps 2026-08-16). **The premise is
+null**: at shipped defaults the A/B cord pools spend ~0% of sampled steps within 0.5 mV
+of either rail — the v_clamp comment's rail touches are brief extremes, not occupancy.
+**The prediction survives on its own merits**: translating the signed current as a *pair*
+of half-wave-rectified saturating conductances (preferred bend → excitatory toward 0 mV,
+anti-preferred → inhibitory toward E_inh — reciprocal inhibition through channels) matches
+or beats the current on every gait guardrail: dv_corr −0.73 → −0.82, TWI +0.87 → +0.91,
+speed 0.304 → 0.361 mm/s at 5 nS, frequency untouched, 3/3 seeds forward, plateau above
+~10 nS. The first cut rectified away the inhibitory half and paid for it (dv_corr
+collapsed to −0.06, a third of the speed gone) — the signed current's hyperpolarising
+half was real push-pull, and the record keeps both sweeps. Self-limiting is proven at
+absurdity (500 nS peaks the pool under 10 mV where 3000 pA pins +45 mV; pinned in
+`tests/test_behaviour.py`). **Adoption is open and is not this item**: Track A discipline
+wants reference evidence (whole-cell motor-neuron recordings under bend, if the
+literature has them) plus the scorecard/ethogram baseline protocol item 2 already
+demands, and the runtime has no conductance path yet
+([`docs/runtime-parity.md`](docs/runtime-parity.md)) — a Python-only default is not a
+default.
+
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
 number in the model. **The argument it was built for was refuted** — it does not fix gait
@@ -190,6 +213,23 @@ scarcity is a founder lottery on agar (3 of 4 seeds extinct pre-hatch), and even
 evolved dish stops laying in buffer — which bounds any future hunt at ~1,200 s of
 attrition unless the plate gets richer or a human tops up lawns, as the owner's
 browser dish had.
+
+**1d. The dish has sex now, and the descent is on screen.** Recombination landed
+2026-08-16 as policy (`web/arena-policy.js`, `ARENA_RECOMB`/`ARENA_RECOMB_R`):
+fertilisation happens at hatch with the nearest living animal within radius — each gene,
+each of the 3,935 weights (by ratio, where the lineages differ) and each morphology
+control on a fair coin, before mutation; no mate in radius is selfing, the asexual path
+untouched. Default off, and off consumes no rng — recorded runs keep replaying
+(verified byte-identical against the pre-sex tree); on forks the stream by design.
+Dynasty follows the laying parent. The first sex-on shakedown (seed 1, 300 s): 19
+matings across 19 births, recombined wiring visible to the drift instrument. Alongside
+it the pedigree — every animal's parent, birth, death and dynasty, bounded — feeds a
+live lineage panel in the viewer (`drawLineage`): one life-line per animal coloured by
+dynasty, descent as a vertical stroke at birth, so a selective sweep is legible as the
+tree collapsing to one colour. Contracts in `wasm/recomb.test.mjs`. Open question for a
+cheap background run: does a sexual dish adapt faster than an asexual one at equal
+mutation supply — the classic recombination-of-beneficials argument, now askable on
+this plate.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's

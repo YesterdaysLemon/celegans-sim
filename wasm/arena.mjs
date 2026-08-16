@@ -163,6 +163,13 @@ const JUVENILE = env('ARENA_JUVENILE', 0);
 const GROW_T = env('ARENA_GROW_T', 90);
 const WIND = env('ARENA_WIND', 0);
 const LAWNSCALE = env('ARENA_LAWNSCALE', 1);
+/* SEX (web/arena-policy.js): with ARENA_RECOMB > 0 each hatch crosses over with the
+ * nearest living animal within ARENA_RECOMB_R mm -- genes, weights and morphology on
+ * fair coins, before mutation. Default OFF and rng-free when off, so recorded runs
+ * keep replaying; ON forks the stream by design. The question it exists for: does
+ * recombination speed adaptation in this dish, or wreck co-adapted complexes? */
+const RECOMB = env('ARENA_RECOMB', 0.0);
+const RECOMB_R = env('ARENA_RECOMB_R', 9);
 const INCUBATION = env('ARENA_INCUBATION', 60);
 const REPORT = env('ARENA_REPORT', 60);
 const SEED = env('ARENA_SEED', 1);
@@ -205,6 +212,7 @@ const arena = makeArena(E, { genes: GENES, scaleOf }, {
   corpse: CORPSE, corpseYield: CORPSE_YIELD, seed: SEED,
   rotT: ROT_T, regrow: REGROW, juvenile: JUVENILE, growT: GROW_T,
   wind: WIND, lawnScale: LAWNSCALE,
+  recomb: RECOMB, recombR: RECOMB_R,
 }, rand, normal, (id) => {
   const f64 = new Float64Array(E.memory.buffer);
   return [f64[(E.ptrNodesX(id) >> 3) + 24], f64[(E.ptrNodesY(id) >> 3) + 24]];
@@ -248,8 +256,9 @@ function report() {
     metab = `  energy ${mean.toFixed(2)} [${Math.min(...es).toFixed(2)}`
       + `..${Math.max(...es).toFixed(2)}]  starved ${arena.starved}`;
   }
+  const sex = RECOMB > 0 ? `  matings ${arena.matings}` : '';
   console.log(`t=${simT.toFixed(0).padStart(5)}s  pop ${pop.length}  eggs ${E.eggCount()}`
-    + `  births ${arena.births}  deaths ${arena.deaths}  dropped ${E.eggsDropped()}`
+    + `  births ${arena.births}${sex}  deaths ${arena.deaths}  dropped ${E.eggsDropped()}`
     + `  | ${dynasties}`
     + watch.map(([g, s]) => `  ${g.replace('sen_', '')} ${spread(s)}`).join('')
     + carriers + shaped + metab + wiring);

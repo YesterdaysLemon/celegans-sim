@@ -179,6 +179,69 @@ export function neuronCentre(cv, i) {
   return { clientX: r.left + layout.pts[i].x, clientY: r.top + layout.pts[i].y };
 }
 
+/* -------------------------------------------------------------------- lineage ----- */
+
+/* The family tree, live: one horizontal life-line per animal (born -> died-or-now),
+ * coloured by dynasty, dropped a vertical stroke from its parent's lane at birth. A
+ * sweep to fixation is legible here as the tree collapsing to one colour, which no
+ * census line can show. Draws only what touches the trailing window, because a long
+ * dish's full pedigree is an archive, not a picture. Arena only -- the reference dish
+ * has no descent to draw. */
+const LINEAGE_WINDOW = 240;      // seconds of trailing history on screen
+
+export function drawLineage() {
+  const cv = el('c-lineage');
+  if (!cv || !visible(cv)) return;
+  const { ctx, w, h } = fitCanvas(cv);
+  ctx.clearRect(0, 0, w, h);
+  const arena = S.engine && S.engine.arena;
+  if (!arena || !arena.pedigree || !S.worms.length) return;
+  const now = arena.simT || 0;
+  const t0 = Math.max(0, now - LINEAGE_WINDOW);
+  const hue = S.engine.dynastyHue || (() => 40);
+
+  // Everything alive in the window, oldest first so lanes read as generations.
+  const rows = [...arena.pedigree.entries()]
+    .filter(([, v]) => (v.died === null || v.died >= t0) && v.born <= now)
+    .sort((a, b) => a[1].born - b[1].born || a[0] - b[0]);
+  if (!rows.length) return;
+  const lane = new Map();
+  rows.forEach(([id], i) => lane.set(id, i));
+  const rowH = Math.min(14, (h - 18) / rows.length);
+  const X = (t) => 8 + (w - 16) * (Math.max(t, t0) - t0) / Math.max(now - t0, 1e-9);
+  const Y = (i) => 8 + i * rowH + rowH / 2;
+
+  for (const [id, v] of rows) {
+    const y = Y(lane.get(id));
+    const alive = v.died === null;
+    ctx.strokeStyle = `hsl(${hue(v.dyn)} 70% ${alive ? 62 : 38}%)`;
+    ctx.globalAlpha = alive ? 1 : 0.65;
+    ctx.lineWidth = alive ? 2 : 1.2;
+    ctx.beginPath();
+    ctx.moveTo(X(v.born), y);
+    ctx.lineTo(X(alive ? now : v.died), y);
+    ctx.stroke();
+    // The stroke of descent: parent's lane down to this one, at the moment of birth.
+    if (v.parent >= 0 && lane.has(v.parent) && v.born >= t0) {
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(X(v.born), Y(lane.get(v.parent)));
+      ctx.lineTo(X(v.born), y);
+      ctx.stroke();
+    }
+    if (alive) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `hsl(${hue(v.dyn)} 75% 65%)`;
+      ctx.beginPath(); ctx.arc(X(now), y, Math.min(3, rowH * 0.4), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = C('--text-muted'); ctx.font = C('--font-canvas');
+  ctx.fillText(`${Math.round(now - t0)} s`, 8, h - 4);
+  ctx.textAlign = 'right'; ctx.fillText('now', w - 8, h - 4); ctx.textAlign = 'left';
+}
+
 /* -------------------------------------------------------------------- muscles ----- */
 
 export function drawMuscles() {

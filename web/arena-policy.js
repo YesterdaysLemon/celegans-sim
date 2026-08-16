@@ -30,6 +30,18 @@ export function resolveOptions(o = {}) {
     wmut: o.wmut ?? 0.0,
     wmutN: o.wmutN ?? 3,
     mmut: o.mmut ?? 0.0,
+    /* SEX. With recomb > 0, a hatchling crosses over with the nearest living animal
+     * within recombR mm: each gene, each of the 3,935 weights and each morphology
+     * control takes either lineage's value on a fair coin, BEFORE mutation. Stated as
+     * the policy it is: fertilisation here happens at HATCH with whoever is nearby --
+     * the egg's snapshot is one parent, the neighbour is the other -- because the
+     * runtime's eggs carry one genome and this file owns what a dish cannot decide.
+     * No mate in radius means selfing: the asexual path, untouched. Default OFF, and
+     * off consumes no rng -- every recorded run keeps replaying; ON forks the mutation
+     * stream by design and says so in the knob. Dynasty follows the LAYING parent
+     * (the census is a patriline; a fair-coin genome does not need a fair-coin flag). */
+    recomb: o.recomb ?? 0.0,
+    recombR: o.recombR ?? 9,
     metab,
     metabT: o.metabT ?? 240,
     metabWorkP: o.metabWorkP ?? 2.0,
@@ -99,6 +111,12 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     corpses: [],               // { x, y, worth, t } -- the ledger of deaths, for drawing
     simT: 0.0,
     births: 0,
+    matings: 0,               // hatches that actually crossed over (a mate was in radius)
+    /* Every animal that ever lived, kept after death because descent IS the record:
+     * id -> { parent (-1 for founders), born, died (null while alive), dyn }. Bounded
+     * -- the oldest finished twigs are forgotten past ~600 so a long dish cannot grow
+     * an unbounded family bible. Consumes no rng; feeds the lineage panel. */
+    pedigree: new Map(),
     deaths: 0,
     starved: 0,
     iota: 1000,                // hatchling seed offset, monotonic
@@ -164,6 +182,7 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
                               6.0 * Math.cos(a), 6.0 * Math.sin(a), a + Math.PI / 2);
       metabolise(id, 1.0);
       arena.founderOf.set(id, i);
+      arena.pedigree.set(id, { parent: -1, born: 0, died: null, dyn: i });
       arena.eatenAt.set(id, 0.0);
       if (arena.onBirth) arena.onBirth(id, -1);
     }
@@ -181,6 +200,14 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
     }
     E.removeWorm(id);
     arena.founderOf.delete(id);
+    const twig = arena.pedigree.get(id);
+    if (twig) twig.died = arena.simT;
+    if (arena.pedigree.size > 600) {
+      for (const [k, v] of arena.pedigree) {
+        if (arena.pedigree.size <= 400) break;
+        if (v.died !== null) arena.pedigree.delete(k);
+      }
+    }
     arena.eatenAt.delete(id);
     arena.deaths++;
     if (cause === 'starved') arena.starved++;
@@ -215,12 +242,56 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
    * Mutation order is FIXED -- genes, then weights, then morphology -- because the
    * drivers share one seeded stream and reordering it silently forks every recorded
    * run. */
+  /* One recombination: child (carrying the egg's parental snapshot) against the
+   * nearest living animal. Genes and morphology cross by value; weights cross by
+   * RATIO (scaleWeight is multiplicative and refuses sign flips, so a mate's value is
+   * reached by scaling child/mate -- skipped for loci where either side is zero, which
+   * multiplication cannot cross). The whole weight pass short-circuits when both
+   * lineages are wild-type there: 3,935 coins for two identical decks buys nothing.
+   * developWorm() after any weight change is NOT optional -- inherited thresholds over
+   * a recombined graph is bookkeeping error, not phenotype (same contract as wmut). */
+  function crossover(id) {
+    const [cx, cy] = midOf(id);
+    let mate = -1, best = opt.recombR * opt.recombR;
+    for (const other of ids()) {
+      if (other === id) continue;
+      const [ox, oy] = midOf(other);
+      const d = (ox - cx) * (ox - cx) + (oy - cy) * (oy - cy);
+      if (d < best) { best = d; mate = other; }
+    }
+    if (mate < 0) return;                      // nobody near: selfing, the asexual path
+    for (let s = 0; s < genes.length; s++) {
+      if (rand() < 0.5) E.setGene(id, s, E.getGene(mate, s));
+    }
+    let rewired = false;
+    if (E.hasOwnWeights(id) || E.hasOwnWeights(mate)) {
+      for (let fam = 0; fam < 3; fam++) {
+        const n = E.weightCount(fam);
+        for (let k = 0; k < n; k++) {
+          if (rand() >= 0.5) continue;
+          const mine = E.getWeight(id, fam, k), theirs = E.getWeight(mate, fam, k);
+          if (mine === theirs || !(mine > 0) || !(theirs > 0)) continue;
+          E.scaleWeight(id, fam, k, theirs / mine);
+          rewired = true;
+        }
+      }
+      if (rewired) E.developWorm(id);
+    }
+    if (E.hasOwnMorphology(id) || E.hasOwnMorphology(mate)) {
+      const ctl = Array.from({ length: 12 }, (_, j) =>
+        rand() < 0.5 ? E.getMorph(mate, j) : E.getMorph(id, j));
+      E.setMorphology(id, ...ctl);
+    }
+    arena.matings++;
+  }
+
   arena.hatchDue = () => {
     for (let i = E.eggCount() - 1; i >= 0; i--) {
       if (arena.simT - E.eggTime(i) < opt.incubation) continue;
       const parent = E.eggParent(i);
       const id = E.hatchEgg(i, opt.seed + arena.iota++, rand() * 2 * Math.PI);
       if (id < 0) continue;
+      if (opt.recomb > 0 && rand() < opt.recomb) crossover(id);
       for (let s = 0; s < genes.length; s++) {
         const v = E.getGene(id, s) + normal() * opt.mut * scaleOf(genes[s]);
         E.setGene(id, s, clampGene(genes[s], v));
@@ -244,6 +315,8 @@ export function makeArena(E, meta, options, rand, normal, midOf) {
       metabolise(id, opt.metabHatch);
       arena.beginGrowth(id);
       arena.founderOf.set(id, arena.founderOf.get(parent) ?? -1);
+      arena.pedigree.set(id, { parent, born: arena.simT, died: null,
+                               dyn: arena.founderOf.get(id) ?? -1 });
       arena.eatenAt.set(id, 0.0);
       arena.births++;
       if (arena.onBirth) arena.onBirth(id, parent);
