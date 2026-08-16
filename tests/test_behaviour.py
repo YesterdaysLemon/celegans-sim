@@ -873,8 +873,9 @@ def test_proprio_conductance_ships_off_and_replaces_the_current_when_on():
     the shipped one (the conformance gate holds the stronger claim -- the WASM runtime
     still matches freshly recorded Python trajectories, which it could not if the off
     state had moved). On: the body proprioceptive current is REMOVED from the returned
-    vector, the conductance appears in its place -- rectified, so nothing in it can
-    hyperpolarise -- and it touches only the cells the receptive fields name.
+    vector and TWO channels appear in its place -- the preferred bend's excitatory
+    conductance and the anti-preferred bend's inhibitory one, each half-wave rectified,
+    exclusive per cell per instant -- touching only the cells the receptive fields name.
     """
     import dataclasses
 
@@ -895,14 +896,23 @@ def test_proprio_conductance_ships_off_and_replaces_the_current_when_on():
     on = Simulation(treatment, seed=0, world=bare_world(treatment))
     I_off, I_on = drive(off), drive(on)
     assert off.senses.prop_g is None, "the off state grew a conductance"
-    g = on.senses.prop_g
-    assert g is not None and np.all(g >= 0.0), "the stretch channel must rectify"
-    assert float(g.max()) > 0.0, "a bent body opened no channel at all"
+    assert off.senses.prop_g_inh is None
+    g, g_inh = on.senses.prop_g, on.senses.prop_g_inh
+    assert g is not None and np.all(g >= 0.0), "a conductance cannot be negative"
+    assert g_inh is not None and np.all(g_inh >= 0.0)
+    assert float(g.max()) > 0.0, "a bent body opened no excitatory channel at all"
+    assert float(g_inh.max()) > 0.0, "a bent body opened no inhibitory channel at all"
+    # Half-wave rectification: at one instant a cell hears its preferred bend or its
+    # anti-preferred one, never both.
+    assert float(np.minimum(g, g_inh).max()) == 0.0, (
+        "some cell holds both channels open at once: the halves are not exclusive")
 
     prop_targets = (np.abs(on.senses.W_b).sum(axis=1)
                     + np.abs(on.senses.W_a).sum(axis=1)) > 0
     assert np.allclose(g[~prop_targets], 0.0, atol=1e-12), (
         "the stretch conductance leaked outside the proprioceptive pools")
+    assert np.allclose(g_inh[~prop_targets], 0.0, atol=1e-12), (
+        "the inhibitory arm leaked outside the proprioceptive pools")
     # The current the off animal injects into those pools is gone from the on animal --
     # replaced, not doubled up. Everyone else's current is untouched.
     assert np.allclose(I_on[~prop_targets], I_off[~prop_targets], atol=1e-10)

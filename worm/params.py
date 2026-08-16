@@ -1416,11 +1416,13 @@ class SensoryParams:
     # potential and never past it, where injected current drives motor neurons onto the
     # v_clamp rail at the extremes of every cycle (the saturation v_clamp's own comment
     # accepts). With proprio_conductance > 0 the body A/B proprioceptive drive becomes a
-    # rectified saturating conductance -- g = tanh(relu(drive)) * this, towards
-    # proprio_E_rev -- REPLACING the current injection for those pools. Rectified,
-    # because a channel opens for its preferred bend and closes otherwise: the
-    # dorsal/ventral pair then genuinely alternates instead of push-pulling through one
-    # shared signed current. Self-limiting by construction, so the drive no longer needs
+    # pair of saturating conductances REPLACING the current injection for those pools:
+    # the preferred bend opens g = tanh(relu(drive)) * this towards proprio_E_rev, the
+    # anti-preferred bend opens the mirror conductance towards E_inh -- reciprocal
+    # inhibition through channels. The first cut rectified away the inhibitory half and
+    # the sweep said what that costs (dv_corr -0.73 -> -0.06, a third of the speed):
+    # the signed current's hyperpolarising half was real push-pull, so the channel
+    # translation keeps it, self-limiting at BOTH reversals. The drive no longer needs
     # to be tuned to avoid pinning. 0 = off, the shipped current path untouched. The
     # head reflex keeps its own current path either way -- it is a different map,
     # calibrated separately, and one experiment changes one thing.
