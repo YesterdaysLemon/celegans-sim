@@ -17,18 +17,10 @@ Two working conventions with teeth:
 
 ## Running the checks yourself
 
-**CI is paused, at the jobs rather than at the triggers.** This account's Actions minutes
-are exhausted, so every push was starting a run that died in seconds having executed no
-steps at all — the API reports `steps: []` with no failed step, because the job never got
-a runner. A permanent red cross that says nothing about the code is worse than no signal:
-a check that always fails is exactly as uninformative as one that always passes, and it
-teaches you to ignore the one time it means something.
-
-So every job in both workflows is gated on the repository variable `CI_ENABLED`. A job
-whose `if` is false is skipped by the Actions service before a runner is allocated, so it
-burns no minutes and reports `skipped` instead of failing. Re-enable everything by setting
-`CI_ENABLED` to `true` under Settings → Secrets and variables → Actions → Variables.
-Nothing else needs editing, and nothing in the jobs was weakened to make anything pass.
+**CI runs by default.** `CI_ENABLED=false` remains an emergency off-switch from the period
+when this repository was private and metered Actions minutes were exhausted. A job whose
+`if` is false is skipped before a runner is allocated, but a skipped run is not accepted as
+production coverage by the release coordinator.
 
 The triggers themselves stay live, and that is deliberate. The first version of this
 change commented out `push` and `pull_request` and left only `workflow_dispatch`, which
@@ -38,13 +30,13 @@ merged with exactly that empty rollup. Removing the triggers is the defect that 
 to detect, so it is not available as a way to stop the runs. Leaving `paths:` in place keeps
 the filters declared and keeps that test able to pin them.
 
-Until then the gates are local, and there is one command for them:
+There is also one command for the same gates locally:
 
 ```bash
 npm ci && (cd wasm && npm ci)
 npm run check                  # every gate that does not rewrite a tracked file
 npm run check -- --rebuild     # ...plus the ones that regenerate .model/.wasm/celegans.json
-npm run check -- --python      # ...plus the ~37 minute pytest suite
+npm run check -- --python      # ...plus the long-running whole-animal pytest suite
 npm run check -- --list        # what the gates are, and which CI step each stands in for
 ```
 
@@ -62,7 +54,7 @@ Gates that rewrite tracked files are held back behind `--rebuild`, because regen
 `web/worm.model` and `web/worm.wasm` underneath a viewer you have open, or an
 `evolve.mjs` run in another terminal, hands it a torn artifact set.
 
-`tests/test_local_checks.py` pins the runner against both workflows: a named CI step that no
+`tests/test_local_checks.py` pins the runner against all three workflows: a named CI step that no
 gate claims fails the suite, and so does a gate claiming a step name no workflow declares.
 The list is allowed to be smaller than CI only where someone wrote down why.
 
@@ -82,13 +74,24 @@ node tools/smoke_web.mjs                  # the viewer in a real browser, deskto
 node tools/smoke_server.mjs               # the ?server transport, against a live Python model
 ```
 
-The Python model suite, which is not fast — it is about 37 minutes of simulation, which is
-why it never ran in CI even when CI ran:
+The Python model suite is deliberately not fast: many assertions simulate the complete
+animal for tens or hundreds of biological seconds. Hosted CI groups the fast files into one
+target, gives the medium world assay its own target, and shards behaviour and pharynx by
+explicit test node IDs. The manifest validates that every dense test appears exactly once;
+shared deterministic fixtures stay in one process so parallelism does not duplicate their
+simulation work. Locally, the complete serial battery is:
 
 ```bash
 .venv/bin/python -m pip install -e '.[test]'
 PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
 ```
+
+Production deployment is a third, path-filtered workflow. Every candidate builds the real
+Docker image and runs its model/WASM conformance gate. On `main`, the coordinator diffs from
+the last successful `production` deployment and waits only for workflows whose declared
+inputs changed. Thus a `web/**` change needs viewer CI but not the Python simulations; a
+model change needs Python, and a WASM change needs both. Coverage is cumulative across
+undeployed commits, so a quick UI follow-up cannot leapfrog a still-running model check.
 
 And the pinned-anatomy gate, which checks that the committed dataset is what the pinned
 inputs actually rebuild to:

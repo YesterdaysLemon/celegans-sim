@@ -2,14 +2,12 @@
  *
  *     node tools/check_all.mjs               # everything that does not rewrite a tracked file
  *     node tools/check_all.mjs --rebuild     # ...plus the gates that regenerate .model/.wasm
- *     node tools/check_all.mjs --python      # ...plus the ~37 minute pytest suite
+ *     node tools/check_all.mjs --python      # ...plus the long whole-animal pytest suite
  *     node tools/check_all.mjs --list        # what the gates are, and where each comes from
  *     node tools/check_all.mjs --only web    # one gate, by id
  *
- * CI is paused at the jobs -- this account's Actions minutes are exhausted, so every job is
- * gated on the repository variable CI_ENABLED while the triggers stay live so
- * tests/test_ci_policy.py can keep pinning the path filters. The gates themselves were not
- * weakened; they just have nowhere to run. This is that somewhere.
+ * CI runs by default now that the repository is public. CI_ENABLED remains a literal-false
+ * emergency off-switch; this runner is the same battery for a local pre-push check.
  *
  * WHY THIS FILE EXISTS AT ALL, GIVEN README ALREADY LISTS THE COMMANDS.
  *
@@ -33,9 +31,9 @@
  * at the bottom with the reason and the fix. `--strict` makes a skip an exit failure, which
  * is what a release check wants and what an iterating developer does not.
  *
- * WHAT IT DOES NOT DO. It does not re-enable CI -- setting CI_ENABLED to `true` is still the
- * one switch for that -- and it does not weaken a gate to make it runnable here. A gate this
- * machine cannot honestly run is skipped and named, not softened.
+ * WHAT IT DOES NOT DO. It does not change CI settings, and it does not weaken a gate to make
+ * it runnable here. A gate this machine cannot honestly run is skipped and named, not
+ * softened.
  */
 
 import fs from 'fs';
@@ -218,7 +216,7 @@ function everyModuleParses() {
  *
  * `job` names the CI job each one comes from, and `covers` lists the CI step names it
  * stands in for, character for character. That is not documentation:
- * tests/test_local_checks.py reads both workflow files and fails if a named CI step is
+ * tests/test_local_checks.py reads every workflow file and fails if a named CI step is
  * claimed by no gate here, which is what stops this runner from drifting into covering less
  * than its own header claims. A gate covering two names is a step CI spells twice --
  * `rebuild the model and the runtime` and `rebuild the model and runtime as one set` are
@@ -230,6 +228,13 @@ function everyModuleParses() {
  * a torn artifact set underneath it.
  */
 const GATES = [
+  // ---- deploy.yml : validate ---------------------------------------------------------
+  {
+    id: 'release-policy', job: 'deploy', step: 'release policy and coordinator tests',
+    covers: ['release policy and coordinator tests'],
+    needs: [], run: sh('node --test .github/scripts/*.test.mjs'),
+  },
+
   // ---- viewer.yml : viewer -----------------------------------------------------------
   {
     id: 'headers', job: 'viewer', step: 'every viewer asset has a deliberate cache policy',
@@ -401,9 +406,9 @@ const GATES = [
 
   // ---- python.yml : tests -------------------------------------------------------------
   //
-  // CI fans this out one file per runner via a matrix, so the step is unnamed there too.
-  // Locally it is one pytest invocation and about 37 minutes of simulation, which is why it
-  // is behind --python rather than in the default set.
+  // CI cost-shards this through tools/ci_test_targets.py, so the step is unnamed there too.
+  // Locally it is one serial pytest invocation, which is why it is behind --python rather
+  // than in the default set.
   {
     id: 'pytest', job: 'tests', step: 'the Python model suite', slow: true,
     covers: [],
@@ -445,7 +450,7 @@ if (OPT.only && !selected.length) {
 /* --- run ------------------------------------------------------------------------------ */
 
 console.log('celegans-sim -- the gates CI would run, in its order.');
-console.log(`${C.dim}CI is paused at the jobs (CI_ENABLED); nothing below is weakened to run here.${C.off}\n`);
+console.log(`${C.dim}CI runs by default; nothing below is weakened to run locally.${C.off}\n`);
 
 const results = [];
 let lastJob = null;

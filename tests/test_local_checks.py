@@ -1,8 +1,8 @@
 """The local check runner, pinned against the workflows it stands in for.
 
-`tools/check_all.mjs` exists because CI is paused at the jobs and the gates have nowhere
-else to run. That makes it the thing you consult to answer "am I done", which makes its
-coverage a correctness property rather than a convenience.
+`tools/check_all.mjs` is the local equivalent of the hosted gates. That makes it the thing
+you consult to answer "am I done" before a push, which makes its coverage a correctness
+property rather than a convenience.
 
 This is the test for the failure mode NEXT.md names as this project's most repeated bug:
 a check that runs, passes, and covers less than its own comment claims. Three of the four
@@ -11,7 +11,7 @@ conformance comparison that printed a perfect ``0.000e+0`` from comparing zero f
 local runner that prints a green summary having silently dropped the browser gate would be
 the same bug one layer up, and the layer that hides the others.
 
-So: every *named* step in either workflow must be claimed by some gate in `check_all.mjs`,
+So: every *named* step in any workflow must be claimed by some gate in `check_all.mjs`,
 or be named in ``NOT_A_GATE`` below with the reason it is not one. The allowlist is
 deliberate and per-step. It means that adding a CI step the local runner cannot do is a
 decision somebody writes down, rather than a thing that happens.
@@ -47,13 +47,19 @@ RUNNER = ROOT / "tools" / "check_all.mjs"
 # GitHub expresses as actions rather than as `run:` -- checkout, setup-python, setup-node --
 # carry no `name:` at all and so never reach this list.
 NOT_A_GATE = {
-    "enumerate test files":
-        "discovery, not a gate: it builds the matrix of test files for the job that "
-        "follows. Locally that fan-out is one pytest invocation.",
+    "build the cost-aware test matrix":
+        "discovery, not a gate: it validates and emits the simulation shards for the job "
+        "that follows. Locally the same helper validates them before running pytest.",
     "snapshot the committed model/runtime set":
         "setup for the two comparison gates, not a check of its own. The local runner "
         "folds it into `model-artifacts`, because locally the snapshot has to happen "
         "before anything is overwritten rather than in a fresh checkout.",
+    "prove this tree has all required CI coverage":
+        "release coordination, not a code gate: it reads GitHub's workflow and production "
+        "deployment history and therefore has no truthful offline equivalent.",
+    "refuse a superseded release under the production lock":
+        "release-state guard, not a code gate: it compares the queued SHA with live main "
+        "only after GitHub grants the production concurrency lock.",
 }
 
 
@@ -61,12 +67,13 @@ NOT_A_GATE = {
 def _step_names(text: str) -> list[str]:
     """Every step label in a workflow, in file order.
 
-    Three kinds of ``name:`` appear in these files and only one of them is a step, so this
+    Four kinds of ``name:`` appear in these files and only one of them is a step, so this
     classifies by indentation rather than by the leading dash:
 
       * indent 0 -- the workflow's own name;
       * indent 4, no dash -- a job label. A job is not a step and has no command to stand
         in for;
+      * directly below ``environment:`` -- a deployment-environment label;
       * anything deeper -- a step. Usually ``      - name:``, but not always: python.yml's
         discovery step leads with ``- id: files`` and puts ``name:`` on the next line at
         indent 8. Matching only the dashed form silently missed it, which is exactly the
@@ -75,12 +82,15 @@ def _step_names(text: str) -> list[str]:
     A name containing ``${{ }}`` is a matrix label rather than a fixed step, and is dropped.
     """
     names = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
         match = re.match(r"^(\s*)(-\s+)?name:\s*(.+?)\s*$", line)
         if not match:
             continue
         indent, dashed = len(match.group(1)), match.group(2) is not None
         if indent == 0 or (indent == 4 and not dashed):
+            continue
+        if index and lines[index - 1].strip() == "environment:":
             continue
         name = match.group(3).strip().strip("'\"")
         if "${{" in name:
@@ -150,7 +160,8 @@ def test_the_parsers_are_not_lying(workflow_steps, runner_text):
     # Job names must not leak in as steps.
     for job_label in ("static checks and browser smoke test",
                       "the port still reproduces the Python",
-                      "discover Python test files"):
+                      "discover Python test targets",
+                      "production"):
         assert job_label not in workflow_steps, (
             f"{job_label!r} is a job name, not a step; the parser is matching too broadly"
         )

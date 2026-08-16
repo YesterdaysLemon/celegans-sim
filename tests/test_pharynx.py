@@ -10,6 +10,7 @@ number.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from worm.engine import Simulation
 from worm.params import Params
@@ -41,10 +42,34 @@ def _run(on_food=True, ablate=(), seconds=MEASURE, seed=0):
                 lumen=sim.pharynx.lumen)
 
 
-def test_pump_rate_matches_a_feeding_animal():
+@pytest.fixture(scope="module")
+def intact():
+    return _run(ablate=())
+
+
+@pytest.fixture(scope="module")
+def off_food():
+    return _run(on_food=False)
+
+
+@pytest.fixture(scope="module")
+def eat2():
+    return _run(ablate=("MCL", "MCR"))
+
+
+@pytest.fixture(scope="module")
+def m4():
+    return _run(ablate=("M4",))
+
+
+@pytest.fixture(scope="module")
+def m3():
+    return _run(ablate=("M3L", "M3R"))
+
+
+def test_pump_rate_matches_a_feeding_animal(intact, off_food):
     """200-300 pumps a minute on E. coli, far lower off food (Avery & Horvitz 1989)."""
-    on = _run(on_food=True)
-    off = _run(on_food=False)
+    on, off = intact, off_food
     assert 200.0 <= on["rate"] <= 300.0, (
         "on food the animal pumped %.0f times a minute, outside 200-300" % on["rate"])
     assert off["rate"] < on["rate"] / 3.0, (
@@ -54,7 +79,7 @@ def test_pump_rate_matches_a_feeding_animal():
         "pump lasted %.0f ms, outside the animal's 150-200" % (1000 * on["duration"]))
 
 
-def test_killing_the_pacemaker_reproduces_eat_2():
+def test_killing_the_pacemaker_reproduces_eat_2(intact, eat2):
     """MC gone: pumping several-fold slower, and the animal ingests almost nothing.
 
     eat-2 encodes the receptor subunit MC acts on, and eat-2 animals pump slowly and grow
@@ -62,23 +87,19 @@ def test_killing_the_pacemaker_reproduces_eat_2():
     MC rather than beside it: modelled as a parallel term, killing MC cost 5% of the rate,
     because the serotonergic drive simply carried on without a pacemaker to act on.
     """
-    intact = _run(ablate=())
-    eat2 = _run(ablate=("MCL", "MCR"))
     assert eat2["rate"] < intact["rate"] / 3.0, (
         "MC ablated pumped %.0f /min against %.0f intact: not a several-fold slowdown"
         % (eat2["rate"], intact["rate"]))
     assert eat2["ingest"] < intact["ingest"] / 3.0, "MC ablated did not go hungry"
 
 
-def test_killing_m4_stops_feeding_without_stopping_pumping():
+def test_killing_m4_stops_feeding_without_stopping_pumping(intact, m4):
     """The phenotype that makes transport a separate step from capture.
 
     M4 drives isthmus peristalsis. Ablated animals pump at a normal rate and starve
     anyway (Avery & Horvitz 1987), so a model where ingestion is a property of the pump
     cannot express this at all -- it would have to slow the pumping to stop the feeding.
     """
-    intact = _run(ablate=())
-    m4 = _run(ablate=("M4",))
     assert m4["rate"] > 0.7 * intact["rate"], (
         "M4 ablated pumped %.0f /min against %.0f intact: pumping should be unaffected"
         % (m4["rate"], intact["rate"]))
@@ -90,10 +111,8 @@ def test_killing_m4_stops_feeding_without_stopping_pumping():
         % m4["lumen"])
 
 
-def test_killing_m3_lengthens_the_pump():
+def test_killing_m3_lengthens_the_pump(intact, m3):
     """M3 is inhibitory onto the muscle and repolarises it, so it ends the pump."""
-    intact = _run(ablate=())
-    m3 = _run(ablate=("M3L", "M3R"))
     assert m3["duration"] > 1.05 * intact["duration"], (
         "M3 ablated gave %.0f ms pumps against %.0f intact"
         % (1000 * m3["duration"], 1000 * intact["duration"]))

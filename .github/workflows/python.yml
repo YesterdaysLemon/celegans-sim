@@ -32,32 +32,33 @@ concurrency:
 
 jobs:
   discover-tests:
-    name: discover Python test files
+    name: discover Python test targets
     if: ${{ vars.CI_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     outputs:
-      files: ${{ steps.files.outputs.files }}
+      targets: ${{ steps.targets.outputs.targets }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - id: files
-        name: enumerate test files
+      - id: targets
+        name: build the cost-aware test matrix
         shell: bash
         run: |
-          files="$(python -c 'import json; from pathlib import Path; files = [p.as_posix() for p in sorted(Path("tests").glob("test_*.py"))]; assert files, "no Python tests found"; print(json.dumps(files))')"
-          echo "files=$files" >> "$GITHUB_OUTPUT"
+          targets="$(python tools/ci_test_targets.py --json)"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   tests:
-    name: Python 3.10 - ${{ matrix.test_file }}
+    name: Python 3.10 - ${{ matrix.test_target }}
     if: ${{ vars.CI_ENABLED != 'false' }}
     needs: discover-tests
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     # These simulations solve small dense systems repeatedly. Letting BLAS create a
-    # runner-sized thread team for each solve is dramatically slower and exhausted this
-    # job's one-hour limit on its first clean run.
+    # runner-sized thread team for each solve is dramatically slower. The matrix helper
+    # also keeps shared fixtures together, shards only the dense files, and combines the
+    # sub-minute files so parallel wall time does not come at needless runner/setup cost.
     env:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -67,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_file: ${{ fromJSON(needs.discover-tests.outputs.files) }}
+        test_target: ${{ fromJSON(needs.discover-tests.outputs.targets) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,7 +76,7 @@ jobs:
           python-version: '3.10'
           cache: pip
       - run: python -m pip install -e '.[test]'
-      - run: python -m pytest "${{ matrix.test_file }}" -q
+      - run: python tools/ci_test_targets.py --run "${{ matrix.test_target }}"
 
   dataset:
     name: pinned anatomy rebuilds the committed dataset and runtime pair

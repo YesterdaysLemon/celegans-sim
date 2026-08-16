@@ -1,0 +1,127 @@
+name: production deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
+            'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
+            'web/**', 'docker/**', '.github/scripts/**', '.github/workflows/deploy.yml']
+  pull_request:
+    paths: ['Dockerfile', '.dockerignore', 'requirements*.txt', 'worm/**', 'data/**',
+            'tools/export_model.py', 'tools/conform.py', 'tools/manifest.py', 'wasm/**',
+            'web/**', 'docker/**', '.github/scripts/**', '.github/workflows/deploy.yml']
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Deploy the current main commit to worm.alirezaafshan.com
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: production image builds and conforms
+    if: ${{ github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.confirm) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      # These are deliberately outside tests/: editing deployment policy must not schedule
+      # forty minutes of model simulation merely to prove the release gate parses.
+      - name: release policy and coordinator tests
+        run: node --test .github/scripts/*.test.mjs
+      # The Dockerfile regenerates the model and WASM, runs their conformance comparison,
+      # writes cache-busting hashes, and assembles the exact nginx production image.
+      - run: docker build --tag "celegans-sim:ci-${GITHUB_SHA}" .
+
+  coordinate:
+    name: select and await required main checks
+    needs: validate
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.confirm))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+      deployments: read
+    outputs:
+      deploy: ${{ steps.coordinate.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      # The coordinator diffs from the last successful production environment SHA. For
+      # each workflow whose inputs changed, it accepts a successful ancestor run only if
+      # no later commit touched those inputs; otherwise it dispatches and awaits a check
+      # of current main. CI_ENABLED=false is rejected because such a run has no successful
+      # jobs. Manual confirmed deploys remain the explicit operator override.
+      - id: coordinate
+        name: prove this tree has all required CI coverage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-coordinator.mjs
+
+  deploy:
+    name: notify the production deploy manager
+    needs: coordinate
+    if: ${{ needs.coordinate.outputs.deploy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      deployments: write
+    concurrency:
+      group: celegans-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://worm.alirezaafshan.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      # Recheck after acquiring the production lock. Failure is intentional: a skipped
+      # environment job would be recorded as a successful deployment baseline even though
+      # nothing was deployed. The manager independently enforces the exact SHA as well.
+      - name: refuse a superseded release under the production lock
+        shell: bash
+        run: |
+          latest_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$latest_sha"
+          if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+            echo "Refusing superseded SHA $GITHUB_SHA; main is now $latest_sha" >&2
+            exit 1
+          fi
+
+      # This is an authenticated release notification, not a forwarded GitHub event. The
+      # manager allowlists the repo and branch and resets to this exact 40-character SHA.
+      - shell: bash
+        env:
+          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          test -n "$DEPLOY_WEBHOOK_URL"
+          test -n "$DEPLOY_WEBHOOK_SECRET"
+
+          payload="$(node -e 'const payload = { event: "push", branch: "main", repo: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA }; process.stdout.write(JSON.stringify(payload));')"
+          signature="$(node -e 'const crypto = require("crypto"); const payload = process.argv[1]; process.stdout.write("sha256=" + crypto.createHmac("sha256", process.env.DEPLOY_WEBHOOK_SECRET).update(payload).digest("hex"));' "$payload")"
+
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-time 900 \
+            --request POST "$DEPLOY_WEBHOOK_URL" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: push" \
+            --header "X-Hub-Signature-256: $signature" \
+            --data-binary "$payload"
