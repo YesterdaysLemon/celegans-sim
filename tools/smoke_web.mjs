@@ -104,6 +104,7 @@ const VIEWPORTS = [
 // Ids that must exist and be visible at every viewport. These are the controls, not the
 // readouts: a missing readout is a bug, a missing control is an unusable page.
 const REQUIRED = [
+  'portfolio-link',
   'c-dish', 'b-play', 'b-reset', 'r-rate', 'r-scrub', 'b-poke-a', 'b-poke-p',
   'b-ablate', 'b-restore', 'b-worm-add', 'b-worm-del', 'b-rail',
   'b-centre', 'b-zin', 'b-zout',

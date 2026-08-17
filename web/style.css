@@ -127,12 +127,13 @@ header {
 /* The museum's door: a quiet pill in the brand row, amber-edged like everything on the
  * evolution side of the fence, because the museum is where that side's discoveries are
  * catalogued. */
-.museum-door {
+.museum-door, .portfolio-door {
+  display: inline-flex; align-items: center; min-height: 32px;
   font-size: 12px; padding: 4px 12px; border-radius: 999px;
   border: 1px solid rgba(217, 164, 65, 0.4);
   color: var(--text-secondary); text-decoration: none; white-space: nowrap;
 }
-.museum-door:hover { background: rgba(217, 164, 65, 0.12); color: var(--text-primary); }
+.museum-door:hover, .portfolio-door:hover { background: rgba(217, 164, 65, 0.12); color: var(--text-primary); }
 #app:not([data-dish="arena"]) .arena-only { display: none; }
 /* The arena tab keeps its solid amber when selected -- Track B's colour, a fence the
    mode work does not move -- while the animal tab takes the ordinary phosphor active. */
@@ -555,6 +556,7 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
     min-height: 44px; min-width: 44px;
     padding-top: 10px; padding-bottom: 10px;
   }
+  .museum-door, .portfolio-door { min-height: 44px; }
   .seg button, .chip { padding-left: 14px; padding-right: 14px; }
   .zoomrow .sq { width: 44px; height: 44px; font-size: 17px; }
   .zoomrow { padding: 2px 10px 2px 2px; gap: 8px; }
@@ -774,8 +776,8 @@ html[data-mode="light"] #app[data-dish="arena"] #dish-tabs button[aria-pressed="
   background: #b98a1e; color: #fff;
 }
 
-html[data-mode="light"] .museum-door { border-color: rgba(160, 110, 20, 0.55); }
-html[data-mode="light"] .museum-door:hover { background: rgba(217, 164, 65, 0.18); color: #221d15; }
+html[data-mode="light"] .museum-door, html[data-mode="light"] .portfolio-door { border-color: rgba(160, 110, 20, 0.55); }
+html[data-mode="light"] .museum-door:hover, html[data-mode="light"] .portfolio-door:hover { background: rgba(217, 164, 65, 0.18); color: #221d15; }
 
 html[data-mode="light"] #tooltip {
   background: #fbf8f0;
