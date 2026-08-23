@@ -59,9 +59,15 @@ const THEMES = {
     // surface: a chemical gradient covers the whole plate at some concentration, so a
     // flatter mapping just washes the dish out and hides the structure.
     fields: {
+      /* Attractant keeps the steep 2.1 gamma on purpose, twice tried otherwise: dealt
+       * attractant above the image clamp made a flat blue wall, and easing gamma to
+       * 1.6 washed the whole dish at animal zoom (the plume's 9 mm length scale fills
+       * a 6.5 mm frame, so the low end must stay near the surface). The plume reads
+       * now because the DEAL guarantees a lawn near the spawn -- presence in frame,
+       * not a hotter mapping, is what fixed the invisible field. */
       attractant: { tint: [57, 135, 229], alpha: 0.80, gamma: 2.1 },
-      food:       { tint: [25, 158, 112], alpha: 0.80, gamma: 2.1 },
-      repellent:  { tint: [208, 59, 59],  alpha: 0.80, gamma: 2.1 },
+      food:       { tint: [25, 158, 112], alpha: 0.85, gamma: 1.8 },
+      repellent:  { tint: [208, 59, 59],  alpha: 0.85, gamma: 1.8 },
     },
   },
 

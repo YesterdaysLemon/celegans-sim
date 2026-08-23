@@ -88,6 +88,14 @@ export class LocalEngine {
     this._last = 0;
     this._window = { steps: 0, wall: 0, cpu: 0 };
     this._now = clock || (() => performance.now());
+    /* The reference dish's weather: a gentle baseline drift on the food and repellent
+     * fields, same deterministic meander the arena's policy uses, so the plate reads
+     * as a live place rather than a still life. The arena zeroes this -- its policy
+     * owns its own wind -- and the header's Weather slider multiplies it live via
+     * setWeather(). Dish physics, not animal model: the reference worm is untouched. */
+    this.wind = 0.05;
+    this._weatherT = 0;
+    this._windMark = 0;
   }
 
   async init(nWorms = 2) {
@@ -139,12 +147,13 @@ export class LocalEngine {
     this._defaultPlate();
 
     for (let i = 0; i < nWorms; i++) {
-      // Spread them out and point them different ways, so two worms do not start life as
-      // one worm drawn twice.
+      // Spread them out, point them different ways, and seed them fresh each load --
+      // the fixed seeds meant every visitor's animal lived the same first minute.
       const ang = (i / nWorms) * Math.PI * 2;
       const r = i === 0 ? 0 : 3.5;
-      this.worms.push(this.E.createWorm(1000 + i * 7717,
-                                        Math.cos(ang) * r, Math.sin(ang) * r, ang + 0.6));
+      this.worms.push(this.E.createWorm((Math.random() * 0x7fffffff) | 0,
+                                        Math.cos(ang) * r, Math.sin(ang) * r,
+                                        Math.random() * Math.PI * 2));
     }
     this.ready = true;
     this._last = this._now();
@@ -187,16 +196,54 @@ export class LocalEngine {
   }
 
   _defaultPlate() {
-    // The dish the server used to build: a couple of lawns and one noxious drop, so there
-    // is something to find and something to avoid.
-    this.E.addFood(-14.0, 8.0, 7.0, 1.0, 1.0, 9.0);
-    this.E.addFood(16.0, -10.0, 5.0, 0.8, 0.8, 9.0);
-    this.E.addRepellent(6.0, 14.0, 0.9, 5.0);
-    this.meta.world.patches = [
-      { x: -14.0, y: 8.0, r: 7.0, kind: 'food' },
-      { x: 16.0, y: -10.0, r: 5.0, kind: 'food' },
-      { x: 6.0, y: 14.0, r: 3.0, kind: 'repellent' },
-    ];
+    /* A different plate every load. The fixed two-lawn layout meant every visitor saw
+     * the same dish forever -- and saw it EMPTY, because both lawns sat outside the
+     * 6.5 mm opening view and the first minute of a first visit was a worm in a void.
+     * So: one lawn is always dealt close enough that its plume reaches the spawn (the
+     * opening frame has something happening in it), the rest of the plate is dealt
+     * fresh -- lawn count, positions, sizes, densities, and where the noxious drops
+     * land. Attractant is dealt at 1.4-2.0, roughly twice the old 0.8-1.0: the plume
+     * is the food field made visible, and it was too faint to read as weather began
+     * moving it. Repellent keeps its distance from the spawn; being born in pain is
+     * not a first impression. */
+    const R = Math.min(20, (this.meta.world.radius || 25) - 5);
+    const patches = [];
+    const deal = (rMin, rMax) => {
+      const a = Math.random() * Math.PI * 2;
+      const d = rMin + Math.random() * (rMax - rMin);
+      return [Math.cos(a) * d, Math.sin(a) * d];
+    };
+    // The near lawn: its plume's SHOULDER reaches the spawn, not its core. Getting a
+    // field to read on screen took three tries, all on the record: attractant above
+    // the image clamp (local.js fieldImage caps at 1.2) is a flat blue wall; a hotter
+    // gamma washes the frame instead; and at the old 9 mm length scale nothing helps,
+    // because the plume barely decays across a 6.5 mm view -- there is no gradient IN
+    // FRAME to show. A ~5 mm scale decays visibly within the opening view, so the
+    // plume reads as "coming from over there", which is what a plume is.
+    {
+      const r = 3.5 + Math.random() * 2.0;
+      const [x, y] = deal(r + 3.5, r + 6.0);
+      this.E.addFood(x, y, r, 0.9 + Math.random() * 0.2,
+                     0.9 + Math.random() * 0.2, 5.0);
+      patches.push({ x, y, r, kind: 'food' });
+    }
+    // The far field: one to three more lawns, spread over the plate.
+    const extra = 1 + (Math.random() * 3 | 0);
+    for (let i = 0; i < extra; i++) {
+      const r = 3.0 + Math.random() * 4.0;
+      const [x, y] = deal(9, R);
+      this.E.addFood(x, y, r, 0.7 + Math.random() * 0.4,
+                     0.8 + Math.random() * 0.3, 6.0);
+      patches.push({ x, y, r, kind: 'food' });
+    }
+    // Something to avoid: one or two noxious drops, never near the spawn.
+    const drops = 1 + (Math.random() < 0.4 ? 1 : 0);
+    for (let i = 0; i < drops; i++) {
+      const [x, y] = deal(8, R);
+      this.E.addRepellent(x, y, 0.8 + Math.random() * 0.4, 5.0);
+      patches.push({ x, y, r: 3.0, kind: 'repellent' });
+    }
+    this.meta.world.patches = patches;
   }
 
   /* Worms come and go at runtime. They share the plate, the anatomy and the runtime's
@@ -242,10 +289,13 @@ export class LocalEngine {
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2;
       const r = i === 0 ? 0 : 3.5;
-      this.worms.push(this.E.createWorm(1000 + i * 7717,
-                                        Math.cos(ang) * r, Math.sin(ang) * r, ang + 0.6));
+      this.worms.push(this.E.createWorm((Math.random() * 0x7fffffff) | 0,
+                                        Math.cos(ang) * r, Math.sin(ang) * r,
+                                        Math.random() * Math.PI * 2));
     }
     this._acc = 0;
+    this._weatherT = 0;
+    this._windMark = 0;
   }
 
   /* Ablation applies to one animal, which is the interesting way round: kill AVB in one
@@ -354,7 +404,32 @@ export class LocalEngine {
       this.computeRate = w.cpu > 0 ? w.steps * this.dt / w.cpu : 0;
       w.steps = 0; w.wall = 0; w.cpu = 0;
     }
+    this._windPass(steps * this.dt);
     return steps * this.dt;
+  }
+
+  /* The weather pass: direction meanders on two incommensurate slow clocks, magnitude
+   * breathes on a third -- the arena policy's exact formula, driven here by accumulated
+   * simulated time. Deterministic in dish time and touching no rng; at most one field
+   * advection a simulated second, which is what the fields can absorb for free. */
+  _windPass(ran) {
+    // The scripted-clock rate test drives this engine with a stub runtime that has no
+    // fields; an engine with nothing to drift has no weather rather than an error.
+    if (ran <= 0 || this.wind <= 0 || !this.ready || !this.E.driftFields) return;
+    this._weatherT += ran;
+    const dt = this._weatherT - this._windMark;
+    if (dt < 1.0) return;
+    this._windMark = this._weatherT;
+    const t = this._weatherT;
+    const dir = 2 * Math.PI * (t / 173.0) + 0.8 * Math.sin(t / 41.0);
+    const mag = this.wind * (0.55 + 0.45 * Math.sin(t / 67.0));
+    this.E.driftFields(Math.cos(dir) * mag * dt, Math.sin(dir) * mag * dt);
+  }
+
+  /* The header's Weather slider: a live multiplier on the dish's baseline wind. */
+  setWeather(x) {
+    if (this._wind0 === undefined) this._wind0 = this.wind;
+    this.wind = this._wind0 * Math.max(0, x);
   }
 
   /* One worm's state, as typed views straight into linear memory. No copying: these are

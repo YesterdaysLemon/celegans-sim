@@ -232,6 +232,43 @@ try {
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(vp.name, overflow <= 0, `${overflow}px of horizontal overflow`);
 
+    /* The dealt plate. Layouts are random per load now, so the assertions are the
+     * INVARIANTS of the deal, not a layout: something to find, something to avoid, one
+     * lawn near enough that the opening frame is not a worm in a void (the fixed plate
+     * put every lawn outside the 6.5 mm follow view, and every first visit opened on
+     * nothing) -- and the weather machinery live on the reference dish. */
+    const plate = await page.evaluate(() => {
+      const S = window.__sim;
+      const p = (S.meta && S.meta.world.patches) || [];
+      const food = p.filter((q) => q.kind === 'food');
+      const near = food.reduce((a, q) => Math.min(a, Math.hypot(q.x, q.y) - q.r), 1e9);
+      return {
+        food: food.length,
+        rep: p.filter((q) => q.kind === 'repellent').length,
+        near,
+        wind: S.engine ? S.engine.wind : -1,
+        weatherShown: (() => {
+          const rw = document.getElementById('r-weather');
+          return !!rw && rw.getBoundingClientRect().width > 0;
+        })(),
+        by: (() => {
+          const a = document.querySelector('a.by');
+          return !!a && a.href.includes('alirezaafshan.com')
+            && a.getBoundingClientRect().width > 0;
+        })(),
+      };
+    });
+    check(vp.name, plate.food >= 2 && plate.rep >= 1,
+          `the deal produced ${plate.food} lawns and ${plate.rep} drops; the plate needs both`);
+    check(vp.name, plate.near <= 6,
+          `the nearest lawn's edge is ${plate.near.toFixed(1)} mm out; the opening frame is a void again`);
+    check(vp.name, plate.wind > 0,
+          'the reference dish has no weather; the plate is a still life again');
+    check(vp.name, plate.weatherShown,
+          'the weather slider is not visible on the reference dish');
+    check(vp.name, plate.by,
+          'the maker’s backlink is missing or invisible');
+
     /* #156's three regressions, checked at every viewport because none of them is a
      * phone-only concept -- phones are just where they happened.
      *
@@ -997,6 +1034,15 @@ try {
             chipsTotal: document.querySelectorAll('[data-layer].arena-only').length,
             tiles: document.getElementById('s-pop').getBoundingClientRect().width > 0,
             weather: rw.getBoundingClientRect().width > 0,
+            // The attractant opens ON here now: the layer going dark on a dish switch
+            // read as breakage, and the flood it used to cause is handled by the
+            // renderer's zoom fade instead.
+            attractantOn: S.layers.attractant === true
+              && document.querySelector('[data-layer="attractant"]')
+                   .getAttribute('aria-pressed') === 'true',
+            // The plate is dealt per load: whatever this deal was, the economy has
+            // lawns and every founder generation can reach one.
+            lawns: (S.meta.world.patches || []).filter((p) => p.kind === 'food').length,
             windMoved: Math.abs(windAfter - windBefore * 2) < 1e-12
               && Math.abs(S.engine.arena.opt.wind - windBefore) < 1e-12,
             pop: S.engine && S.engine.worms ? S.engine.worms.length : 0,
@@ -1067,6 +1113,10 @@ try {
           check(vp.name, arena.windMoved,
                 'the weather slider did not scale the policy wind (or did not restore)');
           check(vp.name, arena.tweezers, 'translateWorm is missing from the runtime exports');
+          check(vp.name, arena.attractantOn,
+                'the attractant layer opened OFF in the arena -- the dishes disagree again');
+          check(vp.name, arena.lawns >= 2,
+                `the arena deal produced ${arena.lawns} lawns; the economy needs at least 2`);
           check(vp.name, arena.lineage.shown && arena.lineage.canvas,
                 `the lineage panel is not on stage with the arena: ${JSON.stringify(arena.lineage)}`);
           check(vp.name, arena.lineage.pedigree >= 4,

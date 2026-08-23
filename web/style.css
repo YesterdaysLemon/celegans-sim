@@ -133,6 +133,24 @@ header {
   color: var(--text-secondary); text-decoration: none; white-space: nowrap;
 }
 .museum-door:hover { background: rgba(217, 164, 65, 0.12); color: var(--text-primary); }
+/* Whose bench this is: the way back to the maker's own site, quiet but always on the
+   chrome. */
+.by {
+  font-size: 11px; color: var(--text-muted); text-decoration: none;
+  border-bottom: 1px dotted var(--border); white-space: nowrap;
+}
+.by:hover { color: var(--text-primary); border-bottom-color: var(--text-muted); }
+/* The arena's discovery dot: an amber pulse on the tab for whoever has never opened
+   that dish. The head script hides it for returning arena visitors before first paint;
+   app.js removes it the moment the dish is opened. */
+.new-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--warning); margin-right: 7px; vertical-align: 1px;
+  animation: new-dot 1.6s ease-in-out infinite;
+}
+html[data-arena-seen="1"] .new-dot { display: none; }
+@keyframes new-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .new-dot { animation: none; } }
 #app:not([data-dish="arena"]) .arena-only { display: none; }
 /* The arena tab keeps its solid amber when selected -- Track B's colour, a fence the
    mode work does not move -- while the animal tab takes the ordinary phosphor active. */

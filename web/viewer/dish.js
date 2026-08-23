@@ -167,10 +167,16 @@ function drawFields(ctx, X, Y, scale) {
   if (!on.length) return;
   if (!fieldCanvas) fieldCanvas = document.createElement('canvas');
   if (fieldCanvas.width !== n) { fieldCanvas.width = fieldCanvas.height = n; }
+  /* The attractant fades with zoom rather than being switched off per dish: at animal
+   * zoom the plume is the story, at whole-plate zoom several plumes union into a flood
+   * that drowns the lawns. Bucketed to twentieths so zooming does not thrash the cache
+   * below -- a rebuild per bucket crossing, not per frame. */
+  const span = S.view.span;
+  const attFade = Math.round(Math.min(1, 10 / Math.max(span, 1e-6)) * 20) / 20;
   // Rebuilding a 128x128 image per channel every frame is 50k operations for a picture
-  // that changes about once a second. Rebuild only when the field, the visible layers or
-  // the palette actually change.
-  const key = `${S.field.stamp || 0}|${on.join(',')}|${S.theme}`;
+  // that changes about once a second. Rebuild only when the field, the visible layers,
+  // the palette or the zoom bucket actually change.
+  const key = `${S.field.stamp || 0}|${on.join(',')}|${S.theme}|${attFade}`;
   if (key === fieldKey) {
     const R0 = S.meta.world.radius;
     ctx.imageSmoothingEnabled = true;
@@ -181,7 +187,11 @@ function drawFields(ctx, X, Y, scale) {
   const fc = fieldCanvas.getContext('2d');
   const img = fc.createImageData(n, n);
   const src = S.field.data;
-  const specs = on.map((k) => [CHAN[k], T.fields[k]]);
+  const specs = on.map((k) => {
+    const spec = T.fields[k];
+    return [CHAN[k],
+            k === 'attractant' ? { ...spec, alpha: spec.alpha * attFade } : spec];
+  });
 
   for (let i = 0; i < n * n; i++) {
     // Composite the visible layers by weight rather than painting one over another, so a
