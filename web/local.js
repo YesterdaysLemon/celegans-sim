@@ -336,6 +336,24 @@ export class LocalEngine {
     this.E.depositRepellent(x, y, r, 0.6);
     return true;
   }
+  /* The rack's other two bottles, each a field source the plate already understands.
+   * Crumbs are food with no colony behind them: straight into the live food field
+   * (depositFood -- the corpse path), no patch, no plume, no slot against the 16-lawn
+   * cap; the animal finds them by touch, which is its own small experiment. Scent is
+   * the mirror: a patch whose colony is nearly foodless, so it smells like dinner and
+   * mostly is not -- it takes a patch slot, because the plume machinery is the patch,
+   * and it refuses at the cap the same way a lawn does. */
+  dropCrumbs(x, y, r = 2.5) {
+    this.E.depositFood(x, y, r, 0.5);
+    return true;
+  }
+  dropScent(x, y, r = 2.5) {
+    const before = this.E.foodPatchCount();
+    this.E.addFood(x, y, r, 0.05, 1.0, 6.0);
+    if (this.E.foodPatchCount() === before) return false;
+    this.meta.world.patches.push({ x, y, r, kind: 'scent' });
+    return true;
+  }
   poke(where, strength) {
     for (const w of this.worms) this.E.pokeWorm(w, where === 'anterior' ? 1 : 0, strength);
   }

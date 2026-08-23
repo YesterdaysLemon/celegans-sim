@@ -504,17 +504,46 @@ try {
       // The dropper: two bottles, visible, and selecting one changes what double-click
       // does (the state the dblclick handler reads).
       const dropper = await page.evaluate(() => {
+        const S = window.__sim;
         const bottles = [...document.querySelectorAll('[data-drop]')];
         const shown = bottles.filter((b) => b.getBoundingClientRect().width > 0).length;
-        document.querySelector('[data-drop="repellent"]').click();
-        const rep = window.__sim.dropper;
+        const dish = document.getElementById('dish');
+        const cv = document.getElementById('c-dish');
+        const r = cv.getBoundingClientRect();
+        const clickDish = () => cv.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+        // Arm the lawn bottle: the dish takes the pipette class, and ONE click drops --
+        // the invisible double-click contract is what this replaced.
+        const before = S.meta.world.patches.length;
         document.querySelector('[data-drop="food"]').click();
-        return { total: bottles.length, shown, rep, back: window.__sim.dropper };
+        const armed = S.pipette === true && dish.classList.contains('pipette');
+        clickDish();
+        const dropped = S.meta.world.patches.length === before + 1;
+        // The same bottle again racks the pipette, and a click goes back to selecting.
+        document.querySelector('[data-drop="food"]').click();
+        const racked = S.pipette === false && !dish.classList.contains('pipette');
+        // The cap refuses OUT LOUD: arm once, click until the plate is past 16
+        // patches, and read the flash BEFORE racking (racking resets the hint --
+        // that is the pipette being put away, not the refusal being forgotten).
+        document.querySelector('[data-drop="food"]').click();     // arm
+        for (let i = 0; i < 20; i++) clickDish();
+        const hint = document.getElementById('dish-hint');
+        const refusalShown = hint.classList.contains('flash') && /full/.test(hint.textContent);
+        const refusalVisible = hint.getBoundingClientRect().width > 0;
+        document.querySelector('[data-drop="food"]').click();     // rack
+        return { total: bottles.length, shown, armed, dropped, racked,
+                 patches: S.meta.world.patches.filter((p) => p.kind !== 'repellent').length,
+                 refusalShown, refusalVisible };
       });
-      check(vp.name, dropper.total === 2 && dropper.shown === 2,
-            `${dropper.shown} of ${dropper.total} dropper bottles visible`);
-      check(vp.name, dropper.rep === 'repellent' && dropper.back === 'food',
-            `the bottle selector did not take: ${dropper.rep} / ${dropper.back}`);
+      check(vp.name, dropper.total === 4 && dropper.shown === 4,
+            `${dropper.shown} of ${dropper.total} rack bottles visible`);
+      check(vp.name, dropper.armed && dropper.racked,
+            `arming did not take: armed=${dropper.armed} racked=${dropper.racked}`);
+      check(vp.name, dropper.dropped, 'an armed click did not drop a lawn');
+      check(vp.name, dropper.patches <= 16,
+            `${dropper.patches} lawn markers against a 16-patch runtime cap: the viewer is lying`);
+      check(vp.name, dropper.refusalShown && dropper.refusalVisible,
+            'the 16-patch cap refused silently; the whole point is that it says so');
 
       // The wiring-drift toggle: present, flips the view flag both ways, and reports
       // its state. (The drift MATH is pinned in wasm/weight-drift.test.mjs; a reference
@@ -610,6 +639,71 @@ try {
           check(vp.name, !/below\b/.test(together.hint) || together.gap >= 0,
                 `the hint says "below" but the actions are not: "${together.hint}"`);
         }
+
+        /* The touch tweezers: hold a fingertip on the followed animal for half a
+         * second, then drag -- it must MOVE THE WORM, not pan the plate. The follow
+         * camera keeps the focused animal at the canvas centre, so the hold lands on
+         * it without needing the world transform. Driven with real CDP touch events,
+         * because the whole contract under test is pointer timing. */
+        const grab = await (async () => {
+          const at = await page.evaluate(() => {
+            // The gesture context is the DEFAULT dish: trays closed. The pass opened
+            // them for the control checks, and an open tray covers the canvas centre
+            // on a phone (the first run of this test long-pressed the Centre button).
+            const open = document.getElementById('dish').dataset.tray;
+            if (open) document.getElementById(open === 'tools' ? 'b-tools' : 'b-layers').click();
+            const cv = document.getElementById('c-dish');
+            cv.scrollIntoView({ block: 'center' });
+            const r = cv.getBoundingClientRect();
+            const S = window.__sim;
+            const f = S.worms[S.focus];
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2,
+                     cx: f ? f.cx : null, cy: f ? f.cy : null,
+                     hit: hit ? (hit.id || hit.tagName) : 'none' };
+          });
+          if (at.cx === null) return { skipped: true };
+          const t = await page.touchscreen.touchStart(at.x, at.y);
+          await new Promise((r) => setTimeout(r, 700));            // past the 450 ms hold
+          await t.move(at.x + 50, at.y + 20);
+          await new Promise((r) => setTimeout(r, 150));
+          await t.end();
+          await new Promise((r) => setTimeout(r, 250));
+          const after = await page.evaluate(() => {
+            const S = window.__sim;
+            const f = S.worms[S.focus];
+            return { cx: f ? f.cx : null, cy: f ? f.cy : null };
+          });
+          return { skipped: false, hit: at.hit,
+                   moved: Math.hypot(after.cx - at.cx, after.cy - at.cy) };
+        })();
+        if (!grab.skipped) {
+          check(vp.name, grab.moved > 0.3,
+                `a long-press drag moved the animal ${grab.moved?.toFixed(2)} mm `
+                + `(touched ${grab.hit}); the touch tweezers did not grip`);
+        }
+
+        /* The pinch: touch-action none took the browser's pinch away, so the dish owes
+         * one back -- two spreading fingers must zoom the DISH in. */
+        const pinch = await (async () => {
+          const c = await page.evaluate(() => {
+            const r = document.getElementById('c-dish').getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2,
+                     span: window.__sim.view.span };
+          });
+          const t1 = await page.touchscreen.touchStart(c.x - 20, c.y - 5);
+          const t2 = await page.touchscreen.touchStart(c.x + 20, c.y + 5);
+          await t1.move(c.x - 70, c.y - 5);
+          await t2.move(c.x + 70, c.y + 5);
+          await new Promise((r) => setTimeout(r, 150));
+          await t1.end();
+          await t2.end();
+          const span = await page.evaluate(() => window.__sim.view.span);
+          return { before: c.span, after: span };
+        })();
+        check(vp.name, pinch.after < pinch.before * 0.9,
+              `a spreading pinch did not zoom the dish: ${pinch.before.toFixed(1)} -> `
+              + `${pinch.after.toFixed(1)} mm`);
       }
 
       // Collapsing a panel has to report its state, not just look different.

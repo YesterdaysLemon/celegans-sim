@@ -284,26 +284,89 @@ export function wire() {
   // simply pans as before.
   let drag = null;
   let tweeze = null;               // { i } while an animal is held
+  let lastMoved = 0;               // how far the finished drag travelled, for click's guard
+  let longPress = null;            // pending touch-tweezers timer
+  let justTweezed = false;         // a long-press release must not also drop or select
+  /* How close a grab has to land. A mouse points precisely; a fingertip covers about
+   * two millimetres of a phone's dish at plate zoom, so the touch radius scales with
+   * the view instead of demanding mouse accuracy from a thumb. */
+  const grabIndex = (x, y, coarseGrab) => {
+    const grab = coarseGrab ? Math.max(1.2, S.view.span / 12) : 1.2;
+    let best = -1, bd = grab * grab;
+    S.worms.forEach((o, i) => {
+      const d = (o.cx - x) ** 2 + (o.cy - y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  };
+  /* The pinch. touch-action: none hands every touch gesture to this file, so the one
+   * the browser used to provide -- pinch-to-zoom -- has to be provided back. Two
+   * fingers zoom the DISH (not the page), anchored at their midpoint, through the same
+   * zoom() the wheel uses. A second finger landing cancels any pan, pending grab or
+   * held animal: two fingers mean the camera, whatever one finger was doing. */
+  const touches = new Map();       // active touch pointers, clientX/Y by pointerId
+  let pinchD = 0;                  // finger distance at the last pinch step
+  const pinchPts = () => [...touches.values()];
   dish.addEventListener('pointerdown', (e) => {
+    justTweezed = false;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+      if (touches.size === 2) {
+        if (longPress) { clearTimeout(longPress); longPress = null; }
+        drag = null;
+        tweeze = null;
+        const [a, b] = pinchPts();
+        pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        return;
+      }
+      if (touches.size > 2) return;
+    }
     if (e.shiftKey && S.engine && S.worms.length) {
       const [x, y] = worldAt(dish, e);
-      let best = -1, bd = 1.2 * 1.2;
-      S.worms.forEach((o, i) => {
-        const d = (o.cx - x) ** 2 + (o.cy - y) ** 2;
-        if (d < bd) { bd = d; best = i; }
-      });
+      const best = grabIndex(x, y, false);
       if (best >= 0) {
         tweeze = { i: best };
-        dish.setPointerCapture(e.pointerId);
+        try { dish.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
         dish.classList.add('dragging');
         return;
       }
     }
     drag = { x: e.clientX, y: e.clientY, moved: 0 };
-    dish.setPointerCapture(e.pointerId);
+    try { dish.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
     dish.classList.add('dragging');
+    /* The touch tweezers: hold a fingertip on an animal for half a second and it is in
+     * your grip -- the shift-drag contract for hands that have no shift key. A finger
+     * that starts panning cancels the hold; a hold that fires cancels the pan. */
+    if (e.pointerType === 'touch' && S.engine && S.worms.length) {
+      const [x, y] = worldAt(dish, e);
+      const best = grabIndex(x, y, true);
+      if (best >= 0) {
+        longPress = setTimeout(() => {
+          longPress = null;
+          drag = null;
+          tweeze = { i: best };
+          justTweezed = true;
+          if (navigator.vibrate) navigator.vibrate(30);
+        }, 450);
+      }
+    }
   });
   dish.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+      if (touches.size >= 2) {
+        const [a, b] = pinchPts();
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        if (pinchD > 0 && d > 0) {
+          const mid = { clientX: (a.clientX + b.clientX) / 2,
+                        clientY: (a.clientY + b.clientY) / 2 };
+          const [wx, wy] = worldAt(dish, mid);
+          zoom(pinchD / d, wx, wy);
+        }
+        pinchD = d;
+        return;
+      }
+    }
     if (tweeze) {
       const eng = S.engine, f = S.worms[tweeze.i];
       if (!eng || !f) { tweeze = null; return; }
@@ -325,6 +388,8 @@ export function wire() {
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     drag.moved += Math.abs(dx) + Math.abs(dy);
     drag.x = e.clientX; drag.y = e.clientY;
+    // A finger on its way somewhere is panning, not holding: the pending grab lets go.
+    if (longPress && drag.moved > 6) { clearTimeout(longPress); longPress = null; }
     if (drag.moved > 3) {
       if (S.cam !== 'free') setCam('free');
       S.view.cx -= dx / scale;
@@ -332,7 +397,15 @@ export function wire() {
     }
   });
   const endDrag = (e) => {
-    if (drag || tweeze) dish.releasePointerCapture?.(e.pointerId);
+    if (e.pointerType === 'touch') {
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinchD = 0;
+    }
+    if (longPress) { clearTimeout(longPress); longPress = null; }
+    if (drag || tweeze) {
+      try { dish.releasePointerCapture?.(e.pointerId); } catch (err) { /* synthetic */ }
+    }
+    lastMoved = drag ? drag.moved : 0;
     drag = null;
     tweeze = null;
     dish.classList.remove('dragging');
@@ -340,40 +413,80 @@ export function wire() {
   dish.addEventListener('pointerup', endDrag);
   dish.addEventListener('pointercancel', endDrag);
 
-  // A plain click on the dish selects the animal nearest the pointer, so with several on
-  // the plate you can just point at the one you mean.
+  /* THE PIPETTE. A bottle click picks it up; one click or tap on the dish drops that
+   * source; clicking the armed bottle again -- or Esc -- puts it away. The armed state
+   * is visible three ways at once (the pressed bottle, the pipette cursor over the
+   * dish, the hint line), because the old contract -- an unlabelled double-click on an
+   * always-armed bottle -- was invisible, and its failures were silent: the 16-patch
+   * cap refusing, or a drop landing outside the glass, both read as "the dropper
+   * didn't fire". Refusals FLASH their reason now. */
+  const DROP_CMD = { food: 'drop_food', crumbs: 'drop_crumbs',
+                     scent: 'drop_scent', repellent: 'drop_repellent' };
+  const DROP_NOUN = { food: 'a lawn', crumbs: 'crumbs',
+                      scent: 'a scent plume', repellent: 'repellent' };
+  const hintEl = el('dish-hint');
+  const hintBase = hintEl.innerHTML;
+  let hintTimer = 0;
+  const restingHint = () => {
+    hintEl.classList.remove('flash');
+    hintEl.innerHTML = S.pipette
+      ? `click to drop ${DROP_NOUN[S.dropper]} &middot; bottle again to put the pipette away`
+      : hintBase;
+  };
+  const flashHint = (msg) => {
+    clearTimeout(hintTimer);
+    hintEl.textContent = msg;
+    hintEl.classList.add('flash');
+    hintTimer = setTimeout(restingHint, 1800);
+  };
+  function armPipette(name) {
+    S.pipette = !!name;
+    if (name) S.dropper = name;
+    document.querySelectorAll('[data-drop]').forEach((o) =>
+      o.setAttribute('aria-pressed', String(S.pipette && o.dataset.drop === S.dropper)));
+    el('dish').classList.toggle('pipette', S.pipette);
+    clearTimeout(hintTimer);
+    restingHint();
+  }
+  function dropAt(x, y) {
+    if (!S.meta) return;
+    if (Math.hypot(x, y) > S.meta.world.radius - 1) {
+      flashHint('that landed outside the glass');
+      return;
+    }
+    const ok = send({ cmd: DROP_CMD[S.dropper] || 'drop_food', x, y, r: 2.5 });
+    if (ok === false) flashHint('the plate is full — 16 colonies is the cap');
+  }
+
+  // A plain click: drops, if the pipette is in hand; otherwise selects the animal
+  // nearest the pointer, so with several on the plate you can just point at the one
+  // you mean. Never after a pan, and never on the release of a long-press grab.
   dish.addEventListener('click', (e) => {
-    if (!S.engine || S.worms.length < 2 || (drag && drag.moved > 3)) return;
+    const jt = justTweezed;
+    justTweezed = false;
+    if (jt || lastMoved > 3) return;
     const [x, y] = worldAt(dish, e);
-    let best = -1, bd = 1.2 * 1.2;
-    S.worms.forEach((o, i) => {
-      const d = (o.cx - x) ** 2 + (o.cy - y) ** 2;
-      if (d < bd) { bd = d; best = i; }
-    });
+    if (S.pipette) { dropAt(x, y); return; }
+    if (!S.engine || S.worms.length < 2) return;
+    const best = grabIndex(x, y, coarse());
     if (best >= 0 && best !== S.focus) focusWorm(best);
   });
 
-  // The dropper: double-click squeezes whichever bottle is selected. Food is a real
-  // lawn (patch object, attractant plume, the 16-lawn cap); repellent goes straight
-  // into the live field and diffuses, decays and blows around from there. The bottle
-  // selector is hidden in ?server mode along with the rest of the local-only tools.
+  // The old double-click contract still drops the pipette's current bottle for hands
+  // that learned it -- but only while the pipette is racked, or a double-click while
+  // armed would stack three drops (two clicks and this).
   dish.addEventListener('dblclick', (e) => {
-    if (!S.meta) return;
+    if (S.pipette || !S.meta) return;
     const [x, y] = worldAt(dish, e);
-    if (Math.hypot(x, y) > S.meta.world.radius - 1) return;
-    if (S.dropper === 'repellent') {
-      send({ cmd: 'drop_repellent', x, y, r: 2.5 });
-    } else {
-      send({ cmd: 'drop_food', x, y, r: 2.5 });
-      S.meta.world.patches.push({ x, y, r: 2.5, kind: 'food' });
-    }
+    dropAt(x, y);
   });
 
   document.querySelectorAll('[data-drop]').forEach((b) => b.addEventListener('click', () => {
-    S.dropper = b.dataset.drop;
-    document.querySelectorAll('[data-drop]').forEach((o) =>
-      o.setAttribute('aria-pressed', String(o === b)));
+    armPipette(S.pipette && S.dropper === b.dataset.drop ? null : b.dataset.drop);
   }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && S.pipette) armPipette(null);
+  });
 
   // The weather knob, arena only: a multiplier on the dish's baseline wind. It reaches
   // into the live policy options, which the wind pass reads every tick, so the gusts

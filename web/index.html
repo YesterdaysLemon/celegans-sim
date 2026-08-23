@@ -123,22 +123,25 @@ try {
         <button id="b-zin" class="ghost sq" aria-label="Zoom in">+</button>
         <span class="readout" id="o-zoom" aria-live="off">6.5 mm</span>
       </div>
-      <!-- The dropper's two bottles: what a double-click puts on the plate. Local
-           engines only -- app.js hides this in ?server mode, where the socket protocol
-           has no repellent command. -->
-      <div class="seg" id="dropper" role="group" aria-label="Dropper">
-        <!-- aria-labels distinct from the layer chips': "Repellent" already names the
-             layer toggle, and two controls answering to one name is a screen-reader
-             coin-flip (the smoke test counts duplicates). -->
-        <button data-drop="food" aria-pressed="true" aria-label="Drop lawns"
-                title="Double-click drops a bacterial lawn">Lawn</button>
+      <!-- The pipette rack: every field source the plate can take, one bottle each.
+           Click a bottle to pick the pipette up (the cursor becomes one, over the
+           dish); a single click or tap then drops; click the bottle again -- or Esc --
+           to put it away. Local engines only: app.js hides the rack in ?server mode,
+           whose protocol has only the lawn command. -->
+      <div class="seg" id="dropper" role="group" aria-label="Pipette rack">
+        <button data-drop="food" aria-pressed="false" aria-label="Drop lawns"
+                title="A living colony: food, and the scent plume it emits">Lawn</button>
+        <button data-drop="crumbs" aria-pressed="false" aria-label="Drop crumbs"
+                title="Food with no scent: findable only by touch">Crumbs</button>
+        <button data-drop="scent" aria-pressed="false" aria-label="Drop scent"
+                title="A plume with almost no meal behind it: the smell of food">Scent</button>
         <button data-drop="repellent" aria-pressed="false" aria-label="Drop repellent"
-                title="Double-click drops a dose of repellent">Repellent</button>
+                title="A noxious dose: diffuses, decays, blows downwind">Repellent</button>
       </div>
       </div>
     </div>
 
-    <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop &middot; shift&#8209;drag a worm to move it</span>
+    <span class="dish-hint" id="dish-hint">drag to pan &middot; scroll to zoom &middot; pick a bottle, click to drop &middot; shift&#8209;drag a worm to move it</span>
   </section>
 
   <aside id="rail">
