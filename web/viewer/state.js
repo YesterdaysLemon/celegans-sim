@@ -24,7 +24,8 @@ export const S = {
   corpses: null,       // the arena's death markers, when that dish is on stage
   view: { cx: 0, cy: 0, span: 6.5 },   // dish window, mm
   cam: 'follow',                        // 'follow' | 'free'
-  dropper: 'food',                      // which bottle double-click squeezes
+  dropper: 'food',                      // which bottle the pipette holds
+  pipette: false,                       // the pipette is in hand: a dish click drops
   wiringView: false,                    // neuron panel shows wiring drift, not activity
   trail: [],
   kymo: null,

@@ -39,8 +39,13 @@ export function send(msg) {
     if (msg.cmd === 'play') eng.running = true;
     else if (msg.cmd === 'pause') eng.running = false;
     else if (msg.cmd === 'rate') eng.rate = msg.value;
-    else if (msg.cmd === 'drop_food') eng.dropFood(msg.x, msg.y, msg.r);
-    else if (msg.cmd === 'drop_repellent') eng.dropRepellent(msg.x, msg.y, msg.r);
+    // The drops report: dropFood/dropScent return false when the 16-patch cap
+    // refuses, and the pipette's caller turns that into visible feedback instead of
+    // the silent nothing that used to read as "the dropper didn't fire".
+    else if (msg.cmd === 'drop_food') return eng.dropFood(msg.x, msg.y, msg.r);
+    else if (msg.cmd === 'drop_repellent') return eng.dropRepellent(msg.x, msg.y, msg.r);
+    else if (msg.cmd === 'drop_crumbs') return eng.dropCrumbs(msg.x, msg.y, msg.r);
+    else if (msg.cmd === 'drop_scent') return eng.dropScent(msg.x, msg.y, msg.r);
     else if (msg.cmd === 'poke') eng.poke(msg.where, msg.strength);
     else if (msg.cmd === 'medium') {
       const h = eng.head.scalars;

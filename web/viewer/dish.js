@@ -268,7 +268,9 @@ function drawMinimap(ctx, w, h, R, f) {
   ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.arc(cx, cy, size / 2, 0, Math.PI * 2); ctx.clip();
   for (const p of S.meta.world.patches) {
-    ctx.fillStyle = p.kind === 'food' ? 'rgba(25,158,112,0.55)' : 'rgba(208,59,59,0.5)';
+    ctx.fillStyle = p.kind === 'food' ? 'rgba(25,158,112,0.55)'
+      : p.kind === 'scent' ? 'rgba(57,135,229,0.5)'      // a plume with no meal: attractant blue
+      : 'rgba(208,59,59,0.5)';
     ctx.beginPath(); ctx.arc(cx + p.x * s, cy - p.y * s, Math.max(1.5, p.r * s), 0, Math.PI * 2);
     ctx.fill();
   }
