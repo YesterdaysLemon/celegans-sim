@@ -226,10 +226,24 @@ matings across 19 births, recombined wiring visible to the drift instrument. Alo
 it the pedigree — every animal's parent, birth, death and dynasty, bounded — feeds a
 live lineage panel in the viewer (`drawLineage`): one life-line per animal coloured by
 dynasty, descent as a vertical stroke at birth, so a selective sweep is legible as the
-tree collapsing to one colour. Contracts in `wasm/recomb.test.mjs`. Open question for a
-cheap background run: does a sexual dish adapt faster than an asexual one at equal
-mutation supply — the classic recombination-of-beneficials argument, now askable on
-this plate.
+tree collapsing to one colour. Contracts in `wasm/recomb.test.mjs`.
+
+**The sex-vs-asex study ran** (2026-08-23: `ARENA_RECOMB` 0 vs 1 × seeds 1–3, 900 s ≈
+9 generations, equal mutation supply — wmut 0.15/4, mmut 0.1; matings ≈ births in every
+sexual dish, so crowding at cap 10 makes recombination effectively obligate). **On
+speed, a null**: both arms climb the same genes about the same distance
+(`proprio_gain` 30 → asex 34.5 / sex 33.3 at close; `food_gain` 11 → ~13.2 both; ~35
+of 3,935 wiring loci moved in both; births 84 vs 88). Two textures worth keeping,
+neither yet a claim. (1) The across-seed endpoint spread of `proprio_gain` is far
+tighter under sex (sd 1.4 vs 6.6; variance ratio ~22, which at n = 3 sits at the 5%
+edge of an F-test) — recombination as canalisation of the *outcome*, not acceleration.
+(2) The one stall-and-reversal in the study is asexual (seed 3: 29.6 → 24.7 while F0
+swept regardless): a lower-proprio lineage won its sweep on other merits and dragged
+the gene backwards — hitchhiking that a sexual dish can undo by letting the good
+allele escape its doomed background, and none of the three sexual dishes reversed.
+That is the Fisher–Muller argument sticking its head up in one seed; if it is worth a
+verdict, the price is more seeds and longer dishes, not new machinery. Logs in the
+session record; re-run is one env-var away.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
 (`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
