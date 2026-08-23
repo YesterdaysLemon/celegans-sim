@@ -42,12 +42,13 @@ wire();
  * The arena engine is built lazily on first visit: most sessions are about the animal,
  * and the second instance costs real megabytes. */
 const engines = { animal: null, arena: null };
-/* Per-dish view and layer defaults. The arena opens with the whole economy in frame and
- * the attractant layer off -- three lawns' plumes tint the entire plate blue at dish
- * zoom and drown the food that the dish is actually about; the chip turns it back on.
- * Defaults are re-applied on every switch so each dish opens the same way each time. */
+/* Per-dish view defaults, re-applied on every switch so each dish opens the same way
+ * each time. The attractant layer is on in BOTH dishes -- it used to open off in the
+ * arena (three plumes flooded the plate blue at 26 mm), which read as the layer being
+ * broken when you switched dishes; the flood is now handled where it lives, in the
+ * renderer, which fades the attractant with zoom instead of turning it off. */
 const DISH_VIEW = { animal: { span: 6.5, cam: 'follow', layers: { attractant: true } },
-                    arena: { span: 26, cam: 'free', layers: { attractant: false } } };
+                    arena: { span: 26, cam: 'free', layers: { attractant: true } } };
 
 async function switchDish(name) {
   if (S.playhead !== null) goLive();
@@ -94,6 +95,15 @@ async function switchDish(name) {
     ? 'descent with modification on a finite plate'
     : '<em>C.&nbsp;elegans</em> &mdash; 302 neurons, 95 muscles, one dish';
   el('o-zoom').textContent = `${S.view.span.toFixed(1)} mm`;
+  // The Weather slider is one control over two dishes: whatever it reads, the dish now
+  // on stage obeys -- otherwise switching dishes silently forks the knob from the wind.
+  const wx = el('r-weather');
+  if (wx && S.engine.setWeather) S.engine.setWeather(parseFloat(wx.value));
+  // The arena tab's discovery dot has done its job once the dish has been seen.
+  if (name === 'arena') {
+    try { localStorage.setItem('celegans-arena-seen', '1'); } catch (e) { /* private mode */ }
+    document.querySelector('#dish-tabs [data-dish="arena"] .new-dot')?.remove();
+  }
 }
 
 if (location.search.includes('server')) {
@@ -110,6 +120,9 @@ if (location.search.includes('server')) {
   // lawn, which the protocol does have) and the hint stops advertising the tweezers.
   el('dropper').style.display = 'none';
   el('b-wiring').style.display = 'none';   // drift reads the local engine's weight tables
+  // Weather is a local-engine field pass; the socket protocol has no wind command.
+  const wg = el('r-weather');
+  if (wg) wg.closest('.group').style.display = 'none';
   el('dish-hint').innerHTML =
     'drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn';
   connect();

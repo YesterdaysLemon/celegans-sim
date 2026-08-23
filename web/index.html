@@ -21,6 +21,10 @@ try {
     m = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }
   document.documentElement.dataset.mode = m;
+  // The arena tab's discovery dot only greets people who have never opened that dish.
+  if (localStorage.getItem('celegans-arena-seen')) {
+    document.documentElement.dataset.arenaSeen = '1';
+  }
 } catch (e) { document.documentElement.dataset.mode = 'dark'; }
 </script>
 </head>
@@ -37,12 +41,16 @@ try {
            mode, where there is only the socket's one animal. -->
       <span class="seg" id="dish-tabs" role="group" aria-label="Which dish">
         <button data-dish="animal" aria-pressed="true">The Animal</button>
-        <button data-dish="arena" aria-pressed="false" title="Descent with modification on a finite plate. Track B &mdash; nothing in that dish is a claim about C. elegans.">The Arena</button>
+        <button data-dish="arena" aria-pressed="false" title="Watch populations evolve: birth, death, mutation and sex on a finite plate. Track B &mdash; nothing in that dish is a claim about C. elegans."><i class="new-dot" aria-hidden="true"></i>The Arena</button>
       </span>
       <!-- The catalogue of measured shortfalls and evolved niches, one door from either
            dish -- it explains both of them. -->
       <a class="museum-door" href="museum.html" title="The measured ways the reconstruction falls short, and the niches evolution finds in them">Museum</a>
-      <span class="warn arena-only">Track B &mdash; nothing here is a claim about <em>C.&nbsp;elegans</em></span>
+      <!-- Short on the chrome, full in the tooltip: the fence matters, the sentence was
+           furniture. -->
+      <span class="warn arena-only" title="Track B: evolved animals are experiments in this reconstruction's physics. Nothing in the arena is a claim about the real C. elegans.">Track&nbsp;B &mdash; not <em>C.&nbsp;elegans</em></span>
+      <a class="by" href="https://alirezaafshan.com" rel="author"
+         title="Made by Alireza Afshan">alirezaafshan.com</a>
     </div>
     <div class="stats">
       <div class="stat"><div class="label">Time</div><div class="value" id="s-time">0.0<small>s</small></div></div>
@@ -164,7 +172,7 @@ try {
     </section>
 
     <section class="panel arena-only" data-panel="lineage" style="--basis:140px">
-      <button class="phead"><span class="chev"></span><h2>Lineage</h2><span class="hint">descent, live &mdash; a sweep is the tree collapsing to one colour</span></button>
+      <button class="phead"><span class="chev"></span><h2>Lineage</h2><span class="hint" title="One life-line per animal, coloured by dynasty. A selective sweep reads as the tree collapsing to one colour.">descent, live</span></button>
       <div class="pbody"><canvas id="c-lineage"></canvas></div>
     </section>
 
@@ -201,12 +209,13 @@ try {
       <button data-medium="buffer" aria-pressed="false">Buffer</button>
     </div>
 
-    <!-- Environmental stimulation, arena only: a live multiplier on the dish's wind.
-         0x is a still room, 2x is a gusty one. It reads as weather because it is --
-         the drift clocks are deterministic, so this forks nothing but the air. -->
-    <div class="group arena-only" role="group" aria-label="Weather">
+    <!-- Environmental stimulation, both dishes: a live multiplier on the dish's wind.
+         0x is a still room, 3x is a storm smearing the fields downwind. The drift
+         clocks are deterministic, so this forks nothing but the air. Hidden only in
+         ?server mode, where the socket protocol has no wind. -->
+    <div class="group" role="group" aria-label="Weather">
       <label class="cap" for="r-weather">Weather</label>
-      <input type="range" id="r-weather" min="0" max="2" step="0.05" value="1"
+      <input type="range" id="r-weather" min="0" max="3" step="0.05" value="1"
              aria-valuetext="1.0&times; baseline wind">
       <span class="readout" id="o-weather">1.0&times;</span>
     </div>

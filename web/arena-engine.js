@@ -31,7 +31,38 @@ import { makeArena } from './arena-policy.js';
  * the same story; the node driver keeps fixed defaults for controlled, replayable
  * runs, and both read the same makeArena. */
 function browserOpts() {
-  const jit = (v, r) => v + (Math.random() * 2 - 1) * r;
+  /* Lawns are DEALT, not jittered: the old layout nudged the same three discs a few
+   * millimetres and every refresh told the same story with the furniture slightly
+   * moved. Now the count (2-4), the placement (spread by rejection so two colonies do
+   * not fuse into one super-lawn), the sizes and the densities are all fresh -- the
+   * total food budget stays near the tuned economy (about 45 units of lawn area
+   * before lawnScale) so the metabolic tax keeps biting the way it was calibrated to. */
+  const lawns = [];
+  const count = 2 + (Math.random() * 3 | 0);
+  const budget = 45;
+  for (let i = 0; i < count; i++) {
+    const r = (count > 3 ? 2.6 : 3.2) + Math.random() * 1.6;
+    let x = 0, y = 0;
+    for (let tries = 0; tries < 20; tries++) {
+      const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 14;
+      x = Math.cos(a) * d; y = Math.sin(a) * d;
+      if (lawns.every((l) => Math.hypot(l.x - x, l.y - y) > l.r + r + 1.5)) break;
+    }
+    lawns.push({ x, y, r, d: 0.8 + Math.random() * 0.3 });
+  }
+  const area = lawns.reduce((a, l) => a + l.r * l.r * l.d, 0);
+  const norm = budget / area;
+  for (const l of lawns) l.d = Math.min(1.2, l.d * norm);
+  /* Founders spawn on a 6 mm ring. A deal that lands every lawn far from that ring is
+   * a famine, not a story (the skater hunts measured exactly this: founders starve
+   * before their first lawn) -- so the nearest lawn is pulled onto reachable ground
+   * when the deal was cruel, keeping its angle so the dish still looks dealt. */
+  const reach = (l) => Math.abs(Math.hypot(l.x, l.y) - 6) - l.r;
+  const nearest = lawns.reduce((a, b) => (reach(a) <= reach(b) ? a : b));
+  if (reach(nearest) > 3) {
+    const a = Math.atan2(nearest.y, nearest.x), d = 6 + nearest.r;
+    nearest.x = Math.cos(a) * d; nearest.y = Math.sin(a) * d;
+  }
   return {
     metab: 0.1, metabT: 150, mmut: 0.08,
     /* Heritable wiring, on for the showcase since the drift view exists to watch it:
@@ -41,13 +72,11 @@ function browserOpts() {
      * the dynasties a visitor watches are mixing lineages, not just mutating clones. */
     recomb: 1.0, recombR: 9,
     rotT: 45, regrow: 0.02, juvenile: 0.55, growT: 90,
-    wind: 0.03, lawnScale: 0.6,
+    /* Doubled from the first shipping value: at 0.03 the drift was a fact you could
+     * verify and not a thing you could see. The Weather slider still multiplies it. */
+    wind: 0.06, lawnScale: 0.6,
     seed: (Math.random() * 0x7fffffff) | 0,
-    lawns: [
-      { x: jit(-8, 3), y: jit(5, 3), r: jit(4, 0.8), d: 1.0 },
-      { x: jit(7, 3), y: jit(-4, 3), r: jit(4, 0.8), d: 1.0 },
-      { x: jit(0, 3), y: jit(9, 3), r: jit(3, 0.6), d: 0.8 },
-    ],
+    lawns,
   };
 }
 
@@ -57,6 +86,7 @@ export const dynastyHue = HUE;   // the lineage panel colours branches the way t
 export class ArenaEngine extends LocalEngine {
   constructor(clock, options) {
     super(clock);
+    this.wind = 0;          // the parent's dish weather; this dish's policy owns its own
     this.dynastyHue = HUE;
     this.options = Object.assign(browserOpts(), options || {});
     this.simT = 0;
