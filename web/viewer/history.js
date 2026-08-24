@@ -102,7 +102,6 @@ export function record(worms, eggs) {
 
 export const count = () => ring.length;
 export const at = (i) => (i >= 0 && i < ring.length ? ring[i] : null);
-export const newest = () => (ring.length ? ring[ring.length - 1] : null);
 
 export function reset() { ring.length = 0; bytes = 0; }
 

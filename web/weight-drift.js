@@ -24,7 +24,7 @@
  * selection did to this reconstruction's graph, never about C. elegans.
  */
 
-export const FAMS = 3;                 // WFAM_SYN, WFAM_GAP, WFAM_MUS -- runtime order
+const FAMS = 3;                 // WFAM_SYN, WFAM_GAP, WFAM_MUS -- runtime order
 
 /* Build the naming/lookup kit from the model header. `readArray(name, Type)` returns a
  * COPY of a payload array -- a copy, because the browser's payload lives in wasm linear
