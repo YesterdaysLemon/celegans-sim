@@ -12,6 +12,7 @@
  */
 
 import { makeWiring } from './weight-drift.js';
+import { mulberry, loadSeed, DISH_STREAM } from './deal.js';
 
 /* The .wasm has the .model's byte offsets compiled into it, so they are a matched pair:
  * a new .wasm against a cached .model would not degrade gracefully, it would read the
@@ -59,8 +60,15 @@ export class LocalEngine {
    * rate accounting can be driven by a scripted clock in tools/sim_rate.test.mjs -- the
    * numbers below are ratios of two times, and a test that measured them against the real
    * clock would be asserting how fast the machine running CI happens to be that day. */
-  constructor(clock) {
+  constructor(clock, opts) {
     this.ready = false;
+    /* The deal stream: every random choice about the WORLD -- lawns, drops, spawn
+     * seeds, headings -- draws from this seeded generator, so ?dish=N replays the
+     * exact plate (web/deal.js). Reset re-deals from the same seed on purpose: reset
+     * means "this dish again", the contract the arena always had. Sim noise is the
+     * runtime's own and is untouched. */
+    this.dealSeed = (opts && opts.dealSeed !== undefined ? opts.dealSeed : loadSeed()) >>> 0;
+    this._deal = mulberry((this.dealSeed ^ DISH_STREAM.animal) >>> 0);
     this.running = true;
     this.rate = 1.0;
     /* Two rates, because there are two questions and this file used to answer the second
@@ -151,9 +159,9 @@ export class LocalEngine {
       // the fixed seeds meant every visitor's animal lived the same first minute.
       const ang = (i / nWorms) * Math.PI * 2;
       const r = i === 0 ? 0 : 3.5;
-      this.worms.push(this.E.createWorm((Math.random() * 0x7fffffff) | 0,
+      this.worms.push(this.E.createWorm((this._deal() * 0x7fffffff) | 0,
                                         Math.cos(ang) * r, Math.sin(ang) * r,
-                                        Math.random() * Math.PI * 2));
+                                        this._deal() * Math.PI * 2));
     }
     this.ready = true;
     this._last = this._now();
@@ -209,8 +217,8 @@ export class LocalEngine {
     const R = Math.min(20, (this.meta.world.radius || 25) - 5);
     const patches = [];
     const deal = (rMin, rMax) => {
-      const a = Math.random() * Math.PI * 2;
-      const d = rMin + Math.random() * (rMax - rMin);
+      const a = this._deal() * Math.PI * 2;
+      const d = rMin + this._deal() * (rMax - rMin);
       return [Math.cos(a) * d, Math.sin(a) * d];
     };
     // The near lawn: its plume's SHOULDER reaches the spawn, not its core. Getting a
@@ -221,26 +229,26 @@ export class LocalEngine {
     // FRAME to show. A ~5 mm scale decays visibly within the opening view, so the
     // plume reads as "coming from over there", which is what a plume is.
     {
-      const r = 3.5 + Math.random() * 2.0;
+      const r = 3.5 + this._deal() * 2.0;
       const [x, y] = deal(r + 3.5, r + 6.0);
-      this.E.addFood(x, y, r, 0.9 + Math.random() * 0.2,
-                     0.9 + Math.random() * 0.2, 5.0);
+      this.E.addFood(x, y, r, 0.9 + this._deal() * 0.2,
+                     0.9 + this._deal() * 0.2, 5.0);
       patches.push({ x, y, r, kind: 'food' });
     }
     // The far field: one to three more lawns, spread over the plate.
-    const extra = 1 + (Math.random() * 3 | 0);
+    const extra = 1 + (this._deal() * 3 | 0);
     for (let i = 0; i < extra; i++) {
-      const r = 3.0 + Math.random() * 4.0;
+      const r = 3.0 + this._deal() * 4.0;
       const [x, y] = deal(9, R);
-      this.E.addFood(x, y, r, 0.7 + Math.random() * 0.4,
-                     0.8 + Math.random() * 0.3, 6.0);
+      this.E.addFood(x, y, r, 0.7 + this._deal() * 0.4,
+                     0.8 + this._deal() * 0.3, 6.0);
       patches.push({ x, y, r, kind: 'food' });
     }
     // Something to avoid: one or two noxious drops, never near the spawn.
-    const drops = 1 + (Math.random() < 0.4 ? 1 : 0);
+    const drops = 1 + (this._deal() < 0.4 ? 1 : 0);
     for (let i = 0; i < drops; i++) {
       const [x, y] = deal(8, R);
-      this.E.addRepellent(x, y, 0.8 + Math.random() * 0.4, 5.0);
+      this.E.addRepellent(x, y, 0.8 + this._deal() * 0.4, 5.0);
       patches.push({ x, y, r: 3.0, kind: 'repellent' });
     }
     this.meta.world.patches = patches;
@@ -285,13 +293,14 @@ export class LocalEngine {
     this.E.resetWorld();
     this.worms = [];
     this.meta.world.patches = [];
+    this._deal = mulberry((this.dealSeed ^ DISH_STREAM.animal) >>> 0);
     this._defaultPlate();
     for (let i = 0; i < n; i++) {
       const ang = (i / n) * Math.PI * 2;
       const r = i === 0 ? 0 : 3.5;
-      this.worms.push(this.E.createWorm((Math.random() * 0x7fffffff) | 0,
+      this.worms.push(this.E.createWorm((this._deal() * 0x7fffffff) | 0,
                                         Math.cos(ang) * r, Math.sin(ang) * r,
-                                        Math.random() * Math.PI * 2));
+                                        this._deal() * Math.PI * 2));
     }
     this._acc = 0;
     this._weatherT = 0;

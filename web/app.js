@@ -21,6 +21,7 @@
  */
 
 import { LocalEngine } from './local.js';
+import { loadSeed } from './deal.js';
 import { ArenaEngine } from './arena-engine.js';
 import { S, el } from './viewer/state.js';
 import { wire, goLive } from './viewer/controls.js';
@@ -31,6 +32,9 @@ import { reset as historyReset } from './viewer/history.js';
 /* Local by default: the point of the WASM port is that no server is involved. `?server`
  * falls back to the WebSocket feed, which is still how the Python model is driven. */
 if (location.search.includes('debug')) window.__sim = S;   // for poking from the console
+/* The deal this load plays, shared by both dishes: ?dish=N replays it, the Share
+ * button writes it (web/deal.js). */
+S.dealSeed = loadSeed();
 wire();
 
 /* One instrument, two plates. Each dish is its own engine -- its own WebAssembly
@@ -59,8 +63,8 @@ async function switchDish(name) {
       : '<b>Loading the animal&hellip;</b>302 neurons, compiled to WebAssembly';
     try {
       engines[name] = name === 'arena'
-        ? await new ArenaEngine().init()
-        : await new LocalEngine().init(2);
+        ? await new ArenaEngine(undefined, { dealSeed: S.dealSeed }).init()
+        : await new LocalEngine(undefined, { dealSeed: S.dealSeed }).init(2);
     } catch (err) {
       el('banner').firstElementChild.innerHTML =
         `<b>Could not start the ${name} engine</b>${err}`;
@@ -119,6 +123,8 @@ if (location.search.includes('server')) {
   // socket protocol has neither command. The dropper hides (double-click still drops a
   // lawn, which the protocol does have) and the hint stops advertising the tweezers.
   el('dropper').style.display = 'none';
+  // The deal is a local-engine concept; the socket dish plays the server's world.
+  el('b-share').style.display = 'none';
   el('b-wiring').style.display = 'none';   // drift reads the local engine's weight tables
   // Weather is a local-engine field pass; the socket protocol has no wind command.
   const wg = el('r-weather');

@@ -501,8 +501,8 @@ try {
         await page.evaluate(() => document.getElementById('b-play').click());   // resume
       }
 
-      // The dropper: two bottles, visible, and selecting one changes what double-click
-      // does (the state the dblclick handler reads).
+      // The pipette rack: four bottles visible, arming takes, one armed click drops,
+      // racking hands the dish back.
       const dropper = await page.evaluate(() => {
         const S = window.__sim;
         const bottles = [...document.querySelectorAll('[data-drop]')];
@@ -522,6 +522,56 @@ try {
         // The same bottle again racks the pipette, and a click goes back to selecting.
         document.querySelector('[data-drop="food"]').click();
         const racked = S.pipette === false && !dish.classList.contains('pipette');
+        return { total: bottles.length, shown, armed, dropped, racked };
+      });
+      check(vp.name, dropper.total === 4 && dropper.shown === 4,
+            `${dropper.shown} of ${dropper.total} rack bottles visible`);
+      check(vp.name, dropper.armed && dropper.racked,
+            `arming did not take: armed=${dropper.armed} racked=${dropper.racked}`);
+      check(vp.name, dropper.dropped, 'an armed click did not drop a lawn');
+
+      /* The tweezers-then-click trap (review finding): releasing a shift-drag fires a
+       * browser click however far the mouse travelled, and with the pipette armed that
+       * click used to plant a source exactly where the animal was put down. Real CDP
+       * mouse + Shift, BEFORE the cap-filling below -- at the cap, a buggy drop would
+       * be refused and the regression would hide behind the refusal. Mouse contract,
+       * so fine-pointer viewports only. */
+      if (!vp.touch) {
+        const at = await page.evaluate(() => {
+          const cv = document.getElementById('c-dish');
+          const r = cv.getBoundingClientRect();
+          const S = window.__sim;
+          document.querySelector('[data-drop="food"]').click();    // arm the pipette
+          const f = S.worms[S.focus];
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2,
+                   patches: S.meta.world.patches.length, cx: f.cx, cy: f.cy };
+        });
+        await page.keyboard.down('Shift');
+        await page.mouse.move(at.x, at.y);
+        await page.mouse.down();
+        await page.mouse.move(at.x + 80, at.y + 30, { steps: 4 });
+        await page.mouse.up();
+        await page.keyboard.up('Shift');
+        await new Promise((r) => setTimeout(r, 200));
+        const tw = await page.evaluate((pre) => {
+          const S = window.__sim;
+          document.querySelector('[data-drop="food"]').click();    // rack again
+          const f = S.worms[S.focus];
+          return { added: S.meta.world.patches.length - pre.patches,
+                   moved: Math.hypot(f.cx - pre.cx, f.cy - pre.cy) };
+        }, at);
+        check(vp.name, tw.moved > 0.3,
+              `a shift-drag moved the animal ${tw.moved.toFixed(2)} mm; the mouse tweezers lost grip`);
+        check(vp.name, tw.added === 0,
+              'releasing the tweezers dropped a source from the armed pipette');
+      }
+
+      const capped = await page.evaluate(() => {
+        const S = window.__sim;
+        const cv = document.getElementById('c-dish');
+        const r = cv.getBoundingClientRect();
+        const clickDish = () => cv.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
         // The cap refuses OUT LOUD: arm once, click until the plate is past 16
         // patches, and read the flash BEFORE racking (racking resets the hint --
         // that is the pipette being put away, not the refusal being forgotten).
@@ -531,18 +581,12 @@ try {
         const refusalShown = hint.classList.contains('flash') && /full/.test(hint.textContent);
         const refusalVisible = hint.getBoundingClientRect().width > 0;
         document.querySelector('[data-drop="food"]').click();     // rack
-        return { total: bottles.length, shown, armed, dropped, racked,
-                 patches: S.meta.world.patches.filter((p) => p.kind !== 'repellent').length,
+        return { patches: S.meta.world.patches.filter((p) => p.kind !== 'repellent').length,
                  refusalShown, refusalVisible };
       });
-      check(vp.name, dropper.total === 4 && dropper.shown === 4,
-            `${dropper.shown} of ${dropper.total} rack bottles visible`);
-      check(vp.name, dropper.armed && dropper.racked,
-            `arming did not take: armed=${dropper.armed} racked=${dropper.racked}`);
-      check(vp.name, dropper.dropped, 'an armed click did not drop a lawn');
-      check(vp.name, dropper.patches <= 16,
-            `${dropper.patches} lawn markers against a 16-patch runtime cap: the viewer is lying`);
-      check(vp.name, dropper.refusalShown && dropper.refusalVisible,
+      check(vp.name, capped.patches <= 16,
+            `${capped.patches} lawn markers against a 16-patch runtime cap: the viewer is lying`);
+      check(vp.name, capped.refusalShown && capped.refusalVisible,
             'the 16-patch cap refused silently; the whole point is that it says so');
 
       // The wiring-drift toggle: present, flips the view flag both ways, and reports
@@ -1145,15 +1189,27 @@ try {
             // The tweezers' runtime half: the export the shift-drag calls.
             tweezers: typeof S.engine.E.translateWorm === 'function',
             // The lineage panel: on stage with the arena, fed by a pedigree that has at
-            // least the founders in it, drawing into a real canvas box.
-            lineage: (() => {
+            // least the founders in it, drawing into a real canvas box -- and ANSWERING
+            // BACK: the top lane hit-tests to a real animal, and clicking it focuses
+            // that animal.
+            lineage: await (async () => {
               const p = document.querySelector('[data-panel="lineage"]');
               const cv = document.getElementById('c-lineage');
+              const { lineageHit } = await import('/viewer/panels.js');
+              const r = cv.getBoundingClientRect();
+              const first = lineageHit(cv, { clientY: r.top + 10 });
+              let focused = null;
+              if (first !== null && S.engine.worms.includes(first)) {
+                cv.dispatchEvent(new MouseEvent('click', {
+                  bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + 10 }));
+                focused = S.engine.worms[S.focus];
+              }
               return {
                 shown: !!p && p.getBoundingClientRect().width > 0,
                 canvas: !!cv && cv.getBoundingClientRect().height > 4,
                 pedigree: S.engine.arena && S.engine.arena.pedigree
                   ? S.engine.arena.pedigree.size : 0,
+                hit: first, focused,
               };
             })(),
             tArena: S.frame ? S.frame.t : 0,
@@ -1194,6 +1250,40 @@ try {
         check(vp.name, museum.errs.length === 0,
               `museum page errors: ${museum.errs.join(' | ')}`);
 
+        /* The shareable deal: two loads of ?dish=N must deal the identical plate --
+         * that is the whole promise of the Share button -- and the share control is
+         * on the page. Fresh pages, so the main page's state is untouched. */
+        const deal = await (async () => {
+          const load = async () => {
+            const dp = await page.browser().newPage();
+            // A fresh page defaults to 800x600 -- the tablet layout, trays collapsed --
+            // so size it like the pass being run before asking what is visible.
+            await dp.setViewport({ width: vp.width, height: vp.height });
+            await dp.goto(`${base}?dish=424242&debug`, { waitUntil: 'domcontentloaded' });
+            for (let i = 0; i < 60; i++) {
+              if (await dp.evaluate(() => !!(window.__sim && window.__sim.meta))) break;
+              await new Promise((r) => setTimeout(r, 500));
+            }
+            const got = await dp.evaluate(() => ({
+              patches: JSON.stringify(window.__sim.meta.world.patches),
+              seed: window.__sim.dealSeed,
+              share: (() => {
+                const b = document.getElementById('b-share');
+                return !!b && b.getBoundingClientRect().width > 0;
+              })(),
+            }));
+            await dp.close();
+            return got;
+          };
+          const a = await load(), b = await load();
+          return { same: a.patches === b.patches, n: JSON.parse(a.patches).length,
+                   seed: a.seed, share: a.share && b.share };
+        })();
+        check(vp.name, deal.seed === 424242, `?dish=424242 read back as seed ${deal.seed}`);
+        check(vp.name, deal.same && deal.n >= 3,
+              `two loads of ?dish=424242 dealt different plates (${deal.n} patches)`);
+        check(vp.name, deal.share, 'the Share dish button is missing or invisible');
+
         if (!arena.skipped) {
           check(vp.name, arena.dish === 'arena', `the tab left data-dish at "${arena.dish}"`);
           check(vp.name, arena.chips === arena.chipsTotal && arena.chipsTotal > 0,
@@ -1215,6 +1305,11 @@ try {
                 `the lineage panel is not on stage with the arena: ${JSON.stringify(arena.lineage)}`);
           check(vp.name, arena.lineage.pedigree >= 4,
                 `the pedigree holds ${arena.lineage.pedigree} animals; even the founders are missing`);
+          check(vp.name, arena.lineage.hit !== null,
+                'the lineage tree does not hit-test: the lanes are a picture again');
+          check(vp.name, arena.lineage.focused === null
+                  || arena.lineage.focused === arena.lineage.hit,
+                `clicking lane of animal ${arena.lineage.hit} focused ${arena.lineage.focused}`);
           check(vp.name, arena.lineageHiddenBack,
                 'the lineage panel stayed visible on the reference dish, which has no descent');
           check(vp.name, arena.backDish === 'animal' && arena.tBack >= arena.tBefore,

@@ -650,7 +650,20 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
 }
 .traywrap { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
 @media (max-width: 1080px) {
-  .traywrap { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  /* One swipeable row, the same treatment the stats and the layer chips already get:
+     the tray used to wrap, and once the rack grew to four bottles plus Share the open
+     tray at 320 px wrapped five rows tall and climbed into the mode switch at the top
+     of the plate (the smoke collision check caught the pair). Clipping at the edge
+     says "more" the way every other swiping row here does. */
+  .traywrap {
+    flex-direction: row; flex-wrap: nowrap; align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: calc(100vw - 110px);   /* leave the minimap's corner alone */
+  }
+  .traywrap::-webkit-scrollbar { display: none; }
+  .traywrap > * { flex: 0 0 auto; }
 }
 
 /* --- keyboard -------------------------------------------------------------------- */

@@ -10,7 +10,7 @@
 import { S, el, ablated, pruneAblations } from './state.js';
 import { theme } from './themes.js';
 import { setCam, zoom, worldAt } from './dish.js';
-import { neuronAt, neuronCentre, neuronStep, invalidateLayout, wiringDrift } from './panels.js';
+import { neuronAt, neuronCentre, neuronStep, invalidateLayout, wiringDrift, lineageHit } from './panels.js';
 import { neuronTopSynapses } from '../weight-drift.js';
 import { buildLegend } from './stats.js';
 import { send } from './transport.js';
@@ -399,12 +399,25 @@ export function wire() {
   const endDrag = (e) => {
     if (e.pointerType === 'touch') {
       touches.delete(e.pointerId);
-      if (touches.size < 2) pinchD = 0;
+      /* A finger lifting out of a pinch re-bases the distance on the SURVIVING pair:
+       * left stale, the next move compares the new pair against the old pair's
+       * spacing and the dish jumps a zoom factor nobody asked for (review finding). */
+      if (touches.size >= 2) {
+        const [a, b] = pinchPts();
+        pinchD = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      } else {
+        pinchD = 0;
+      }
     }
     if (longPress) { clearTimeout(longPress); longPress = null; }
     if (drag || tweeze) {
       try { dish.releasePointerCapture?.(e.pointerId); } catch (err) { /* synthetic */ }
     }
+    /* A released grab -- mouse shift-drag as much as a touch long-press -- must not be
+     * read as a click: the browser fires one after pointerup however far the pointer
+     * travelled, and with the pipette armed that click would plant a source exactly
+     * where the animal was put down (review finding). */
+    if (tweeze) justTweezed = true;
     lastMoved = drag ? drag.moved : 0;
     drag = null;
     tweeze = null;
@@ -425,21 +438,28 @@ export function wire() {
   const DROP_NOUN = { food: 'a lawn', crumbs: 'crumbs',
                       scent: 'a scent plume', repellent: 'repellent' };
   const hintEl = el('dish-hint');
-  const hintBase = hintEl.innerHTML;
+  /* Captured LAZILY, at the first moment the hint machinery replaces the text: wire()
+   * runs before app.js's ?server block rewrites the hint for the socket dish, and a
+   * snapshot taken here would restore local-mode text -- a hidden rack, tweezers the
+   * protocol lacks -- after any server-mode flash (review finding). */
+  let hintBase = null;
   let hintTimer = 0;
+  const keepBase = () => { if (hintBase === null) hintBase = hintEl.innerHTML; };
   const restingHint = () => {
     hintEl.classList.remove('flash');
     hintEl.innerHTML = S.pipette
       ? `click to drop ${DROP_NOUN[S.dropper]} &middot; bottle again to put the pipette away`
-      : hintBase;
+      : hintBase ?? hintEl.innerHTML;
   };
   const flashHint = (msg) => {
+    keepBase();
     clearTimeout(hintTimer);
     hintEl.textContent = msg;
     hintEl.classList.add('flash');
     hintTimer = setTimeout(restingHint, 1800);
   };
   function armPipette(name) {
+    keepBase();
     S.pipette = !!name;
     if (name) S.dropper = name;
     document.querySelectorAll('[data-drop]').forEach((o) =>
@@ -456,6 +476,14 @@ export function wire() {
     }
     const ok = send({ cmd: DROP_CMD[S.dropper] || 'drop_food', x, y, r: 2.5 });
     if (ok === false) flashHint('the plate is full — 16 colonies is the cap');
+    /* The socket dish: send() returns nothing over the wire, and the server ships
+     * world.patches only in its hello -- so the marker the local engine would have
+     * pushed has to be pushed here, or a server-mode lawn lands invisibly on the
+     * minimap (review finding: the exact silent-dropper failure, reintroduced for
+     * one transport). The socket protocol only has the lawn bottle. */
+    if (!S.engine && ok === undefined && (DROP_CMD[S.dropper] || 'drop_food') === 'drop_food') {
+      S.meta.world.patches.push({ x, y, r: 2.5, kind: 'food' });
+    }
   }
 
   // A plain click: drops, if the pipette is in hand; otherwise selects the animal
@@ -486,6 +514,52 @@ export function wire() {
   }));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && S.pipette) armPipette(null);
+  });
+
+  /* The lineage tree answers back: hovering a lane names the animal and its dynasty,
+   * clicking a living lane follows that animal -- the tree was a picture, and a
+   * picture of ten look-alike worms needed to be a directory. */
+  const lin = el('c-lineage');
+  if (lin) {
+    const twigAt = (e) => {
+      const id = lineageHit(lin, e);
+      const arena = S.engine && S.engine.arena;
+      return id !== null && arena ? { id, tw: arena.pedigree.get(id) } : null;
+    };
+    lin.addEventListener('pointermove', (e) => {
+      const hit = twigAt(e);
+      if (!hit || !hit.tw) { hideTip(); return; }
+      const now = S.engine.arena.simT || 0;
+      const alive = hit.tw.died === null;
+      const age = Math.max(0, (alive ? now : hit.tw.died) - hit.tw.born);
+      const living = alive && S.engine.worms.includes(hit.id);
+      showTip(e, `<b>animal ${hit.id}</b> &middot; `
+        + (hit.tw.dyn < 0 ? 'orphan line' : `dynasty F${hit.tw.dyn}`)
+        + `<br>${alive ? 'alive' : 'died'} &middot; ${age.toFixed(0)} s `
+        + (alive ? 'old' : 'lived')
+        + (living ? '<br>click to follow' : ''));
+    });
+    lin.addEventListener('pointerleave', hideTip);
+    lin.addEventListener('click', (e) => {
+      const hit = twigAt(e);
+      const at = hit && S.engine.worms ? S.engine.worms.indexOf(hit.id) : -1;
+      if (at >= 0) focusWorm(at);
+    });
+  }
+
+  /* Share this dish: the deal is seeded (web/deal.js), so a link with ?dish=N replays
+   * this load's exact worlds. The URL bar is updated too, so even if the clipboard is
+   * unavailable (permissions, http) the address bar becomes the share link. */
+  const share = el('b-share');
+  if (share) share.addEventListener('click', async () => {
+    const url = `${location.origin}${location.pathname}?dish=${S.dealSeed}${location.hash}`;
+    try { history.replaceState(null, '', url); } catch (err) { /* file:// */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      flashHint('link copied — this exact dish');
+    } catch (err) {
+      flashHint('link is in the address bar');
+    }
   });
 
   // The weather knob, arena only: a multiplier on the dish's baseline wind. It reaches
