@@ -188,14 +188,25 @@ export function neuronCentre(cv, i) {
  * dish's full pedigree is an archive, not a picture. Arena only -- the reference dish
  * has no descent to draw. */
 const LINEAGE_WINDOW = 240;      // seconds of trailing history on screen
+/* The last draw's lane layout, for hit-testing: the tree is CLICKABLE -- a lane names
+ * an animal, hovering it tells the story, clicking a living one follows it. Nulled on
+ * every path that draws nothing, so a hit test can never answer from a stale frame. */
+let lineageLanes = null;         // { ids: [id per lane, top to bottom], rowH }
+
+export function lineageHit(cv, ev) {
+  if (!lineageLanes) return null;
+  const r = cv.getBoundingClientRect();
+  const i = Math.floor((ev.clientY - r.top - 8) / lineageLanes.rowH);
+  return i >= 0 && i < lineageLanes.ids.length ? lineageLanes.ids[i] : null;
+}
 
 export function drawLineage() {
   const cv = el('c-lineage');
-  if (!cv || !visible(cv)) return;
+  if (!cv || !visible(cv)) { lineageLanes = null; return; }
   const { ctx, w, h } = fitCanvas(cv);
   ctx.clearRect(0, 0, w, h);
   const arena = S.engine && S.engine.arena;
-  if (!arena || !arena.pedigree || !S.worms.length) return;
+  if (!arena || !arena.pedigree || !S.worms.length) { lineageLanes = null; return; }
   const now = arena.simT || 0;
   const t0 = Math.max(0, now - LINEAGE_WINDOW);
   const hue = S.engine.dynastyHue || (() => 40);
@@ -204,10 +215,11 @@ export function drawLineage() {
   const rows = [...arena.pedigree.entries()]
     .filter(([, v]) => (v.died === null || v.died >= t0) && v.born <= now)
     .sort((a, b) => a[1].born - b[1].born || a[0] - b[0]);
-  if (!rows.length) return;
+  if (!rows.length) { lineageLanes = null; return; }
   const lane = new Map();
   rows.forEach(([id], i) => lane.set(id, i));
   const rowH = Math.min(14, (h - 18) / rows.length);
+  lineageLanes = { ids: rows.map(([id]) => id), rowH };
   const X = (t) => 8 + (w - 16) * (Math.max(t, t0) - t0) / Math.max(now - t0, 1e-9);
   const Y = (i) => 8 + i * rowH + rowH / 2;
 

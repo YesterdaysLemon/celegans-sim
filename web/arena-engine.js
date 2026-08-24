@@ -20,6 +20,7 @@
 
 import { LocalEngine } from './local.js';
 import { makeArena } from './arena-policy.js';
+import { mulberry, loadSeed, DISH_STREAM } from './deal.js';
 
 /* The browser dish's defaults: metabolism, morphology mutation, corpse rot, lawn
  * regrowth, juvenile development and WEATHER all on, because this dish is the showcase
@@ -30,7 +31,7 @@ import { makeArena } from './arena-policy.js';
  * seed, lawns jittered around the reference layout -- so no two browser dishes tell
  * the same story; the node driver keeps fixed defaults for controlled, replayable
  * runs, and both read the same makeArena. */
-function browserOpts() {
+function browserOpts(rand) {
   /* Lawns are DEALT, not jittered: the old layout nudged the same three discs a few
    * millimetres and every refresh told the same story with the furniture slightly
    * moved. Now the count (2-4), the placement (spread by rejection so two colonies do
@@ -38,17 +39,17 @@ function browserOpts() {
    * total food budget stays near the tuned economy (about 45 units of lawn area
    * before lawnScale) so the metabolic tax keeps biting the way it was calibrated to. */
   const lawns = [];
-  const count = 2 + (Math.random() * 3 | 0);
+  const count = 2 + (rand() * 3 | 0);
   const budget = 45;
   for (let i = 0; i < count; i++) {
-    const r = (count > 3 ? 2.6 : 3.2) + Math.random() * 1.6;
+    const r = (count > 3 ? 2.6 : 3.2) + rand() * 1.6;
     let x = 0, y = 0;
     for (let tries = 0; tries < 20; tries++) {
-      const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 14;
+      const a = rand() * Math.PI * 2, d = 3 + rand() * 14;
       x = Math.cos(a) * d; y = Math.sin(a) * d;
       if (lawns.every((l) => Math.hypot(l.x - x, l.y - y) > l.r + r + 1.5)) break;
     }
-    lawns.push({ x, y, r, d: 0.8 + Math.random() * 0.3 });
+    lawns.push({ x, y, r, d: 0.8 + rand() * 0.3 });
   }
   const area = lawns.reduce((a, l) => a + l.r * l.r * l.d, 0);
   const norm = budget / area;
@@ -75,7 +76,7 @@ function browserOpts() {
     /* Doubled from the first shipping value: at 0.03 the drift was a fact you could
      * verify and not a thing you could see. The Weather slider still multiplies it. */
     wind: 0.06, lawnScale: 0.6,
-    seed: (Math.random() * 0x7fffffff) | 0,
+    seed: (rand() * 0x7fffffff) | 0,
     lawns,
   };
 }
@@ -88,7 +89,13 @@ export class ArenaEngine extends LocalEngine {
     super(clock);
     this.wind = 0;          // the parent's dish weather; this dish's policy owns its own
     this.dynastyHue = HUE;
-    this.options = Object.assign(browserOpts(), options || {});
+    /* One shared seed, this dish's own stream (web/deal.js): the deal of lawns AND the
+     * policy's mutation/weather seed both come from it, so a ?dish=N link replays the
+     * arena's whole story, not just its furniture. */
+    this.dealSeed = (options && options.dealSeed !== undefined
+      ? options.dealSeed : loadSeed()) >>> 0;
+    const deal = mulberry((this.dealSeed ^ DISH_STREAM.arena) >>> 0);
+    this.options = Object.assign(browserOpts(deal), options || {});
     this.simT = 0;
     this._policyT = 0;
     this._widthCache = new Map();      // worm id -> per-node width factors, built at birth
