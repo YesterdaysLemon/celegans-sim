@@ -530,6 +530,43 @@ try {
             `arming did not take: armed=${dropper.armed} racked=${dropper.racked}`);
       check(vp.name, dropper.dropped, 'an armed click did not drop a lawn');
 
+      /* The other bottles must MEASURABLY land (owner's catch: both shipped as duds --
+       * the deposit spreads a total over ~128 cells, and 0.5 total is 0.004 per cell,
+       * invisible and inedible). Sample the raw fields at the click point, same
+       * synchronous evaluate so no simulation step interleaves. */
+      const doses = await page.evaluate(() => {
+        const S = window.__sim;
+        const E = S.engine.E;
+        const g = S.engine.head.ints.world_grid;
+        const ext = S.engine.head.scalars.world_extent;
+        const h = 2 * ext / g;
+        const cv = document.getElementById('c-dish');
+        const r = cv.getBoundingClientRect();
+        const clickDish = () => cv.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+        const sample = (ptr) => {
+          // The canvas centre is world (view.cx, view.cy).
+          const i = Math.min(g - 1, Math.max(0, Math.floor((S.view.cy + ext) / h)));
+          const j = Math.min(g - 1, Math.max(0, Math.floor((S.view.cx + ext) / h)));
+          return new Float64Array(E.memory.buffer, ptr, g * g)[i * g + j];
+        };
+        const foodBefore = sample(E.ptrFood());
+        document.querySelector('[data-drop="crumbs"]').click();
+        clickDish();
+        const food = sample(E.ptrFood()) - foodBefore;
+        document.querySelector('[data-drop="crumbs"]').click();      // rack
+        const repBefore = sample(E.ptrRepellent());
+        document.querySelector('[data-drop="repellent"]').click();
+        clickDish();
+        const rep = sample(E.ptrRepellent()) - repBefore;
+        document.querySelector('[data-drop="repellent"]').click();   // rack
+        return { food, rep };
+      });
+      check(vp.name, doses.food > 0.3,
+            `a crumbs squeeze raised the food field by ${doses.food.toFixed(3)}; the bottle is a dud`);
+      check(vp.name, doses.rep > 0.35,
+            `a repellent squeeze raised the repellent field by ${doses.rep.toFixed(3)}; the bottle is a dud`);
+
       /* The tweezers-then-click trap (review finding): releasing a shift-drag fires a
        * browser click however far the mouse travelled, and with the pipette armed that
        * click used to plant a source exactly where the animal was put down. Real CDP

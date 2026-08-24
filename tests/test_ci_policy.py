@@ -248,6 +248,10 @@ def test_representative_edits_schedule_their_gates(path, wanted):
 # tracked and not matched by a filter has to appear here, so "nothing checks this" stays a
 # decision somebody made rather than an oversight nobody noticed.
 NO_CI_NEEDED = {
+    ".github/workflows/repo-tidy.yml":
+        "a dispatch-only maintenance tool (branch deletion, which session credentials "
+        "cannot do). It has no push or pull_request trigger, so there is no event for a "
+        "path filter to claim -- and giving it one would defeat its point.",
     "README.md": "prose",
     "NEXT.md": "prose -- the live roadmap. It carries no asserted figure: the per-worm "
                "memory claim that used to make this entry interesting moved to the "
@@ -258,6 +262,10 @@ NO_CI_NEEDED = {
                                     "invariants rather than implementing any, so there is "
                                     "nothing here for a job to execute.",
     "docs/research-log/README.md": "prose -- index and handling rules for the archive",
+    "docs/research-log/branch-graveyard-2026-08-24.md":
+        "prose -- the record of the 2026-08-24 branch sweep: names and tip SHAs of the "
+        "43 deleted branches, kept so a dangling commit stays findable. Asserts nothing "
+        "a job could re-check.",
     "docs/architecture/bonsai-pass-1-report.md":
         "prose -- the record of a maintainability pass. Dated and closed; it describes what "
         "was done rather than asserting anything a job could re-check.",
