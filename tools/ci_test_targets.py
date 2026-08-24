@@ -49,6 +49,7 @@ SPECIAL_TARGETS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict([
         "test_membrane_potentials_stay_physiological",
         "test_body_length_is_conserved_in_the_full_loop",
         "test_anterior_touch_drives_a_reversal",
+        "test_the_tail_feels_repellent_and_bag_feels_the_downshift",
         "test_the_wave_travels_rather_than_standing",
     ))),
     ("behaviour-learning", _nodeids(BEHAVIOUR, (

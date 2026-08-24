@@ -265,6 +265,74 @@ def test_anterior_touch_drives_a_reversal():
         "an anterior touch did not depolarise the backward command pool "
         "(%.4f without the touch, %.4f with it)" % (quiet, touched))
 
+
+def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
+    """The two ends of the animal are different sensors, and oxygen has two edges.
+
+    PHA/PHB sample the repellent field at the tail (Hilliard et al. 2002): a drop that
+    exists only under the tail must drive the phasmid pool and leave ASH, a body-length
+    away at the nose, silent. BAG carries the *falling* edge of oxygen (Zimmer et al.
+    2009) where URX carries the level and the rising edge: a downshift must drive BAG,
+    an upshift must not, and the rectification is what this test pins.
+
+    Tested at the current level, on a plate built for the purpose -- repellent present
+    only where the tail is, oxygen stepped up and down at will -- because that is where
+    the claim is unambiguous. What the animal *does* with the phasmid current is the
+    escape-direction question, measured separately.
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    s = sim.senses
+    nodes = sim.body.nodes()
+    tail = nodes[-1]
+
+    class Plate:
+        """Only what Senses.sense touches; fields are identity tokens."""
+        attractant, repellent, food = object(), object(), object()
+
+        def __init__(self, o2):
+            self.o2 = o2
+
+        def sample(self, field, x, y):
+            if field is Plate.repellent:
+                return 0.5 if np.hypot(x - tail[0], y - tail[1]) < 0.1 else 0.0
+            return 0.0
+
+        def temperature(self, x, y):
+            return p.sensory.cultivation_temp
+
+        def oxygen(self, x, y):
+            return self.o2
+
+    contact = np.zeros((len(nodes), 2))
+    curv = np.zeros(len(nodes) - 2)
+    act = sim.nervous.activation()
+    plate = Plate(0.10)
+
+    # First contact seeds every adapting baseline at the stimulus, so the differential
+    # parts are exactly zero and only the tonic parts remain.
+    I0 = s.sense(plate, nodes, contact, curv, act)
+    assert np.allclose(I0[s.phasmid], p.sensory.phasmid_gain * 0.5), (
+        "a drop under the tail did not produce the tonic phasmid current")
+    assert np.all(I0[s.ash] == 0.0), (
+        "the tail's drop leaked into ASH: the nose is sensing the wrong end")
+    assert np.all(I0[s.bag] == 0.0), "BAG fired with oxygen at its own baseline"
+
+    # A downshift: BAG takes the rectified negative deviation, URX loses the same amount.
+    plate.o2 = 0.08
+    I1 = s.sense(plate, nodes, contact, curv, act)
+    assert np.allclose(I1[s.bag], p.sensory.bag_gain * 0.02), (
+        "an oxygen downshift did not drive BAG")
+    assert np.allclose(I1[s.phasmid], p.sensory.phasmid_gain * 0.5), (
+        "an unchanged tail concentration moved the phasmid current")
+
+    # An upshift: the deviation is positive, the rectifier holds, BAG stays silent.
+    plate.o2 = 0.12
+    I2 = s.sense(plate, nodes, contact, curv, act)
+    assert np.all(I2[s.bag] == 0.0), (
+        "BAG fired on an oxygen *upshift*: the rectifier is missing and the downshift "
+        "channel has become a second URX")
+
 def test_the_wave_travels_rather_than_standing():
     """A standing wave produces no net thrust, so this is the measure that matters.
 

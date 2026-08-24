@@ -1115,6 +1115,24 @@ class SensoryParams:
     # and the only assay plate carrying one is nociception's.
     repellent_d_gain: float = 4000.0  # pA per unit repellent per second, on the deviation
     repellent_tau_adapt: float = 2.0  # s  baseline the differential part is measured from
+
+    # The tail's copy of the repellent sense: PHA/PHB, the phasmid neurons, sampling the
+    # same field at nodes[-1] with the same transduction shape and the same adaptation tau
+    # as ASH, but their own baseline. Hilliard et al. 2002 (Curr Biol 12:730) is the
+    # provenance for both the modality and the reason it matters: a repellent applied to
+    # the tail drives forward acceleration where the same repellent at the head drives
+    # reversal, so escape *direction* is a head-versus-tail comparison, and an animal with
+    # only ASH cannot make it. The wiring is asked, not scripted: PHB synapses onto both
+    # PVC (forward) and AVA (backward) in this reconstruction, and which way the animal
+    # actually goes is measured in tests/test_behaviour.py's escape-direction assay.
+    phasmid_gain: float = 42.0        # pA per unit repellent at the tail (tonic)
+    phasmid_d_gain: float = 4000.0    # pA per unit repellent per second, adapted deviation
+
+    # BAG: the oxygen downshift sensor (Zimmer et al. 2009, Neuron 61:865). URX carries
+    # the tonic level and the rising edge above; BAG takes the falling edge -- the
+    # rectified negative deviation from the same adapting baseline, so the pair splits
+    # the derivative between them and no new state is added.
+    bag_gain: float = 900.0           # pA per unit O2 on the rectified downshift
     # Per uN of smoothed indentation force.
     #
     # This was 34 pA/uN against a receptor state that accumulated one whole force per step
