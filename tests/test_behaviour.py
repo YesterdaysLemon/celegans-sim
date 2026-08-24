@@ -265,6 +265,128 @@ def test_anterior_touch_drives_a_reversal():
         "an anterior touch did not depolarise the backward command pool "
         "(%.4f without the touch, %.4f with it)" % (quiet, touched))
 
+
+def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
+    """The two ends of the animal are different sensors, and oxygen has two edges.
+
+    PHA/PHB sample the repellent field at the tail (Hilliard et al. 2002): a drop that
+    exists only under the tail must drive the phasmid pool and leave ASH, a body-length
+    away at the nose, silent. BAG carries the *falling* edge of oxygen (Zimmer et al.
+    2009) where URX carries the level and the rising edge: a downshift must drive BAG,
+    an upshift must not, and the rectification is what this test pins.
+
+    Tested at the current level, on a plate built for the purpose -- repellent present
+    only where the tail is, oxygen stepped up and down at will -- because that is where
+    the claim is unambiguous. What the animal *does* with the phasmid current is the
+    escape-direction question, measured separately.
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    s = sim.senses
+    nodes = sim.body.nodes()
+    tail = nodes[-1]
+
+    class Plate:
+        """Only what Senses.sense touches; fields are identity tokens."""
+        attractant, repellent, food = object(), object(), object()
+
+        def __init__(self, o2):
+            self.o2 = o2
+
+        def sample(self, field, x, y):
+            if field is Plate.repellent:
+                return 0.5 if np.hypot(x - tail[0], y - tail[1]) < 0.1 else 0.0
+            return 0.0
+
+        def temperature(self, x, y):
+            return p.sensory.cultivation_temp
+
+        def oxygen(self, x, y):
+            return self.o2
+
+    contact = np.zeros((len(nodes), 2))
+    curv = np.zeros(len(nodes) - 2)
+    act = sim.nervous.activation()
+    plate = Plate(0.10)
+
+    # First contact seeds every adapting baseline at the stimulus, so the differential
+    # parts are exactly zero and only the tonic parts remain.
+    I0 = s.sense(plate, nodes, contact, curv, act)
+    assert np.allclose(I0[s.phasmid], p.sensory.phasmid_gain * 0.5), (
+        "a drop under the tail did not produce the tonic phasmid current")
+    assert np.all(I0[s.ash] == 0.0), (
+        "the tail's drop leaked into ASH: the nose is sensing the wrong end")
+    assert np.all(I0[s.bag] == 0.0), "BAG fired with oxygen at its own baseline"
+
+    # A downshift: BAG takes the rectified negative deviation, URX loses the same amount.
+    plate.o2 = 0.08
+    I1 = s.sense(plate, nodes, contact, curv, act)
+    assert np.allclose(I1[s.bag], p.sensory.bag_gain * 0.02), (
+        "an oxygen downshift did not drive BAG")
+    assert np.allclose(I1[s.phasmid], p.sensory.phasmid_gain * 0.5), (
+        "an unchanged tail concentration moved the phasmid current")
+
+    # An upshift: the deviation is positive, the rectifier holds, BAG stays silent.
+    plate.o2 = 0.12
+    I2 = s.sense(plate, nodes, contact, curv, act)
+    assert np.all(I2[s.bag] == 0.0), (
+        "BAG fired on an oxygen *upshift*: the rectifier is missing and the downshift "
+        "channel has become a second URX")
+
+
+def test_a_repellent_at_the_tail_does_not_command_a_reversal():
+    """Escape direction is a head-versus-tail comparison, and this is the comparison.
+
+    Hilliard et al. 2002: a repellent at the head drives reversal, the same repellent at
+    the tail drives forward acceleration. The model's half of that is PHB answering
+    glutamate with chloride on AVA (SensoryParams.glucl_pre has the measurements): as
+    reconstructed, with every synapse excitatory, a current step into the phasmids
+    depolarised AVA *more* than the same step into ASH (+0.714 mV against +0.566) --
+    danger behind the animal out-commanded danger ahead of it, and routing the tail
+    measurably worsened escape. With the chloride the tail's backward command collapses
+    to a fraction of the head's while PHB -> PVC stays excitatory to carry the forward
+    half.
+
+    Measured the way the anterior-touch test measures: paired runs from one seed, noise
+    off, identical except for a 2 s current step into one pool, compared as the change
+    in mean AVA potential against the unstimulated twin. One baseline serves both
+    stimuli.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def ava_after(pool):
+        p = P()
+        p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+        sim = Simulation(p, seed=5, world=bare_world(p))
+        sim.run(6.0)
+        s = sim.senses
+        if pool is not None:
+            target = {"ash": s.ash, "phasmid": s.phasmid}[pool]
+            base = s.sense
+
+            def wrapped(*a, **k):
+                I = base(*a, **k)
+                I[target] += 25.0
+                return I
+
+            s.sense = wrapped
+        sim.run(2.0)
+        return float(sim.nervous.V[sim.conn.group("AVA")].mean())
+
+    quiet = ava_after(None)
+    d_head = ava_after("ash") - quiet
+    d_tail = ava_after("phasmid") - quiet
+
+    assert d_head > 0.3, (
+        "a repellent step at the nose no longer depolarises the backward command pool "
+        "(dAVA %+0.3f mV): the escape response itself is broken" % d_head)
+    assert d_tail < 0.5 * d_head, (
+        "a repellent step at the tail commands reversal like one at the nose "
+        "(dAVA %+0.3f mV at the tail against %+0.3f at the head): the phasmid "
+        "antagonism is gone and the animal will back into what it is fleeing"
+        % (d_tail, d_head))
+
 def test_the_wave_travels_rather_than_standing():
     """A standing wave produces no net thrust, so this is the measure that matters.
 

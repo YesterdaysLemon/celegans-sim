@@ -1093,7 +1093,7 @@ class Worm {
   mBmat: StaticArray<f64> | null = null;       // n*n         rebuilt Dif^T gamma Dif
   mMusGain: StaticArray<f64> | null = null;    // J           muscle gain scale
   cAdapt: f64 = 0.0; odourAdapt: f64 = 0.0; tAdapt: f64 = 0.0; o2Adapt: f64 = 0.0;
-  repAdapt: f64 = 0.0;
+  repAdapt: f64 = 0.0; tailRepAdapt: f64 = 0.0;
   adaptReady: bool = false;
   touchA: f64 = 0.0; touchP: f64 = 0.0;
   availA: f64 = 1.0; availP: f64 = 1.0;
@@ -1748,12 +1748,16 @@ class Worm {
     //    however high -- stops responding to it within seconds.
     const c = world.sample(world.attractant, nx, ny);
     const rep = world.sample(world.repellent, nx, ny);
+    // The same repellent a body-length away, at the tail, for the phasmids.
+    const tx = unchecked(this.nodesX[G.N_LINKS]), ty = unchecked(this.nodesY[G.N_LINKS]);
+    const repT = world.sample(world.repellent, tx, ty);
     const T = world.temperature(nx);
     const o2 = world.oxygen(nx, ny);
     const food = world.sample(world.food, nx, ny);
     if (!this.adaptReady) {
       this.cAdapt = c; this.odourAdapt = c; this.tAdapt = G.SEN_CULTIVATION_TEMP;
-      this.o2Adapt = o2; this.repAdapt = rep; this.adaptReady = true;
+      this.o2Adapt = o2; this.repAdapt = rep; this.tailRepAdapt = repT;
+      this.adaptReady = true;
     }
     this.sensedAtt = c; this.sensedRep = rep; this.sensedT = T;
     this.sensedO2 = o2; this.sensedFood = food;
@@ -1779,6 +1783,14 @@ class Worm {
     this.addTo(G.OFF_idx_adl, G.LEN_idx_adl, this.gene(G.GENE_SEN_CHEMO_GAIN) * 0.8 * rep);
     this.addTo(G.OFF_idx_ask, G.LEN_idx_ask, -this.gene(G.GENE_SEN_CHEMO_GAIN) * 0.3 * rep);
 
+    // The phasmids: ASH's transduction shape at the tail, with its own baseline, because
+    // the two ends of the animal are in genuinely different concentrations and the
+    // head-versus-tail difference is the information (worm/senses.py has the provenance).
+    const drepT = repT - this.tailRepAdapt;
+    this.tailRepAdapt += (repT - this.tailRepAdapt) * G.REP_RATE;
+    this.addTo(G.OFF_idx_phasmid, G.LEN_idx_phasmid,
+               G.SEN_PHASMID_GAIN * repT + G.SEN_PHASMID_D_GAIN * drepT);
+
     // -- thermosensation. AFD is a warm receptor above the cultivation temperature and
     //    silent below it.
     const dT = T - this.tAdapt;
@@ -1791,6 +1803,9 @@ class Worm {
     this.o2Adapt += (o2 - this.o2Adapt) * G.O2_RATE;
     this.addTo(G.OFF_idx_urx, G.LEN_idx_urx,
                this.gene(G.GENE_SEN_OXYGEN_GAIN) * (o2 - G.SEN_OXYGEN_PREFERRED) + G.SEN_OXYGEN_D_GAIN * do2);
+    // BAG takes the falling edge of the same signal: rectified negative deviation from
+    // the shared baseline. Same baseline, same tau, opposite rectification.
+    this.addTo(G.OFF_idx_bag, G.LEN_idx_bag, G.SEN_BAG_GAIN * (do2 < 0.0 ? -do2 : 0.0));
 
     // -- mechanosensation. Smoothed contact, not accumulated: as an exponential moving
     //    average the steady state is the force itself, and does not scale with 1/dt.

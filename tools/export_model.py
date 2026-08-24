@@ -138,7 +138,8 @@ MUSCLE_SCALARS = ("g_leak", "E_leak", "beta", "v_half", "rest_tension")
 # payload, so it belongs in its own change with its own conformance run. Exporting a
 # parameter nothing reads would only move the silence.
 SENSORY_SCALARS = ("chemo_gain", "thermo_gain", "cultivation_temp", "oxygen_gain",
-                   "oxygen_preferred", "oxygen_d_gain", "repellent_d_gain", "food_gain",
+                   "oxygen_preferred", "oxygen_d_gain", "repellent_d_gain",
+                   "phasmid_gain", "phasmid_d_gain", "bag_gain", "food_gain",
                    "proprio_gain", "head_proprio_gain", "tonic_forward", "tonic_backward",
                    "cord_drive", "gate_slope", "gate_bias", "gate_hysteresis",
                    "turn_bias_limit", "touch_gain", "omega_current",
@@ -497,6 +498,7 @@ def export(path=OUT, params=None):
     sets = {
         "ase_on": sen.ase_on, "ase_off": sen.ase_off, "awc": sen.awc, "awa": sen.awa,
         "ash": sen.ash, "adl": sen.adl, "ask": sen.ask, "afd": sen.afd, "urx": sen.urx,
+        "phasmid": sen.phasmid, "bag": sen.bag,
         "touch_ant": sen.touch_anterior, "touch_post": sen.touch_posterior,
         "nose_touch": sen.nose_touch, "dopaminergic": sen.dopaminergic, "nsm": sen.nsm,
         "avb": sen.avb, "ava": sen.ava,

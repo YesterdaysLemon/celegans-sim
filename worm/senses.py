@@ -40,12 +40,22 @@ class Senses:
         self.ash = idx("ASHL", "ASHR")                 # nociception, osmotic, nose touch
         self.adl = idx("ADLL", "ADLR")                 # volatile repellent
         self.ask = idx("ASKL", "ASKR")
+        # The phasmids: the tail's chemosensors, open to the outside through the phasmid
+        # sheath and responsive to the same water-soluble repellents ASH carries at the
+        # nose (Hilliard et al. 2002, Curr Biol 12:730). One pool for both classes; the
+        # wiring differentiates them downstream -- PHB onto the command interneurons
+        # (PVC and AVA), PHA onto AVG and each other.
+        self.phasmid = idx("PHAL", "PHAR", "PHBL", "PHBR")
 
         # --- thermosensation ------------------------------------------------------------
         self.afd = idx("AFDL", "AFDR")
 
         # --- oxygen ---------------------------------------------------------------------
         self.urx = idx("URXL", "URXR", "AQR", "PQR")
+        # BAG fires on oxygen *downshifts* where URX fires on upshifts (Zimmer et al.
+        # 2009, Neuron 61:865): the falling edge of the same signal, carried by a
+        # different pair of cells.
+        self.bag = idx("BAGL", "BAGR")
 
         # --- mechanosensation -----------------------------------------------------------
         self.touch_anterior = idx("ALML", "ALMR", "AVM")
@@ -131,6 +141,7 @@ class Senses:
         self.t_adapt = None
         self.o2_adapt = None
         self.rep_adapt = None
+        self.tail_rep_adapt = None
         self.touch_state = np.zeros(2)
         self.poke = np.zeros(2)          # (anterior, posterior) externally driven touch
         # Habituation. One resource per touch field, full at 1.0. See SensoryParams.
@@ -261,6 +272,7 @@ class Senses:
 
         nose = nodes[0]
         mid = nodes[len(nodes) // 2]
+        tail = nodes[-1]
 
         # ---------------------------------------------------------------- chemosensation
         c = float(world.sample(world.attractant, nose[0], nose[1]))
@@ -303,6 +315,21 @@ class Senses:
         I[self.adl] += p.chemo_gain * 0.8 * rep
         I[self.ask] -= p.chemo_gain * 0.3 * rep
 
+        # The same repellent sensed a body-length away, at the tail, by the phasmids.
+        # Same transduction shape as ASH -- tonic plus adapted differential, sharing the
+        # repellent adaptation tau -- but its own baseline, because the two ends of the
+        # animal are in genuinely different concentrations and the head-versus-tail
+        # difference is the information (Hilliard et al. 2002: a repellent applied to the
+        # tail drives forward acceleration where the same repellent at the head drives
+        # reversal). Nothing here scripts that comparison; the currents enter PHA/PHB and
+        # the reconstructed wiring decides what they mean.
+        rep_t = float(world.sample(world.repellent, tail[0], tail[1]))
+        if self.tail_rep_adapt is None:
+            self.tail_rep_adapt = rep_t
+        drep_t = rep_t - self.tail_rep_adapt
+        self.tail_rep_adapt += (rep_t - self.tail_rep_adapt) * self._rep_rate
+        I[self.phasmid] += p.phasmid_gain * rep_t + p.phasmid_d_gain * drep_t
+
         # ---------------------------------------------------------------- thermosensation
         T = float(world.temperature(nose[0], nose[1]))
         if self.t_adapt is None:
@@ -321,6 +348,12 @@ class Senses:
         # Tonic and differential, and the differential is what makes the taxis point the
         # right way -- see SensoryParams.oxygen_d_gain.
         I[self.urx] += p.oxygen_gain * (o2 - p.oxygen_preferred) + p.oxygen_d_gain * do2
+        # BAG takes the falling edge of the same signal: the rectified negative deviation
+        # from the shared adapting baseline. URX and BAG split the derivative between
+        # them -- upshifts depolarise URX, downshifts BAG -- which is how the biology
+        # does it (Zimmer et al. 2009), and it costs no new state: same baseline, same
+        # tau, opposite rectification.
+        I[self.bag] += p.bag_gain * max(0.0, -do2)
 
         # ----------------------------------------------------------------- mechanosensation
         mag = np.hypot(contact[:, 0], contact[:, 1])
@@ -553,6 +586,7 @@ class Senses:
 
         self.readout = {
             "attractant": c, "d_attractant": dc, "repellent": rep,
+            "repellent_tail": rep_t,
             "temperature": T, "oxygen": o2, "d_oxygen": do2, "food": f,
             "touch": float(self.touch_state.sum()),
             "habituation": float(self.touch_avail.mean()),

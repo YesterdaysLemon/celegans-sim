@@ -49,6 +49,7 @@ SPECIAL_TARGETS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict([
         "test_membrane_potentials_stay_physiological",
         "test_body_length_is_conserved_in_the_full_loop",
         "test_anterior_touch_drives_a_reversal",
+        "test_the_tail_feels_repellent_and_bag_feels_the_downshift",
         "test_the_wave_travels_rather_than_standing",
     ))),
     ("behaviour-learning", _nodeids(BEHAVIOUR, (
@@ -57,6 +58,7 @@ SPECIAL_TARGETS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict([
         "test_habituation_depletes_recovers_and_prefers_short_intervals",
         "test_habituation_is_independent_of_the_timestep",
         "test_rising_attractant_inhibits_aiy",
+        "test_a_repellent_at_the_tail_does_not_command_a_reversal",
         "test_omega_gain_of_one_changes_nothing",
         "test_omega_gain_amplifies_only_the_phasic_part",
         "test_proprio_conductance_ships_off_and_replaces_the_current_when_on",

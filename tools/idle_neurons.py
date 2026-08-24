@@ -23,6 +23,10 @@ Reading of the first run (2026-08-24), so the headline is on the record:
   field-blind while DA/DB/VA/VB all carry receptive fields. PVD (harsh touch) is
   unrouted. HSN/VC are NOT idle -- egg-laying reads them as actuators -- and the DD/VD
   cross-inhibitors are driven by the anatomy, which is correct.
+
+Second reading (2026-08-24, after the phasmid + BAG routes went in): 109/302 reachable.
+PHA/PHB now carry the repellent at the tail and BAG the oxygen downshift, so the top
+two entries above are paid off; AWB, ADF/ASI/ASG/ASJ, the AS class and PVD remain.
 """
 
 from __future__ import annotations
@@ -46,7 +50,9 @@ def routed_map(sim):
     mark(sn.ase_on, 'attractant'); mark(sn.ase_off, 'attractant')
     mark(sn.awc, 'odour'); mark(sn.awa, 'odour')
     mark(sn.ash, 'repellent'); mark(sn.adl, 'repellent'); mark(sn.ask, 'repellent')
+    mark(sn.phasmid, 'tail repellent')
     mark(sn.afd, 'temperature'); mark(sn.urx, 'oxygen')
+    mark(sn.bag, 'oxygen downshift')
     mark(sn.touch_anterior, 'touch'); mark(sn.touch_posterior, 'touch')
     mark(sn.nose_touch, 'nose touch')
     mark(sn.dopaminergic, 'food'); mark(sn.nsm, 'food')

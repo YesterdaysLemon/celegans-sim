@@ -415,8 +415,28 @@ class NeuralParams:
     # where biasing the walk wants of order 0.1. That is not attenuation along the way --
     # the chain is strong at every stage, ASE->AIY being 206% of AIY's own conductance,
     # AIY->AIZ 91%, AIZ->AVE 25% -- so where it goes is a separate question and an open one.
-    glucl_pre: tuple = ("ASEL", "AWA")    # the ON cells of each opponent pair
-    glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
+    # PHB -> AVA joined the chloride list with the phasmid route (2026-08-24). Hilliard
+    # et al. 2002 is the functional evidence: a repellent at the tail drives forward
+    # acceleration, so the phasmids must *antagonise* the reversal command, and PHB's
+    # glutamatergic synapses land directly on AVA (29 contacts here). As reconstructed --
+    # every synapse excitatory -- the route is not merely weak but inverted, measured two
+    # ways with the phasmids routed:
+    #
+    #   escape, paired per seed (40 s, drop 2 mm beyond the nose / behind the tail;
+    #   final distance from the drop, phasmids routed minus deaf-tailed):
+    #     head arm  -1.37 mm      tail arm  -0.74 mm     -- routing the tail HURT
+    #   command, dAVA under a 2 s, 25 pA step into each pool (noise off, paired):
+    #     into ASH  +0.566 mV     into PHA/PHB  +0.714 mV -- tail outranks head, backwards
+    #
+    # With chloride on PHB -> AVA the same two measures read: escape -0.21/-0.33 mm
+    # (the harm gone, within seed noise of zero) and dAVA +0.572 into ASH against
+    # +0.070 into the phasmids -- the same stimulus, an eightfold smaller backward
+    # command when it arrives at the tail, with PHB -> PVC (22 contacts) left excitatory
+    # to carry the forward half. The cross-product below adds exactly those four
+    # synapses: ASEL/AWA -> AVA and PHB -> AIY have no contacts in this reconstruction,
+    # which was checked before widening the lists.
+    glucl_pre: tuple = ("ASEL", "AWA", "PHB")   # ON cells, plus the tail's repellent line
+    glucl_post: tuple = ("AIY", "AVA")          # targets expressing the chloride receptor
     # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
     # ASEL -- which is what "the attractant is rising" looks like to the circuit:
     #
@@ -1115,6 +1135,24 @@ class SensoryParams:
     # and the only assay plate carrying one is nociception's.
     repellent_d_gain: float = 4000.0  # pA per unit repellent per second, on the deviation
     repellent_tau_adapt: float = 2.0  # s  baseline the differential part is measured from
+
+    # The tail's copy of the repellent sense: PHA/PHB, the phasmid neurons, sampling the
+    # same field at nodes[-1] with the same transduction shape and the same adaptation tau
+    # as ASH, but their own baseline. Hilliard et al. 2002 (Curr Biol 12:730) is the
+    # provenance for both the modality and the reason it matters: a repellent applied to
+    # the tail drives forward acceleration where the same repellent at the head drives
+    # reversal, so escape *direction* is a head-versus-tail comparison, and an animal with
+    # only ASH cannot make it. The wiring is asked, not scripted: PHB synapses onto both
+    # PVC (forward) and AVA (backward) in this reconstruction, and which way the animal
+    # actually goes is measured in tests/test_behaviour.py's escape-direction assay.
+    phasmid_gain: float = 42.0        # pA per unit repellent at the tail (tonic)
+    phasmid_d_gain: float = 4000.0    # pA per unit repellent per second, adapted deviation
+
+    # BAG: the oxygen downshift sensor (Zimmer et al. 2009, Neuron 61:865). URX carries
+    # the tonic level and the rising edge above; BAG takes the falling edge -- the
+    # rectified negative deviation from the same adapting baseline, so the pair splits
+    # the derivative between them and no new state is added.
+    bag_gain: float = 900.0           # pA per unit O2 on the rectified downshift
     # Per uN of smoothed indentation force.
     #
     # This was 34 pA/uN against a receptor state that accumulated one whole force per step
