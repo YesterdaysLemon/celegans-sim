@@ -60,6 +60,10 @@ NOT_A_GATE = {
     "refuse a superseded release under the production lock":
         "release-state guard, not a code gate: it compares the queued SHA with live main "
         "only after GitHub grants the production concurrency lock.",
+    "delete each named branch, refusing the protected ones":
+        "maintenance action, not a check: repo-tidy.yml deletes the stale branches its "
+        "dispatch input names, using the contents:write a session's own credentials "
+        "never hold. There is nothing for a local runner to verify offline.",
 }
 
 
