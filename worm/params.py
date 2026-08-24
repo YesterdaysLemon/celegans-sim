@@ -415,8 +415,28 @@ class NeuralParams:
     # where biasing the walk wants of order 0.1. That is not attenuation along the way --
     # the chain is strong at every stage, ASE->AIY being 206% of AIY's own conductance,
     # AIY->AIZ 91%, AIZ->AVE 25% -- so where it goes is a separate question and an open one.
-    glucl_pre: tuple = ("ASEL", "AWA")    # the ON cells of each opponent pair
-    glucl_post: tuple = ("AIY",)          # targets expressing the chloride receptor
+    # PHB -> AVA joined the chloride list with the phasmid route (2026-08-24). Hilliard
+    # et al. 2002 is the functional evidence: a repellent at the tail drives forward
+    # acceleration, so the phasmids must *antagonise* the reversal command, and PHB's
+    # glutamatergic synapses land directly on AVA (29 contacts here). As reconstructed --
+    # every synapse excitatory -- the route is not merely weak but inverted, measured two
+    # ways with the phasmids routed:
+    #
+    #   escape, paired per seed (40 s, drop 2 mm beyond the nose / behind the tail;
+    #   final distance from the drop, phasmids routed minus deaf-tailed):
+    #     head arm  -1.37 mm      tail arm  -0.74 mm     -- routing the tail HURT
+    #   command, dAVA under a 2 s, 25 pA step into each pool (noise off, paired):
+    #     into ASH  +0.566 mV     into PHA/PHB  +0.714 mV -- tail outranks head, backwards
+    #
+    # With chloride on PHB -> AVA the same two measures read: escape -0.21/-0.33 mm
+    # (the harm gone, within seed noise of zero) and dAVA +0.572 into ASH against
+    # +0.070 into the phasmids -- the same stimulus, an eightfold smaller backward
+    # command when it arrives at the tail, with PHB -> PVC (22 contacts) left excitatory
+    # to carry the forward half. The cross-product below adds exactly those four
+    # synapses: ASEL/AWA -> AVA and PHB -> AIY have no contacts in this reconstruction,
+    # which was checked before widening the lists.
+    glucl_pre: tuple = ("ASEL", "AWA", "PHB")   # ON cells, plus the tail's repellent line
+    glucl_post: tuple = ("AIY", "AVA")          # targets expressing the chloride receptor
     # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
     # ASEL -- which is what "the attractant is rising" looks like to the circuit:
     #

@@ -333,6 +333,60 @@ def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
         "BAG fired on an oxygen *upshift*: the rectifier is missing and the downshift "
         "channel has become a second URX")
 
+
+def test_a_repellent_at_the_tail_does_not_command_a_reversal():
+    """Escape direction is a head-versus-tail comparison, and this is the comparison.
+
+    Hilliard et al. 2002: a repellent at the head drives reversal, the same repellent at
+    the tail drives forward acceleration. The model's half of that is PHB answering
+    glutamate with chloride on AVA (SensoryParams.glucl_pre has the measurements): as
+    reconstructed, with every synapse excitatory, a current step into the phasmids
+    depolarised AVA *more* than the same step into ASH (+0.714 mV against +0.566) --
+    danger behind the animal out-commanded danger ahead of it, and routing the tail
+    measurably worsened escape. With the chloride the tail's backward command collapses
+    to a fraction of the head's while PHB -> PVC stays excitatory to carry the forward
+    half.
+
+    Measured the way the anterior-touch test measures: paired runs from one seed, noise
+    off, identical except for a 2 s current step into one pool, compared as the change
+    in mean AVA potential against the unstimulated twin. One baseline serves both
+    stimuli.
+    """
+    import dataclasses
+    from worm.params import Params as P
+
+    def ava_after(pool):
+        p = P()
+        p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, noise_sigma=0.0))
+        sim = Simulation(p, seed=5, world=bare_world(p))
+        sim.run(6.0)
+        s = sim.senses
+        if pool is not None:
+            target = {"ash": s.ash, "phasmid": s.phasmid}[pool]
+            base = s.sense
+
+            def wrapped(*a, **k):
+                I = base(*a, **k)
+                I[target] += 25.0
+                return I
+
+            s.sense = wrapped
+        sim.run(2.0)
+        return float(sim.nervous.V[sim.conn.group("AVA")].mean())
+
+    quiet = ava_after(None)
+    d_head = ava_after("ash") - quiet
+    d_tail = ava_after("phasmid") - quiet
+
+    assert d_head > 0.3, (
+        "a repellent step at the nose no longer depolarises the backward command pool "
+        "(dAVA %+0.3f mV): the escape response itself is broken" % d_head)
+    assert d_tail < 0.5 * d_head, (
+        "a repellent step at the tail commands reversal like one at the nose "
+        "(dAVA %+0.3f mV at the tail against %+0.3f at the head): the phasmid "
+        "antagonism is gone and the animal will back into what it is fleeing"
+        % (d_tail, d_head))
+
 def test_the_wave_travels_rather_than_standing():
     """A standing wave produces no net thrust, so this is the measure that matters.
 

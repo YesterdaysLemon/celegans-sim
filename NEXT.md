@@ -130,15 +130,22 @@ demands, and the runtime has no conductance path yet
 default.
 
 **1¾. The deaf cells, measured.** `tools/idle_neurons.py` (2026-08-24) unions every
-input route: 103 of 302 neurons are reachable by the world; 48 sensory cells are DEAF
-— whatever they do in the animal, here transduction never touches them. The ones with
-documented biology and a cheap route in: **PHA/PHB** (tail chemosensors — the
-head-versus-tail repellent comparison that decides escape *direction*, Hilliard 2002;
-the repellent field already exists and the tail node is `nodes[-1]`), **BAG** (O₂
-*downshift*, the missing half of aerotaxis — URX senses the upshift and the
-differential-sensing pattern is already the house style), **AWB** (volatile repellent
-odour beside routed ADL), and ADF/ASI/ASG/ASJ (food-quality chemosensation, further
-out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
+input route: 103 of 302 neurons were reachable by the world at the first reading; 48
+sensory cells were DEAF — whatever they do in the animal, here transduction never
+touched them. **The top two entries are paid off** (second reading: 109/302):
+**PHA/PHB** now carry the repellent at the tail and **BAG** the oxygen downshift, both
+runtimes, conformance-gated. The escape-direction claim came out the interesting way:
+as reconstructed — every synapse excitatory — routing the tail *hurt* (paired escape
+−1.37 mm head arm, −0.74 tail; a current step into the phasmids depolarised AVA
+*more* than the same step into ASH, +0.714 mV against +0.566 — danger behind
+out-commanding danger ahead). PHB → AVA joined the glutamate-chloride list on
+Hilliard 2002's antagonism, and the same probes then read +0.572 into ASH against
++0.070 into the phasmids: the head-versus-tail asymmetry at the command level, pinned
+by `test_a_repellent_at_the_tail_does_not_command_a_reversal`. BAG is routed and
+pinned at the transduction level (downshift drives it, upshift must not); what it does
+to lawn-border behaviour is measurable and unmeasured — an honest next assay. Still
+open from the audit: **AWB** (volatile repellent odour beside routed ADL), and
+ADF/ASI/ASG/ASJ (food-quality chemosensation, further out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
 while DA/DB/VA/VB all carry proprioceptive receptive fields; giving AS the same
 anterior-field treatment is the "complete the cord" move (Boyle 2012 precedent),
 Track A, gated by the scorecard and the 16-seed directional test like every gait
