@@ -81,8 +81,7 @@ function browserOpts(rand) {
   };
 }
 
-const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;
-export const dynastyHue = HUE;   // the lineage panel colours branches the way the dish does
+const HUE = (f) => (f < 0 ? 0 : 40 + f * 77) % 360;   // the lineage panel reads this off the engine instance
 
 export class ArenaEngine extends LocalEngine {
   constructor(clock, options) {

@@ -13,7 +13,8 @@
  *   viewer/panels.js      neurons, muscle, kymograph, traces, receptor bars
  *   viewer/stats.js       header readouts, undulation frequency, legend
  *   viewer/history.js     the bounded ring of past frames the scrubber reads (imports nothing)
- *   viewer/controls.js    every event listener, and the UI state that goes with them
+ *   viewer/gestures.js    the dish canvas's gestures and the pipette
+ *   viewer/controls.js    every other event listener, and the UI state that goes with them
  *   viewer/transport.js   the WebSocket feed and the command seam, send()
  *   viewer/loop.js        the local engine read-out and requestAnimationFrame
  *

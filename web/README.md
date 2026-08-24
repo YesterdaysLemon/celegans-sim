@@ -22,7 +22,8 @@ belongs on `S` instead.
 | `viewer/stats.js` | header readouts, undulation frequency, pump lamp, dish legend | state |
 | `viewer/history.js` | the bounded ring of past frames behind the scrubber | *nothing* |
 | `viewer/transport.js` | the WebSocket feed, and `send()` — the command seam | state, panels, stats, dish, history |
-| `viewer/controls.js` | every event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, stats, transport, history |
+| `viewer/gestures.js` | everything ON the dish canvas: wheel/pinch zoom, pan, both tweezers, the pipette | state, dish, transport |
+| `viewer/controls.js` | every other event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, stats, transport, history, gestures |
 | `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls, history |
 | `app.js` | bootstrap: pick a transport, wire, start; the dish tabs and `S.switchDish` | all of the above |
 | `local.js` | the WASM engine itself — model loading, stepping budget, the two rate readouts, frame extraction | — |
