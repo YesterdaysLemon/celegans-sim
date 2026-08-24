@@ -335,25 +335,40 @@ export class LocalEngine {
     this.meta.world.patches.push({ x, y, r, kind: 'food' });
     return true;
   }
-  /* The dropper's other bottle. A repellent drop goes straight into the live field --
-   * no patch object, no cached shapes, no 16-lawn cap -- because since the fields went
-   * dynamic the field IS the state: it diffuses, decays and blows downwind like
-   * anything else on the plate, and the animals smell it through the same sensedRep
-   * path as the seeded noxious drop. Amount matches the rot miasma's scale so one
-   * squeeze reads clearly without walling off half the dish. */
+  /* The deposit mechanism spreads its amount as a TOTAL over the disc's grid cells --
+   * ~128 of them at r 2.5 -- and the first shipping doses (0.5, 0.6 total) landed
+   * 0.004 per cell against fields whose real features sit near 1.0. Invisible on the
+   * layer, imperceptible to the animal: two bottles that measurably did nothing (the
+   * owner squeezed them and asked). Doses are PER-CELL targets now, converted through
+   * the grid geometry the model header declares, so a squeeze deposits what it looks
+   * like it deposits whatever the grid resolution is. */
+  _cellsIn(r) {
+    const g = this.head.ints.world_grid;
+    const h = (2 * this.head.scalars.world_extent) / g;
+    return Math.max(1, Math.PI * r * r / (h * h));
+  }
+  /* The repellent bottle: straight into the live field -- no patch object, no cached
+   * shapes, no 16-lawn cap -- because since the fields went dynamic the field IS the
+   * state: it diffuses, decays and blows downwind, and the animals smell it through
+   * the same sensedRep path as the seeded noxious drop. Dosed per-cell at ~0.7,
+   * commensurate with the seeded drop's ~1.0 peak: strong enough to read and to
+   * repel, small enough to fade instead of walling off the dish. */
   dropRepellent(x, y, r = 2.5) {
-    this.E.depositRepellent(x, y, r, 0.6);
+    this.E.depositRepellent(x, y, r, 0.7 * this._cellsIn(r));
     return true;
   }
   /* The rack's other two bottles, each a field source the plate already understands.
    * Crumbs are food with no colony behind them: straight into the live food field
    * (depositFood -- the corpse path), no patch, no plume, no slot against the 16-lawn
-   * cap; the animal finds them by touch, which is its own small experiment. Scent is
-   * the mirror: a patch whose colony is nearly foodless, so it smells like dinner and
-   * mostly is not -- it takes a patch slot, because the plume machinery is the patch,
-   * and it refuses at the cap the same way a lawn does. */
-  dropCrumbs(x, y, r = 2.5) {
-    this.E.depositFood(x, y, r, 0.5);
+   * cap; the animal finds them by touch, which is its own small experiment. Dosed
+   * per-cell at ~0.6 against a lawn's ~1.0, so the pile is visible and worth eating
+   * (the eating rate is proportional to local density -- a thin smear feeds 250x
+   * slower than it looks like it should). Scent is the mirror: a patch whose colony
+   * is nearly foodless, so it smells like dinner and mostly is not -- it takes a
+   * patch slot, because the plume machinery is the patch, and it refuses at the cap
+   * the same way a lawn does. */
+  dropCrumbs(x, y, r = 2.0) {
+    this.E.depositFood(x, y, r, 0.6 * this._cellsIn(r));
     return true;
   }
   dropScent(x, y, r = 2.5) {

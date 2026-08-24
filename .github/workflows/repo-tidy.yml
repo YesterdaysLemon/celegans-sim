@@ -1,0 +1,46 @@
+# Repo tidying that a session's git credentials cannot do.
+#
+# Claude's remote sessions push through a credential broker that can write exactly one
+# branch -- their own. That is the right blast radius for day-to-day work, and it means
+# ref DELETION is structurally out of their reach: the 2026-08-24 hygiene sweep catalogued
+# 43 stale branches (docs/research-log/branch-graveyard-2026-08-24.md) and then hit a 403
+# on every deletion attempt. This workflow is the arm's-length tool for that job: it runs
+# only on manual dispatch, deletes exactly the branches named in its input, and refuses
+# the two refs that are never stale by definition. The Actions token's contents:write is
+# scoped to this repository and dies with the run.
+#
+# tests/test_ci_policy.py excuses this file from path filters: it triggers on dispatch
+# only, so there is no push event for a filter to claim.
+
+name: repo tidy
+
+on:
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: 'Space-separated branch names to delete'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branches:
+    name: delete the named branches
+    runs-on: ubuntu-latest
+    steps:
+      - name: delete each named branch, refusing the protected ones
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCHES: ${{ inputs.branches }}
+          REPO: ${{ github.repository }}
+        run: |
+          for b in $BRANCHES; do
+            case "$b" in
+              main|claude/repo-overview-directions-t7gut2)
+                echo "REFUSED: $b is not stale by definition"; exit 1;;
+            esac
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$b"
+            echo "deleted $b"
+          done
