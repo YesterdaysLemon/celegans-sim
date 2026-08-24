@@ -129,6 +129,24 @@ demands, and the runtime has no conductance path yet
 ([`docs/runtime-parity.md`](docs/runtime-parity.md)) — a Python-only default is not a
 default.
 
+**1¾. The deaf cells, measured.** `tools/idle_neurons.py` (2026-08-24) unions every
+input route: 103 of 302 neurons are reachable by the world; 48 sensory cells are DEAF
+— whatever they do in the animal, here transduction never touches them. The ones with
+documented biology and a cheap route in: **PHA/PHB** (tail chemosensors — the
+head-versus-tail repellent comparison that decides escape *direction*, Hilliard 2002;
+the repellent field already exists and the tail node is `nodes[-1]`), **BAG** (O₂
+*downshift*, the missing half of aerotaxis — URX senses the upshift and the
+differential-sensing pattern is already the house style), **AWB** (volatile repellent
+odour beside routed ADL), and ADF/ASI/ASG/ASJ (food-quality chemosensation, further
+out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
+while DA/DB/VA/VB all carry proprioceptive receptive fields; giving AS the same
+anterior-field treatment is the "complete the cord" move (Boyle 2012 precedent),
+Track A, gated by the scorecard and the 16-seed directional test like every gait
+change. PVD (harsh touch) is unrouted. NOT idle, for the record: HSN/VC (egg-laying
+reads them as actuators), DD/VD (cross-inhibition IS the anatomy), and the pharyngeal
+circuit (food reaches MC through NSM and the reconstructed wiring — worm/pharynx.py
+documents the path).
+
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
 number in the model. **The argument it was built for was refuted** — it does not fix gait
