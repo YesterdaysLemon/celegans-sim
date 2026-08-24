@@ -503,8 +503,9 @@ try {
 
       // The pipette rack: four bottles visible, arming takes, one armed click drops,
       // racking hands the dish back.
-      const dropper = await page.evaluate(() => {
+      const dropper = await page.evaluate((trays) => {
         const S = window.__sim;
+        if (trays) document.getElementById('b-pipette').click();   // accordion: rack out
         const bottles = [...document.querySelectorAll('[data-drop]')];
         const shown = bottles.filter((b) => b.getBoundingClientRect().width > 0).length;
         const dish = document.getElementById('dish');
@@ -523,7 +524,7 @@ try {
         document.querySelector('[data-drop="food"]').click();
         const racked = S.pipette === false && !dish.classList.contains('pipette');
         return { total: bottles.length, shown, armed, dropped, racked };
-      });
+      }, hasTrays);
       check(vp.name, dropper.total === 4 && dropper.shown === 4,
             `${dropper.shown} of ${dropper.total} rack bottles visible`);
       check(vp.name, dropper.armed && dropper.racked,
@@ -566,6 +567,43 @@ try {
             `a crumbs squeeze raised the food field by ${doses.food.toFixed(3)}; the bottle is a dud`);
       check(vp.name, doses.rep > 0.35,
             `a repellent squeeze raised the repellent field by ${doses.rep.toFixed(3)}; the bottle is a dud`);
+
+      /* THE ORIENTATION PIN (owner's catch: drops bloomed mirrored across the x axis).
+       * Both field producers ship grid row 0 as world-SOUTH; the renderer must put
+       * south at the bottom of the picture. Drop repellent above the view centre, wait
+       * out the 1 s field-image cadence, and the red must land where the click was --
+       * not at its reflection. Asserted on the COMPOSITED PIXELS, not the raw field:
+       * the raw array was always right, which is exactly why nothing caught the
+       * mirrored picture. Desktop only -- one orientation answers for every layout. */
+      if (vp.name === 'desktop') {
+        await page.evaluate(() => {
+          const S = window.__sim;
+          const cv = document.getElementById('c-dish');
+          const r = cv.getBoundingClientRect();
+          const scale = Math.min(r.width, r.height) / S.view.span;
+          document.querySelector('[data-drop="repellent"]').click();
+          cv.dispatchEvent(new MouseEvent('click', { bubbles: true,
+            clientX: r.left + r.width / 2,
+            clientY: r.top + r.height / 2 - 2.6 * scale }));       // world +2.6 mm
+          document.querySelector('[data-drop="repellent"]').click();
+        });
+        await new Promise((r) => setTimeout(r, 1700));             // field cadence + repaint
+        const flip = await page.evaluate(() => {
+          const S = window.__sim;
+          const cv = document.getElementById('c-dish');
+          const r = cv.getBoundingClientRect();
+          const scale = Math.min(r.width, r.height) / S.view.span;
+          const px = cv.width / r.width;
+          const ctx = cv.getContext('2d');
+          const redAt = (wy) => ctx.getImageData(
+            Math.round((r.width / 2) * px),
+            Math.round((r.height / 2 - wy * scale) * px), 1, 1).data[0];
+          return { drop: redAt(2.6), mirror: redAt(-2.6) };
+        });
+        check(vp.name, flip.drop - flip.mirror > 25,
+              `the repellent bloomed at the mirror: red ${flip.drop} at the click vs `
+              + `${flip.mirror} at its reflection -- the field image is flipped`);
+      }
 
       /* The tweezers-then-click trap (review finding): releasing a shift-drag fires a
        * browser click however far the mouse travelled, and with the pipette armed that
@@ -621,6 +659,7 @@ try {
         return { patches: S.meta.world.patches.filter((p) => p.kind !== 'repellent').length,
                  refusalShown, refusalVisible };
       });
+      if (hasTrays) await page.evaluate(() => document.getElementById('b-tools').click());
       check(vp.name, capped.patches <= 16,
             `${capped.patches} lawn markers against a 16-patch runtime cap: the viewer is lying`);
       check(vp.name, capped.refusalShown && capped.refusalVisible,
@@ -732,7 +771,7 @@ try {
             // them for the control checks, and an open tray covers the canvas centre
             // on a phone (the first run of this test long-pressed the Centre button).
             const open = document.getElementById('dish').dataset.tray;
-            if (open) document.getElementById(open === 'tools' ? 'b-tools' : 'b-layers').click();
+            if (open) document.getElementById('b-' + open).click();
             const cv = document.getElementById('c-dish');
             cv.scrollIntoView({ block: 'center' });
             const r = cv.getBoundingClientRect();

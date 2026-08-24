@@ -203,7 +203,18 @@ function drawFields(ctx, X, Y, scale) {
       r += spec.tint[0] * a; g += spec.tint[1] * a; b += spec.tint[2] * a;
       wsum += a;
     }
-    const o = i * 4;
+    /* THE ROW FLIP, and it is the whole orientation contract of this picture. Both
+     * field producers -- the local engine's fieldImage and the server's field_frame --
+     * ship grid row 0 as world-SOUTH (y = -extent), matching the physics arrays.
+     * A canvas image draws its row 0 at the TOP, and drawImage below pastes that top
+     * at Y(+R), world-north. Written straight across, every chemical blob painted at
+     * (x, -y) while the markers, the eggs, the animals and the pointer all used the
+     * true orientation -- the owner dropped a lawn and watched it bloom mirrored
+     * across the x axis. South rows go to the bottom of the image; the smoke suite's
+     * orientation pin was watched to fail against the straight write (red 77 at the
+     * click, 115 at its reflection). */
+    const row = (i / n) | 0, col = i % n;
+    const o = ((n - 1 - row) * n + col) * 4;
     if (wsum <= 0.001) { img.data[o + 3] = 0; continue; }
     img.data[o] = r / wsum; img.data[o + 1] = g / wsum; img.data[o + 2] = b / wsum;
     img.data[o + 3] = Math.min(1, wsum) * 235;
