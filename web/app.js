@@ -124,6 +124,8 @@ if (location.search.includes('server')) {
   // socket protocol has neither command. The dropper hides (double-click still drops a
   // lawn, which the protocol does have) and the hint stops advertising the tweezers.
   el('dropper').style.display = 'none';
+  const bp = el('b-pipette');
+  if (bp) bp.style.display = 'none';   // a disclosure over an empty tray is a trick door
   // The deal is a local-engine concept; the socket dish plays the server's world.
   el('b-share').style.display = 'none';
   el('b-wiring').style.display = 'none';   // drift reads the local engine's weight tables

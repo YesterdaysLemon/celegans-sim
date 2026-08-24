@@ -123,25 +123,32 @@ try {
         <button id="b-zin" class="ghost sq" aria-label="Zoom in">+</button>
         <span class="readout" id="o-zoom" aria-live="off">6.5 mm</span>
       </div>
-      <!-- The pipette rack: every field source the plate can take, one bottle each.
-           Click a bottle to pick the pipette up (the cursor becomes one, over the
-           dish); a single click or tap then drops; click the bottle again -- or Esc --
-           to put it away. Local engines only: app.js hides the rack in ?server mode,
-           whose protocol has only the lawn command. -->
-      <div class="seg" id="dropper" role="group" aria-label="Pipette rack">
-        <button data-drop="food" aria-pressed="false" aria-label="Drop lawns"
-                title="A living colony: food, and the scent plume it emits">Lawn</button>
-        <button data-drop="crumbs" aria-pressed="false" aria-label="Drop crumbs"
-                title="Food with no scent: findable only by touch">Crumbs</button>
-        <button data-drop="scent" aria-pressed="false" aria-label="Drop scent"
-                title="A plume with almost no meal behind it: the smell of food">Scent</button>
-        <button data-drop="repellent" aria-pressed="false" aria-label="Drop repellent"
-                title="A noxious dose: diffuses, decays, blows downwind">Repellent</button>
-      </div>
       <!-- Every load deals a fresh world; this writes the link that replays THIS one --
            same lawns, same drops, same founders, same weather clocks. -->
       <button id="b-share" class="ghost" aria-label="Copy a link to this dish"
               title="Copy a link that replays this exact dish &mdash; same lawns, same story">Share dish</button>
+      </div>
+
+      <!-- The pipette rack: every field source the plate can take, one bottle each,
+           SWATCHED in its field's own colour -- these are plate contents, the layer
+           chips' family, not camera settings (it shipped inside Camera & tools styled
+           as a segmented control, which is the family for one-of-N view choices; the
+           owner clocked the mismatch). Click a bottle to pick the pipette up; one
+           click or tap on the dish drops; the same bottle -- or Esc -- racks it.
+           Local engines only: app.js hides the rack in ?server mode. -->
+      <button class="chip disclose" id="b-pipette" aria-pressed="false"
+              aria-expanded="false" aria-controls="pipette-tray">Pipette</button>
+      <div class="traywrap" id="pipette-tray">
+      <div class="chips" id="dropper" role="group" aria-label="Pipette rack">
+        <button class="chip" data-drop="food" aria-pressed="false" aria-label="Drop lawns"
+                title="A living colony: food, and the scent plume it emits"><i class="sw food"></i>Lawn</button>
+        <button class="chip" data-drop="crumbs" aria-pressed="false" aria-label="Drop crumbs"
+                title="Food with no scent: findable only by touch"><i class="sw" style="background:rgba(25,158,112,0.45)"></i>Crumbs</button>
+        <button class="chip" data-drop="scent" aria-pressed="false" aria-label="Drop scent"
+                title="A plume with almost no meal behind it: the smell of food"><i class="sw att"></i>Scent</button>
+        <button class="chip" data-drop="repellent" aria-pressed="false" aria-label="Drop repellent"
+                title="A noxious dose: diffuses, decays, blows downwind"><i class="sw rep"></i>Repellent</button>
+      </div>
       </div>
     </div>
 

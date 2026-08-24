@@ -646,6 +646,7 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
   .disclose[aria-expanded="false"] + .chips,
   .disclose[aria-expanded="false"] + .traywrap { display: none; }
   #dish[data-tray="tools"] .floating.tr { display: none; }
+  #dish[data-tray="pipette"] .floating.tr { display: none; }
   #dish[data-tray="layers"] .floating.bl { display: none; }
 }
 .traywrap { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }

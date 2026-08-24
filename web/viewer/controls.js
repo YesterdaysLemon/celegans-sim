@@ -396,7 +396,7 @@ export function wire() {
    * buttons open them. An accordion: a 320px dish cannot seat both trays at once, so
    * the open one gets the plate and the other cluster steps aside (the CSS reads
    * #dish[data-tray]). Desktop never shows the toggles; its trays are simply open. */
-  const TRAYS = { 'b-layers': 'layers', 'b-tools': 'tools' };
+  const TRAYS = { 'b-layers': 'layers', 'b-tools': 'tools', 'b-pipette': 'pipette' };
   const setTray = (which) => {
     el('dish').dataset.tray = which || '';
     for (const [id, name] of Object.entries(TRAYS)) {
