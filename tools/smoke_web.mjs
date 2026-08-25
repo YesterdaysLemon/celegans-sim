@@ -576,6 +576,26 @@ try {
        * the raw array was always right, which is exactly why nothing caught the
        * mirrored picture. Desktop only -- one orientation answers for every layout. */
       if (vp.name === 'desktop') {
+        /* Measured as a BEFORE/AFTER DELTA at both points, not as absolute red. The
+         * smoke page deals a random plate (no ?dish pin), so the background near
+         * +-2.6 mm varies run to run -- lawn underlay, dealt drops, the weather's
+         * drift -- and an absolute comparison failed on main the day the deal left
+         * only 22 of a required 25 margin under the click while the orientation was
+         * in fact correct. The deal cancels out of a delta exactly: the drop must
+         * ADD red where the click was and not at its reflection, whatever was
+         * already painted there. */
+        const before = await page.evaluate(() => {
+          const S = window.__sim;
+          const cv = document.getElementById('c-dish');
+          const r = cv.getBoundingClientRect();
+          const scale = Math.min(r.width, r.height) / S.view.span;
+          const px = cv.width / r.width;
+          const ctx = cv.getContext('2d');
+          const redAt = (wy) => ctx.getImageData(
+            Math.round((r.width / 2) * px),
+            Math.round((r.height / 2 - wy * scale) * px), 1, 1).data[0];
+          return { drop: redAt(2.6), mirror: redAt(-2.6) };
+        });
         await page.evaluate(() => {
           const S = window.__sim;
           const cv = document.getElementById('c-dish');
@@ -600,9 +620,12 @@ try {
             Math.round((r.height / 2 - wy * scale) * px), 1, 1).data[0];
           return { drop: redAt(2.6), mirror: redAt(-2.6) };
         });
-        check(vp.name, flip.drop - flip.mirror > 25,
-              `the repellent bloomed at the mirror: red ${flip.drop} at the click vs `
-              + `${flip.mirror} at its reflection -- the field image is flipped`);
+        const dDrop = flip.drop - before.drop;
+        const dMirror = flip.mirror - before.mirror;
+        check(vp.name, dDrop - dMirror > 25,
+              `the repellent bloomed at the mirror: the drop added red ${dDrop} at the `
+              + `click vs ${dMirror} at its reflection -- the field image is flipped `
+              + `(absolute ${before.drop}->${flip.drop} vs ${before.mirror}->${flip.mirror})`);
 
         /* Sleep reaches the viewer (worm/sleep.py): seed the homeostat's pressure
          * through the runtime's debug setter, wait for FLP-11 to close the gate, and
