@@ -147,9 +147,16 @@ response is real — border turning nearly doubles (2.8 → 5.1 heading flips wi
 of the edge) and excursions end ~2 mm nearer the lawn — but the dwell gain (+0.062) is
 carried by 2 of 8 seeds, because the turn the circuit asks for is shallower than the
 animal's. That is the second-tier taxis-magnitude ceiling, not a BAG defect; re-run
-after a turn-depth mechanism lands. Still open from the audit: **AWB** (volatile
-repellent odour beside routed ADL), and ADF/ASI/ASG/ASJ (food-quality chemosensation,
-further out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
+after a turn-depth mechanism lands. **AWB is measured and deliberately NOT routed**
+(`tools/awb_probe.py`, 2026-08-25): injected at either sign — relief-timed OFF or
+presence-timed ON — it makes escape from a repellent drop measurably *worse* (paired
+d_final −6.8 / −3.9 mm, clearance 25 → 37/45 s), because its principal targets (AIZ 13,
+ADF 13 contacts) feed the reversal-adjacent path. Same wrong-way-wiring shape as
+PHB → AVA and ASEL → AIB, but no prior measurement here names its receptor fix; the
+recorded follow-up hypothesis is an OFF-response AWB with chloride on AIZ, which wants
+its own paired run before any list is widened. ADF/ASI/ASG/ASJ (food-quality
+chemosensation) stay deferred on a named precondition: the world has no notion of food
+quality for them to transduce — that is a `WorldParams` feature first, a routing second. On the motor side the **AS class — 11 cord motor neurons — is field-blind**
 while DA/DB/VA/VB all carry proprioceptive receptive fields; giving AS the same
 anterior-field treatment is the "complete the cord" move (Boyle 2012 precedent),
 Track A, gated by the scorecard and the 16-seed directional test like every gait

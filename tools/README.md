@@ -103,6 +103,7 @@ Documented in `README.md`'s layout table and expected to still work. Reach for t
 | `scorecard.py` | Every headline number at once, across seeds, in three media. The README's table comes from here. |
 | `idle_neurons.py` | Which neurons the world cannot reach: unions every input route and lists the deaf sensory cells, the field-blind motor classes, and the wiring-only interneurons. The routing roadmap's evidence. |
 | `bag_border.py` | Does BAG hold the animal where the food is? Paired lawn-dwell assay for the oxygen-downshift route; its docstring carries the first reading and the taxis-ceiling caveat. |
+| `awb_probe.py` | Would routing AWB help the escape? Three-arm injected probe (OFF, ON, neither); the docstring carries the negative reading — both signs hurt through the wiring as reconstructed — and the receptor-level follow-up hypothesis. The reason AWB stays deaf on purpose. |
 | `ethogram.py` | Reversal rate, run lengths, reorientation, on food and off. |
 | `compare.py` | A/B two configurations on identical seeds with paired intervals. The tool for "does this change help?". |
 | `assays.py` | Chemotaxis, aerotaxis, thermotaxis, nociception, pirouettes, weathervaning. |
