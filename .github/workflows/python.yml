@@ -142,7 +142,7 @@ jobs:
 
       - name: regenerated pair conforms to the Python model
         run: |
-          python tools/conform.py > web/conform.json
+          python tools/conform.py
           node wasm/conform.mjs
         env:
           PYTHONPATH: .

@@ -615,6 +615,9 @@ if the harness were wrong.
 
 **Checks run:**
 
+*(Figures as of the pass's base commit above — the per-worm byte count in particular has
+moved since; `wasm/memory.mjs` is always the current number.)*
+
 | Check | Result |
 |---|---|
 | `node tools/check_web.mjs` | acyclic, all imports resolve |
