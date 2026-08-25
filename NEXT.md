@@ -141,11 +141,15 @@ as reconstructed — every synapse excitatory — routing the tail *hurt* (paire
 out-commanding danger ahead). PHB → AVA joined the glutamate-chloride list on
 Hilliard 2002's antagonism, and the same probes then read +0.572 into ASH against
 +0.070 into the phasmids: the head-versus-tail asymmetry at the command level, pinned
-by `test_a_repellent_at_the_tail_does_not_command_a_reversal`. BAG is routed and
-pinned at the transduction level (downshift drives it, upshift must not); what it does
-to lawn-border behaviour is measurable and unmeasured — an honest next assay. Still
-open from the audit: **AWB** (volatile repellent odour beside routed ADL), and
-ADF/ASI/ASG/ASJ (food-quality chemosensation, further out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
+by `test_a_repellent_at_the_tail_does_not_command_a_reversal`. BAG's lawn-border
+behaviour is now measured (`tools/bag_border.py`, 2026-08-25, 8 seeds paired): the edge
+response is real — border turning nearly doubles (2.8 → 5.1 heading flips within 1 mm
+of the edge) and excursions end ~2 mm nearer the lawn — but the dwell gain (+0.062) is
+carried by 2 of 8 seeds, because the turn the circuit asks for is shallower than the
+animal's. That is the second-tier taxis-magnitude ceiling, not a BAG defect; re-run
+after a turn-depth mechanism lands. Still open from the audit: **AWB** (volatile
+repellent odour beside routed ADL), and ADF/ASI/ASG/ASJ (food-quality chemosensation,
+further out). On the motor side the **AS class — 11 cord motor neurons — is field-blind**
 while DA/DB/VA/VB all carry proprioceptive receptive fields; giving AS the same
 anterior-field treatment is the "complete the cord" move (Boyle 2012 precedent),
 Track A, gated by the scorecard and the 16-seed directional test like every gait
