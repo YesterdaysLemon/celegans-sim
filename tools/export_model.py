@@ -244,6 +244,13 @@ RUNTIME_UNSUPPORTED = {
     "modulator.dopamine_head_lag": 0.0,
     "modulator.dopamine_reach_swim": 0.0,
     "modulator.dopamine_muscle_rate": 0.0,
+    # The AS-class receptive field (2026-08-25): the last field-blind cord motor class,
+    # given the same anterior/posterior field machinery as DA/DB/VA/VB behind a ratio
+    # gain that ships at zero. At 0.0 the matrix is never built and the animal is
+    # bit-identical to the model before the field existed; as_field_direction needs no
+    # entry of its own, the load_half shape -- with the gain at zero the direction is
+    # never read. Track A adoption is gated in NEXT.md item 1-3/4.
+    "sensory.as_field_gain": 0.0,
     # Omega wave suppression -- stands the body wave down during a turn. Distinct from
     # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.
     #

@@ -156,11 +156,18 @@ PHB → AVA and ASEL → AIB, but no prior measurement here names its receptor f
 recorded follow-up hypothesis is an OFF-response AWB with chloride on AIZ, which wants
 its own paired run before any list is widened. ADF/ASI/ASG/ASJ (food-quality
 chemosensation) stay deferred on a named precondition: the world has no notion of food
-quality for them to transduce — that is a `WorldParams` feature first, a routing second. On the motor side the **AS class — 11 cord motor neurons — is field-blind**
-while DA/DB/VA/VB all carry proprioceptive receptive fields; giving AS the same
-anterior-field treatment is the "complete the cord" move (Boyle 2012 precedent),
-Track A, gated by the scorecard and the 16-seed directional test like every gait
-change. PVD (harsh touch) is unrouted. NOT idle, for the record: HSN/VC (egg-laying
+quality for them to transduce — that is a `WorldParams` feature first, a routing second.
+**The AS class is built and measured, off by default, and it is the best wave number this
+repository has produced** (`SensoryParams.as_field_gain`, 2026-08-25, tables at the
+parameter): the anterior-field arm at ratio 1.0 improves *every* guardrail at once —
+speed 0.281 → 0.399 mm/s (+42%), travelling index +0.886 → +0.936, dorsoventral
+antagonism −0.758 → −0.843, frequency stable — 16/16 seeds keep the head-to-tail wave,
+and the gain helps in all three media. Anatomy suggested the A-family side (Tolstenkov
+2018's wiring bias); the wave chose B, and both arms are on the record. **Adoption is
+the open item and it is close**: the scorecard/ethogram baseline against frozen main,
+backward locomotion and omega depth re-checked, then the runtime port (Python-only
+today, pinned in `RUNTIME_UNSUPPORTED`) — the head-cascade item's exact protocol, with
+a far stronger opening dossier. PVD (harsh touch) is unrouted. NOT idle, for the record: HSN/VC (egg-laying
 reads them as actuators), DD/VD (cross-inhibition IS the anatomy), and the pharyngeal
 circuit (food reaches MC through NSM and the reconstructed wiring — worm/pharynx.py
 documents the path).

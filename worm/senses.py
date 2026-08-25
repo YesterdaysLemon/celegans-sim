@@ -87,6 +87,16 @@ class Senses:
                                           p.proprio_reach_food, +1)
         self.W_a_food = _receptive_fields(conn, self.da, self.va, joint_s,
                                           p.proprio_reach_food, -1)
+        # The AS class -- the cord's dorsal-only motor neurons, the last class without
+        # a receptive field. Only built when the gain is set, so the shipped animal is
+        # bit-identical with it off; see SensoryParams.as_field_gain for the provenance
+        # and the adoption gate.
+        self.asn = idx(*["AS%02d" % i for i in range(1, 12)])
+        self.W_as = None
+        if p.as_field_gain != 0.0:
+            self.W_as = _receptive_fields(conn, self.asn, np.array([], dtype=np.intp),
+                                          joint_s, proprio_reach,
+                                          int(p.as_field_direction))
         # And a third pair at the longer swim reach, for the amine load-sensing path.
         # Only built when the reach is set, so the shipped animal carries no extra state.
         self.W_b_swim = self.W_a_swim = None
@@ -501,6 +511,14 @@ class Senses:
                 wb = (1.0 - swim) * wb + swim * (self.W_b_swim @ k)
                 wa = (1.0 - swim) * wa + swim * (self.W_a_swim @ k)
         raw = wb * gate_fwd + wa * gate_bwd
+        # The AS field, when it exists, rides the direction gate of its family -- the
+        # posterior (A-side) field works while the animal backs, the anterior while it
+        # runs -- and enters the SAME raw so adaptation and receptor saturation mean
+        # what they mean for every other cord class. as_field_gain is a ratio against
+        # the A/B fields; see SensoryParams.
+        if self.W_as is not None:
+            gate_as = gate_bwd if p.as_field_direction < 0 else gate_fwd
+            raw = raw + p.as_field_gain * (self.W_as @ k) * gate_as
         self.prop_adapt += (raw - self.prop_adapt) * self._prop_adapt_rate
         if p.proprio_conductance > 0.0:
             # THE CLAMP EXPERIMENT (SensoryParams.proprio_conductance): the stretch

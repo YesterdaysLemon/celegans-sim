@@ -1114,6 +1114,43 @@ class SensoryParams:
     oxygen_d_gain: float = 900.0     # pA per unit O2 per second, on the adapted deviation
     oxygen_tau_adapt: float = 3.0    # s   baseline the differential part is measured from
 
+    # The AS class: eleven cholinergic cord motor neurons, dorsal-innervating with no
+    # ventral counterpart, and the last motor class with no proprioceptive receptive
+    # field while DA/DB/VA/VB all carry them -- "complete the cord", the deafness
+    # audit's motor-side headline. Boyle et al. 2012 modelled them into the cord's
+    # reflex loop; Tolstenkov et al. 2018 measured them active in both directions with
+    # A-class-biased wiring -- which is why the field FIRST shipped defaulting to the
+    # posterior side, and the sweep below overruled it: anatomy suggested A-family,
+    # the wave chose B. as_field_gain is a RATIO against the A/B fields (1.0 = same
+    # strength), folded into the same raw -> adapt -> tanh pipeline so saturation and
+    # adaptation keep their meanings. Off by default: Track A adoption wants the full
+    # scorecard/ethogram baseline like every gait change, and at 0.0 the field matrix
+    # is never built -- provably inert, pinned in
+    # tools/export_model.py::RUNTIME_UNSUPPORTED.
+    #
+    # First sweep (2026-08-25, 3 seeds x 20 s, agar, guardrails from diagnose_loop):
+    #
+    #   arm        speed    twi     dv_corr  freq
+    #   control    0.2814  +0.886   -0.758   0.667
+    #   A 0.5      0.3494  +0.887   -0.751   0.683
+    #   A 1.0      0.3543  +0.892   -0.752   0.667
+    #   B 0.5      0.3840  +0.935   -0.848   0.683
+    #   B 1.0      0.3985  +0.936   -0.843   0.700   <- every guardrail at once
+    #
+    # The anterior (B-family) field wins, and the direction is itself a finding: the
+    # posterior default this shipped with followed Tolstenkov's A-biased wiring, and
+    # the measurement overruled it -- +42% speed with the travelling index AND the
+    # dorsoventral antagonism improving together, which no mechanism on the
+    # do-not-repeat list ever managed. The gates run so far, at B 1.0: 16/16 seeds
+    # keep the head-to-tail wave (speeds 0.20-0.41), and the gain helps in every
+    # medium -- agar 0.281 -> 0.399, viscous 0.201 -> 0.245, buffer 0.036 -> 0.048,
+    # twi up 0.05-0.11 everywhere, frequency untouched. What adoption still wants:
+    # the scorecard and ethogram against the frozen baseline, backward locomotion and
+    # omega depth re-checked, and the runtime port (this is a Python-only path;
+    # docs/runtime-parity.md) -- NEXT.md item 1-3/4 carries the list.
+    as_field_gain: float = 0.0       # x the A/B field strength; 0 = the shipped animal
+    as_field_direction: int = +1     # +1 anterior field (B-family) -- the measured winner
+
     # The noxious drop, and the same lesson a second time.
     #
     # Every chemical sense in senses.py adapts and reports a deviation -- except this one,
