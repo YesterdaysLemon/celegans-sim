@@ -7,7 +7,7 @@ doubles as the tuning harness.
 
 THIS IS INFRASTRUCTURE, NOT A SCRIPT. Read that before changing anything below.
 
-It is imported by **42** other modules under `tools/` and `tests/` -- more than any other
+It is imported by **47** other modules under `tools/` and `tests/` -- more than any other
 file in this repository -- and what they import is the measurement kernel rather than the
 command-line front end:
 

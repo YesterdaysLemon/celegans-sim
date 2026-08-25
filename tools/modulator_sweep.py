@@ -11,7 +11,12 @@ passing. Chemotaxis needs the animal to *choose a direction*, which is still blo
 slowing needs only a scalar turned down, which is exactly what a modulator does.
 
 Scored as speed on food / speed off food. Real animals: about 0.5. Coefficients at zero
-reproduce the unmodulated model exactly, and that is the control row.
+reproduce the unmodulated model exactly, and that is the control row -- while the animal
+is awake. Since the sleep homeostat (worm/sleep.py), pressure builds from the dopamine
+LEVEL regardless of these coefficients and crosses threshold at roughly a minute on a
+dense lawn, and quiescence multiplies into the very speed scale this sweep scores; the
+measurement window here ends near that boundary, so treat late-window slowing with
+suspicion or run the sleepless control (SleepParams.ris_drive = 0).
 """
 
 from __future__ import annotations

@@ -60,6 +60,12 @@ def _lawn(p):
     worm at 0.25 mm/s covers 50 mm in 200 s, so the lawn is sized well past that and the
     animal starts at its centre. Attractant is switched off: this assay is about the
     behavioural state food induces, not about chemotaxis towards it.
+
+    Since the sleep homeostat (worm/sleep.py), "the state food induces" includes sleep:
+    on a lawn this dense pressure crosses threshold at about a minute, so the on-food
+    rows are the fed and SOMETIMES SLEEPING animal -- near-zero reversals and speed for
+    part of the window is the model now, not noise. For the awake-only comparison run
+    the sleepless control (SleepParams.ris_drive = 0).
     """
     w = World(p.world, np.random.default_rng(0))
     w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)

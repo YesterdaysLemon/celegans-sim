@@ -12,11 +12,13 @@ runtime**. Everything expensive that happens once at construction stays in Pytho
 exported as a block of arrays; the WASM implements only the step functions.
 
 `tools/conform.py` and `wasm/conform.mjs` check the two implementations against each other
-step by step with the noise off, in **six cases** — the mechanics alone, the whole loop on
-a plate with food and a noxious drop, the same loop with seven cells ablated mid-run, the
-serotonin-gated chloride channel at the coefficient `params.py` documents, the browser's
-own `stepAll` path against the single-worm one, and four animals contesting one lawn
-against a Python `Population`. They agree to the precision the reference file stores: 5e-13
+step by step with the noise off, in **nine cases** — the mechanics alone, the body folded
+into self-contact, the whole loop on a plate with food and a noxious drop, the same loop
+with seven cells ablated mid-run, the serotonin-gated chloride channel at the coefficient
+`params.py` documents, the head cascade, the amine load-sensing path, a sleep bout entered,
+interrupted by a poke and re-entered, and — through the browser's own `stepAll` path —
+four animals contesting one lawn against a Python `Population`. They agree to the
+precision the reference file stores: 5e-13
 mm on node positions, 5e-11 mV on membrane potentials, the direction gate never disagrees,
 ablated cells are silent rather than merely quiet, and four animals contesting one lawn
 agree on what each of them ate and on what is left in the cells they were eating it from.
@@ -145,7 +147,9 @@ hover for identity and click to plot; the four muscle quadrants; a scrolling cur
 kymograph; live membrane traces. Transport controls change the medium under the animal
 live, poke it at either end, and ablate neurons by clicking them. A lamp in the header
 flashes once per pharyngeal pump — at 250 a minute on food that is a flicker, and off
-food an occasional blink.
+food an occasional blink. A well-fed animal eventually sleeps: it stops moving and
+pumping, gets z's drawn over it, and a poke wakes it — the lamp going dark over a
+motionless worm is quiescence, not a hang.
 
 And you can reach into the dish. A **dropper** on the plate chooses what a double-click
 puts down — a bacterial lawn, or a dose of repellent that diffuses, decays and blows
@@ -180,12 +184,17 @@ worm/muscle.py      95 body-wall muscle cells and their bending moment
 worm/body.py        the elastica and resistive force theory
 worm/world.py       dish, food, chemical fields, obstacles
 worm/senses.py      sensory transduction and proprioception
+worm/modulators.py  the wireless layer: dopamine, serotonin, octopamine, PDF
+worm/sleep.py       RIS-gated quiescence: the satiety homeostat, FLP-11, the arousal
 worm/engine.py      the closed loop
 worm/pharynx.py     feeding: a myogenic pump the pharyngeal neurons modulate
 worm/server.py      WebSocket telemetry and static file serving
 tools/build_dataset.py  raw anatomy -> validated dataset, assertion-heavy
 tools/kymo.py           ASCII kymograph — the fastest way to see what the body is doing
 tools/diagnose_loop.py  frequency, wavelength, phase and antagonism metrics
+tools/idle_neurons.py   which neurons the world can reach; the deafness audit
+tools/bag_border.py     the oxygen-downshift route at a lawn border, paired
+tools/awb_probe.py      why AWB stays deaf: both rectifications measured to hurt
 tools/command_probe.py  what each input is worth to the forward/backward decision
 tools/command_sweep.py  behavioural and locomotor scores side by side, for the command layer
 tools/ethogram.py       reversal rate, run lengths and reorientation, off food and on

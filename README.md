@@ -8,7 +8,9 @@ A *Caenorhabditis elegans* simulated from its connectome down: 302 graded-potent
 neurons wired by the reconstructed synapse-by-synapse anatomy, driving 95 individually
 simulated body-wall muscle cells, driving an inextensible body in a viscous medium at
 zero Reynolds number, inside a petri dish with food, chemical gradients, a thermal
-gradient and obstacles. Plus a browser front end to watch it in.
+gradient and obstacles. It smells with both ends, it feeds, lays eggs — and it sleeps:
+RIS-gated quiescence on a satiety homeostat, poke-wakeable, abolished by ablating the
+one neuron the biology says to ablate. Plus a browser front end to watch it all in.
 
 The worm is the project. The web app is a media player for it.
 
@@ -57,19 +59,23 @@ same animal.
 
 | Quantity | Model | Measured | Source |
 |---|---|---|---|
-| Curvature, r.m.s. | **4.53 ± 0.05 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
-| Curvature, peak | **13.2 ± 1.2 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
-| Wave direction | **head → tail** | head → tail | — |
+| Curvature, r.m.s. | **4.52 ± 0.09 /mm** | 4.3 ± 0.3 /mm | Krajacic et al. 2012 |
+| Curvature, peak | **12.9 ± 0.5 /mm** *(sharp)* | 9.8 ± 1.1 /mm | Krajacic et al. 2012 |
+| Wave direction | **head → tail** (5/5 seeds) | head → tail | — |
 | Muscle resting potential | **−22.0 mV** *(a point, not a range)* | −25.0 ± 1.0 mV | Gao & Zhen 2011 |
 | Resting potentials | **−62 to −12 mV**, median −39 | −75 to −25 mV | several, see `params.py` |
-| Swimming efficiency U/c | **0.051 ± 0.002** *(low)* | 0.08 ± 0.01 | Shen et al. 2012 |
+| Swimming efficiency U/c | **0.044 ± 0.013** *(low)* | 0.08 ± 0.01 | Shen et al. 2012 |
 | Neuron count / classes | **302 / 118** | 302 / 118 | canonical |
 | GABAergic neurons | **26** | 26 | McIntire et al. 1993 |
-| Crawling speed (net) | **0.309 ± 0.051 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
-| Net displacement / path | **0.82 ± 0.11** | well above 0.5 | — |
+| Crawling speed (net) | **0.272 ± 0.088 mm/s** | 0.219 ± 0.029 mm/s | Ramot et al. 2008 |
+| Net displacement / path | **0.73 ± 0.21** | well above 0.5 | — |
 | Travelling-wave index | **+0.87 ± 0.04** | +1 for a pure travelling wave | — |
-| Undulation frequency, agar | **0.66 ± 0.01 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
-| Wavelength, agar | **0.86 ± 0.02 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+| Undulation frequency, agar | **0.67 ± 0.02 Hz** | 0.30 ± 0.02 Hz | Fang-Yen et al. 2010 |
+| Wavelength, agar | **0.85 ± 0.01 L** *(long)* | 0.65 ± 0.03 L | Fang-Yen et al. 2010 |
+
+*(Re-measured 2026-08-25, after the sensory-routing and opponency work rewired the
+trajectories: the gait numbers moved within their own spreads, and the speed and
+efficiency rows carry honest wider seed-to-seed spread than the run they replace.)*
 
 Curvature, wave direction and the neuron resting potentials land on the measured values;
 the muscle rest is a point at `v_half` by construction and sits 2 mV shy of the band, the
@@ -112,8 +118,8 @@ statement of that line.
 
 ```
 worm/       the model: params (every constant with provenance), nervous, muscle,
-            body, world, senses, pharynx, egglaying, engine, server
-tools/      ~40 measurement instruments; tools/README.md is the index
+            body, world, senses, modulators, sleep, pharynx, egglaying, engine, server
+tools/      ~75 measurement instruments; tools/README.md is the index
 wasm/       the browser runtime and its test suites
 web/        the viewer: native ES modules, no build step, no dependencies
 tests/      the Python suite (~37 min) — the load-bearing behavioural checks

@@ -1,6 +1,8 @@
 # NEXT
 
 What to do next. Nothing else — no history, no status, no results already recorded elsewhere.
+(Settled narratives move, verbatim, to [`docs/research-log/`](docs/research-log/) — most
+recently `next-history-2026-08-05-through-2026-08-25.md`.)
 
 New here? [`docs/project-architecture.md`](docs/project-architecture.md) says which of the two
 tracks below you are in and what must not blur between them.
@@ -9,78 +11,19 @@ tracks below you are in and what must not blur between them.
 
 ## Reference worm
 
-**1. Calibrate the amine load-sensing path toward the animal, then decide adoption.** The
-mechanism search is over: the path is built (`worm/` — Python-only, every coefficient
-defaulting to zero, provably inert when off) and measured (`tools/amine_gait.py`,
-2026-08-13, 27/27 cells at the first probe calibration). The agar end holds the shipped
-gait exactly with dopamine at its ceiling; the (f, λ) locus traverses **36% of the
-animal's crawl→swim chord against the baseline's 11%**; the K ≈ 8 saturation is gone,
-because the transduced drag force keeps discriminating after the bending dynamics go
-blind. Full tables, blemishes included, in the tool's docstring; the lifecycle entry with
-the whole measurement chain is in [`docs/runtime-parity.md`](docs/runtime-parity.md)
-(`REFERENCE_CANDIDATE`).
-
-The first two knobs are swept and folded in (buffer-end grid + full verification locus,
-same day, tables in the tool): reach 0.48 paired with lag coefficient 1.30 takes the
-locus to **+0.786 along the chord — 79% of the way to the animal's swim** — at TWI ≥
-+0.72 everywhere and the crawl still untouched. Reach and lag must move *together*
-(reach 0.48 at lag 1.0 breaks the wave outright); the effective lag now bottoms at the
-0.4 floor in buffer. What remains:
-
-The serotonin arm's function is measured and folded in (2026-08-14, the third
-calibration): dopamine's withdrawal also speeds the muscle EC cascade
-(`dopamine_muscle_rate`, with the note at the parameter on why it rides dopamine — the
-serotonin *scalar* ships with a hot food effect that would fire backwards in liquid).
-The settled locus is clean at all nine media: **+0.847 along the chord, buffer at 89% of
-the animal's swim frequency**, crawl untouched with its best measured wave. Two guards
-now bound further calibration:
-
-- **The cliff.** Muscle coefficients ≥ 0.7 make the swim end genuinely bistable (a
-  broken 0.17 Hz mode coexists with the fast gait; 1–2 of 3 seeds fall in, fully
-  settled). 0.5 is 3/3 stable. Any knob change now needs the stability grid re-run
-  first.
-- **Slow-state protocols.** Measuring the amine path with a settle shorter than ~3
-  dopamine taus measures its transient, not its attractor — the K = 3.54 lesson,
-  recorded in the tool. Any future assay of an enabled-amine configuration inherits
-  this.
-
-What separates the path from the animal: the last 11% of swim frequency, a wavelength
-ceiling near 1.40 L against 1.54, and mid-continuum trajectories that wander (net/path
-0.29 at K = 5.3). The literal serotonin route (a second load-driven scalar with its own
-effects) stays gated on separating the serotonin scalar's food roles — the same
-confound-class precondition as adoption.
-
-**Adoption is a separate decision from calibration, and the preconditions are down to
-two.** Runtime parity is discharged (2026-08-14): the cascade and the whole amine path
-are ported to `wasm/assembly/index.ts` behind per-worm setters with all-zero defaults,
-each with its own conformance case agreeing to 5e-13 mm / 5e-11 mV and each measurably
-doing something against its off control — see `docs/runtime-parity.md`. What remains:
-the food/load confound on the dopamine scalar (`SensoryParams.load_gain` states it), and
-the behavioural gate — **now fully run (2026-08-14, five assay families), and its one
-finding is coherent: the configuration suppresses reversals globally.** Triage −1.5
-[−2.8, −0.3] per 60 s; chemotaxis −2.8 [−5.5, −0.2] per animal; nociception −1.37
-[−2.53, −0.21] reversals/min while clear (the tool scores that arm "better", but fewer
-spontaneous reversals is the same suppression wearing a flattering assay). Everything
-else: chemotaxis index/approach/weathervane no effect at n=12 (resolution 0.085);
-thermotaxis no effect at n=3 (resolution 16 mm — uninformative, honestly); aerotaxis "O2
-lowest reached" nominally worse at +1.47 [+0.06, +2.88] but n=2 and the CI grazes zero —
-thin. **Attribution ran (2026-08-15), and it points at the amine arm.** Amine-only reproduces
-the full configuration's suppression almost exactly at the point estimate (triage −1.5
-vs the config's −1.5; chemotaxis reversals −3.0 vs −2.8), while cascade-only comes in
-weaker (−1.2 triage, −0.8 chemotaxis). Every attribution CI includes zero — the arms ran
-at n=4–6 against the full run's n=12, so this is *suggestive attribution, not a
-confirmed one* — but the mechanism reads clean: on bare agar `load_gain=60` holds
-dopamine at ceiling, which is the permanent-on-food state, and an animal that believes
-it is on food everywhere suppresses reversals the way fed animals do. **The food/load
-confound is therefore not an accounting worry — it has a measured behavioural
-signature**, and separating basal dopamine from the load response is now THE adoption
-blocker, exactly where `SensoryParams.load_gain`'s docstring said to look. Powering the
-amine-only chemotaxis arm to n=12 would confirm the attribution; resolving the confound
-would moot it.
-
-*(The measurement chain that got here — locus, per-medium lock-in, the fv retirement, the
-below-K≈8 constraint, the twice-validated open-loop screen — is recorded in the tool
-docstrings, `worm/params.py::MediumParams`, and `docs/runtime-parity.md`.)*
+**1. Adopt (or refuse) the amine load-sensing path.** Calibration is finished — the settled
+locus reaches **+0.847 along the crawl→swim chord, buffer at 89% of the animal's swim
+frequency, crawl untouched** — and the runtime port is discharged with per-path conformance
+cases. One blocker remains: **the food/load confound on the dopamine scalar**
+(`SensoryParams.load_gain` states it; on bare agar `load_gain=60` holds dopamine at ceiling,
+the permanent-on-food state, and the behavioural gate measured exactly the reversal
+suppression that predicts). Separate basal dopamine from the load response, or power the
+amine-only chemotaxis arm to n=12 to confirm the attribution. Two protocol guards bind any
+further measurement: muscle coefficients ≥ 0.7 are bistable at the swim end (re-run the
+stability grid before moving a knob), and any assay of an enabled-amine configuration needs
+a settle ≥ 3 dopamine taus or it measures the transient. Full dossier:
+`tools/amine_gait.py` docstring, `docs/runtime-parity.md` (`REFERENCE_CANDIDATE`), and the
+research log.
 
 > **Do not re-run these.** Four mechanisms have already been measured against the
 > gait-modulation span and all four failed. Full tables in
@@ -106,71 +49,26 @@ docstrings, `worm/params.py::MediumParams`, and `docs/runtime-parity.md`.)*
 > larger than the head reflex's entire budget, on a body with almost no drag on it. Both the
 > additive frame and the floor frame are dead.
 
-**1½. The clamp experiment ran, and split its hypothesis in half.** H2 (research log,
-reflex-gain hypotheses) said proprioceptive input should be a conductance, not a current —
-premised on motor neurons pinning the v_clamp rail under drive. Both halves now measured
-(`SensoryParams.proprio_conductance`, default 0/off; instrument
-`tools/clamp_occupancy.py`, 3 seeds × 30 s, both sweeps 2026-08-16). **The premise is
-null**: at shipped defaults the A/B cord pools spend ~0% of sampled steps within 0.5 mV
-of either rail — the v_clamp comment's rail touches are brief extremes, not occupancy.
-**The prediction survives on its own merits**: translating the signed current as a *pair*
-of half-wave-rectified saturating conductances (preferred bend → excitatory toward 0 mV,
-anti-preferred → inhibitory toward E_inh — reciprocal inhibition through channels) matches
-or beats the current on every gait guardrail: dv_corr −0.73 → −0.82, TWI +0.87 → +0.91,
-speed 0.304 → 0.361 mm/s at 5 nS, frequency untouched, 3/3 seeds forward, plateau above
-~10 nS. The first cut rectified away the inhibitory half and paid for it (dv_corr
-collapsed to −0.06, a third of the speed gone) — the signed current's hyperpolarising
-half was real push-pull, and the record keeps both sweeps. Self-limiting is proven at
-absurdity (500 nS peaks the pool under 10 mV where 3000 pA pins +45 mV; pinned in
-`tests/test_behaviour.py`). **Adoption is open and is not this item**: Track A discipline
-wants reference evidence (whole-cell motor-neuron recordings under bend, if the
-literature has them) plus the scorecard/ethogram baseline protocol item 2 already
-demands, and the runtime has no conductance path yet
-([`docs/runtime-parity.md`](docs/runtime-parity.md)) — a Python-only default is not a
-default.
+**1½. Decide proprio-as-conductance adoption.** The mechanism is built
+(`SensoryParams.proprio_conductance`, default 0/off) and measured better than the current
+on every gait guardrail (dv_corr −0.73 → −0.82, TWI +0.87 → +0.91, speed 0.304 → 0.361
+mm/s at 5 nS; the sweep record is in `tools/clamp_occupancy.py`). What adoption wants:
+reference evidence (whole-cell motor-neuron recordings under bend, if the literature has
+them), the scorecard/ethogram baseline of item 2's protocol, and a runtime conductance
+path ([`docs/runtime-parity.md`](docs/runtime-parity.md) — a Python-only default is not a
+default).
 
-**1¾. The deaf cells, measured.** `tools/idle_neurons.py` (2026-08-24) unions every
-input route: 103 of 302 neurons were reachable by the world at the first reading; 48
-sensory cells were DEAF — whatever they do in the animal, here transduction never
-touched them. **The top two entries are paid off** (second reading: 109/302):
-**PHA/PHB** now carry the repellent at the tail and **BAG** the oxygen downshift, both
-runtimes, conformance-gated. The escape-direction claim came out the interesting way:
-as reconstructed — every synapse excitatory — routing the tail *hurt* (paired escape
-−1.37 mm head arm, −0.74 tail; a current step into the phasmids depolarised AVA
-*more* than the same step into ASH, +0.714 mV against +0.566 — danger behind
-out-commanding danger ahead). PHB → AVA joined the glutamate-chloride list on
-Hilliard 2002's antagonism, and the same probes then read +0.572 into ASH against
-+0.070 into the phasmids: the head-versus-tail asymmetry at the command level, pinned
-by `test_a_repellent_at_the_tail_does_not_command_a_reversal`. BAG's lawn-border
-behaviour is now measured (`tools/bag_border.py`, 2026-08-25, 8 seeds paired): the edge
-response is real — border turning nearly doubles (2.8 → 5.1 heading flips within 1 mm
-of the edge) and excursions end ~2 mm nearer the lawn — but the dwell gain (+0.062) is
-carried by 2 of 8 seeds, because the turn the circuit asks for is shallower than the
-animal's. That is the second-tier taxis-magnitude ceiling, not a BAG defect; re-run
-after a turn-depth mechanism lands. **AWB is measured and deliberately NOT routed**
-(`tools/awb_probe.py`, 2026-08-25): injected at either sign — relief-timed OFF or
-presence-timed ON — it makes escape from a repellent drop measurably *worse* (paired
-d_final −6.8 / −3.9 mm, clearance 25 → 37/45 s), because its principal targets (AIZ 13,
-ADF 13 contacts) feed the reversal-adjacent path. Same wrong-way-wiring shape as
-PHB → AVA and ASEL → AIB, but no prior measurement here names its receptor fix; the
-recorded follow-up hypothesis is an OFF-response AWB with chloride on AIZ, which wants
-its own paired run before any list is widened. ADF/ASI/ASG/ASJ (food-quality
-chemosensation) stay deferred on a named precondition: the world has no notion of food
-quality for them to transduce — that is a `WorldParams` feature first, a routing second.
-**The AS class is built and measured, off by default, and it is the best wave number this
-repository has produced** (`SensoryParams.as_field_gain`, 2026-08-25, tables at the
-parameter): the anterior-field arm at ratio 1.0 improves *every* guardrail at once —
-speed 0.281 → 0.399 mm/s (+42%), travelling index +0.886 → +0.936, dorsoventral
-antagonism −0.758 → −0.843, frequency stable — 16/16 seeds keep the head-to-tail wave,
-and the gain helps in all three media. Anatomy suggested the A-family side (Tolstenkov
-2018's wiring bias); the wave chose B, and both arms are on the record. **Adoption is
-the open item and it is close**: the scorecard/ethogram baseline against frozen main,
-backward locomotion and omega depth re-checked, then the runtime port (Python-only
-today, pinned in `RUNTIME_UNSUPPORTED`) — the head-cascade item's exact protocol, with
-a far stronger opening dossier. PVD (harsh touch) is unrouted. NOT idle, for the record: HSN/VC (egg-laying
-reads them as actuators), DD/VD (cross-inhibition IS the anatomy), and the pharyngeal
-circuit (food reaches MC through NSM and the reconstructed wiring — worm/pharynx.py
-documents the path).
+**1¾. Finish the cord: adopt (or refuse) the AS-class field.** The mechanism is built and
+its opening dossier is the best wave number on record (`SensoryParams.as_field_gain`,
+tables at the parameter): +42% speed with the travelling index and dorsoventral antagonism
+improving together, 16/16 seeds forward, better in all three media. The remaining gates,
+in order: `tools/scorecard.py` + `tools/ethogram.py` against frozen main on identical
+seeds; backward locomotion and omega depth re-checked; then the runtime port (Python-only
+today, pinned in `RUNTIME_UNSUPPORTED`). Elsewhere on the sensory roster: **AWB stays
+deaf on purpose** (measured, both signs hurt — `tools/awb_probe.py` has the reading and
+the receptor-level follow-up hypothesis), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
+of food quality, and PVD (harsh touch) is unrouted. The audit itself is
+`tools/idle_neurons.py`; current reading 109/302 reachable.
 
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted
@@ -189,12 +87,15 @@ behavioural assay at once.
   5.9×.
 - **Backward locomotion.** Reverses, but curvature and net speed stay poor after AVB removal.
   Not citable as a working phenotype.
-- **Taxis magnitude.** Mechanisms point the right way with small outcomes. Re-run after a
-  turn-depth mechanism clears its own paired gate; do not tune the assays around the current
-  shallow turn. The mechanism side keeps improving while the outcome waits: ASEL → AIB
-  chloride (2026-08-25, `NeuralParams.glucl_pre` provenance) moved both conditional
-  pirouette rates the right way at once and took the paired ratio 0.52 → 0.87 — still the
-  wrong side of 1, approach unmoved at n=8, same ceiling.
+- **Taxis magnitude.** Mechanisms point the right way with small outcomes (latest: the
+  ASEL → AIB chloride moved both conditional pirouette rates correctly, ratio 0.52 → 0.87
+  paired, outcome unmoved — provenance at `NeuralParams.glucl_pre`). Re-run these after a
+  turn-depth mechanism clears its own paired gate; do not tune the assays around the
+  current shallow turn.
+- **Sleep's behavioural surface.** The circuit is in (worm/sleep.py) with its compressed
+  clock; unmeasured beyond its own gates: bout statistics against You 2008's satiety
+  quiescence, and whether arousal habituation should exist. Any long on-food assay now
+  contains sleep unless it runs the sleepless control (`SleepParams.ris_drive = 0`).
 
 ---
 
@@ -203,142 +104,40 @@ behavioural assay at once.
 Evolved animals are not *C. elegans*, and nothing here produces a claim about the animal —
 [`docs/project-architecture.md`](docs/project-architecture.md) §1.
 
-**1. Heritable weights are built (tier two); what remains is running them, then topology.**
-Per-worm conductances landed 2026-08-14: every weight consumer in the runtime reads
-through per-worm references (wild type aliases shared payload copies, bit-identical and
-free), mutation is `scaleWeight` (chemical synapse's two views in lockstep, gap junction's
-two directions together, no sign flips — sign is topology, tier three), and `developWorm()`
-regrows the products from the animal's own graph: the ported LU resting solve, the
-half-voltage offsets, the muscle rebalance, gap totals, born at rest. Eggs carry weight
-snapshots; hatch develops. Contracts pinned in `wasm/weights.test.mjs`; the arena takes
-`ARENA_WMUT`/`ARENA_WMUT_N`, default off. The first full run is on the record in
-`wasm/arena.mjs`: the genes-only `proprio_gain` climb did not appear under weight
-mutation — drowned signal or selection moved into the weights; a weight-drift readout
-in the arena reports would distinguish them. Then the topology tier (entries
-added/removed, which changes the CSR pattern the weights ride on). Tier four's
-chain-shaped half landed 2026-08-14: heritable stiffness, width and muscle profiles
-(`setMorphology`, twelve control points clamped [0.25, 4], eggs carry snapshots,
-`ARENA_MMUT`; contracts in `wasm/morphology.test.mjs`). Branching bodies are explicitly
-out of scope — that is an engine rewrite, not a mutation, and the mechanism says so.
+**1. Run the built tiers until they bite, then topology.** Heritable weights (tier two),
+morphology (tier four's chain-shaped half), metabolism, rot, regrowth and development are
+all landed and contracted (`wasm/*.test.mjs`); the first runs are in the research log and
+`wasm/arena.mjs`. Open: a dish poor enough that the metabolic tax actually bites (smaller
+lawns, shorter `ARENA_METAB_T`), a weight-drift readout in the arena reports (the
+genes-only `proprio_gain` climb did not appear under weight mutation — drowned signal or
+selection moved into the weights, and the readout distinguishes them), and then the
+topology tier (entries added/removed, which changes the CSR pattern the weights ride on).
+Branching bodies stay out of scope — engine rewrite, not a mutation.
 
-**1b. The dish has a metabolism now — run it until it bites.** Death by physiology
-landed 2026-08-14 (runtime: `setMetabolism`/`getEnergy`/`depositFood`, drag-power work
-cost, muscle fade; contracts in `wasm/metabolism.test.mjs`; every constant invented, all
-defaults off, off is bit-identical). Every death — starvation or cull — now feeds the
-plate where the body stopped, a yield on the store included, so a culled well-fed animal
-outfeeds a starved husk. The first shakedown selected *feeding harder* instead of dying
-(record in `wasm/arena.mjs`): zero starvations at the default constants. Next: a dish
-poor enough that the tax bites (smaller lawns, shorter `ARENA_METAB_T`), replication,
-and the museum watch — scavenging lineages, corpse-camping, and whether laying-near-food
-becomes a heritable strategy once eggs hatch onto their parent's grave. **The plate
-lives now** (2026-08-15): corpses rot into a repellent miasma the field dynamics fade,
-lawns can regrow (throughput-limited economy, `ARENA_REGROW`), and hatchlings develop —
-juvenile scale ramping to adult on fed time, allometrically (width ∝ s, muscle ∝ s²,
-stiffness ∝ s³, because a uniform scale is mechanically invisible at zero Reynolds —
-measured, then asserted in `wasm/morphology.test.mjs`). Development is runtime phenotype
-(`setDevelopment`), never the genome: the first draft scaled the control points and
-generations shrank 0.55× each — the correction is on the record in the mechanism.
+**1c. The skater trap stays set.** The buffer-skater sighting stands as a sighting;
+`wasm/skate.mjs` is the instrument and its first hunts were a NULL with three ecology
+facts recorded in its header (founder starvation, the agar founder lottery, laying
+stopping in buffer — which bounds any hunt at ~1,200 s unless the plate is topped up).
+Re-arm when a richer-plate protocol exists.
 
-**1c. The buffer skater wants an instrument — and now has one.** The owner's dish,
-switched to buffer, evolved coiled lineages that spin and skate in long arcs (>1500 µm/s
-bursts; sighting recorded in `wasm/arena.mjs`). Not an exhibit until measured, and
-`wasm/skate.mjs` is the instrument: the full living plate in buffer, logging per animal
-per 30 s window the net midpoint displacement, the integrated drag dissipation (the
-metabolism's own currency), their ratio (transport: mm bought per unit drag energy), the
-signed and absolute curvature means, and net body-axis revolutions. A window is flagged
-SKATER on coil + roll + displacement (|kbar| ≥ 3 /mm, |turns| ≥ 2, net ≥ 0.10 mm — the
-cohorts sit far apart, so the thresholds are calibration, not biology), and a first flag
-snapshots the animal's full heritable state for transplant-and-preserve. `SKATE_MEDIUM=agar`
-is the control arm, so "skating is a buffer niche" is testable rather than assumed.
-First hunts (2026-08-15, seeds 41/43/47): a NULL — one dish ran the sighting's full
-protocol (10 evolved animals into buffer, 1,200 s of attrition) and every window read
-as an honest undulator; no skater formed, so the sighting stands as a sighting and the
-trap stays set. The hunts did measure three ecology facts, recorded in the tool's
-header: buffer-from-birth starves founders before their first lawn, the showcase
-scarcity is a founder lottery on agar (3 of 4 seeds extinct pre-hatch), and even an
-evolved dish stops laying in buffer — which bounds any future hunt at ~1,200 s of
-attrition unless the plate gets richer or a human tops up lawns, as the owner's
-browser dish had.
-
-**1d. The dish has sex now, and the descent is on screen.** Recombination landed
-2026-08-16 as policy (`web/arena-policy.js`, `ARENA_RECOMB`/`ARENA_RECOMB_R`):
-fertilisation happens at hatch with the nearest living animal within radius — each gene,
-each of the 3,935 weights (by ratio, where the lineages differ) and each morphology
-control on a fair coin, before mutation; no mate in radius is selfing, the asexual path
-untouched. Default off, and off consumes no rng — recorded runs keep replaying
-(verified byte-identical against the pre-sex tree); on forks the stream by design.
-Dynasty follows the laying parent. The first sex-on shakedown (seed 1, 300 s): 19
-matings across 19 births, recombined wiring visible to the drift instrument. Alongside
-it the pedigree — every animal's parent, birth, death and dynasty, bounded — feeds a
-live lineage panel in the viewer (`drawLineage`): one life-line per animal coloured by
-dynasty, descent as a vertical stroke at birth, so a selective sweep is legible as the
-tree collapsing to one colour. Contracts in `wasm/recomb.test.mjs`.
-
-**The sex-vs-asex study ran** (2026-08-23: `ARENA_RECOMB` 0 vs 1 × seeds 1–3, 900 s ≈
-9 generations, equal mutation supply — wmut 0.15/4, mmut 0.1; matings ≈ births in every
-sexual dish, so crowding at cap 10 makes recombination effectively obligate). **On
-speed, a null**: both arms climb the same genes about the same distance
-(`proprio_gain` 30 → asex 34.5 / sex 33.3 at close; `food_gain` 11 → ~13.2 both; ~35
-of 3,935 wiring loci moved in both; births 84 vs 88). Two textures worth keeping,
-neither yet a claim. (1) The across-seed endpoint spread of `proprio_gain` is far
-tighter under sex (sd 1.4 vs 6.6; variance ratio ~22, which at n = 3 sits at the 5%
-edge of an F-test) — recombination as canalisation of the *outcome*, not acceleration.
-(2) The one stall-and-reversal in the study is asexual (seed 3: 29.6 → 24.7 while F0
-swept regardless): a lower-proprio lineage won its sweep on other merits and dragged
-the gene backwards — hitchhiking that a sexual dish can undo by letting the good
-allele escape its doomed background, and none of the three sexual dishes reversed.
-That is the Fisher–Muller argument sticking its head up in one seed; if it is worth a
-verdict, the price is more seeds and longer dishes, not new machinery. Logs in the
-session record; re-run is one env-var away.
+**1d. Sex: decide whether the Fisher–Muller thread is worth a verdict.** The study ran
+(2026-08-23, archived): a null on speed, two textures — across-seed canalisation under
+sex (sd 1.4 vs 6.6 at the F-test's 5% edge) and the study's only stall-and-reversal being
+asexual (hitchhiking a sexual dish can undo). The price of a verdict is more seeds and
+longer dishes, not new machinery; re-run is one env-var away.
 
 **2. (Superseded for the arena; open for the scalar measure.)** In-dish reproduction
-(`wasm/arena.mjs`, `web/arena.html`, 2026-08-14) dissolves the degeneracy for Track B's
-main line: there is no fitness scalar to game — reproduction is eat → transport → uterus
-→ HSN/VC laying → survive incubation, and a first arena run showed a founding dynasty
-sweep to fixation in 150 dish-seconds followed by the plate economy shutting laying down.
-The physiology question below stands only if the scalar `EVO_FITNESS=eggs` measure is to
-be kept honest for short assays. **Make egg production depend on laying having made room
-for it.** `EVO_FITNESS=eggs` is
-measured to be intake in different units: `laid + held` is conserved across a laying event, so
-egg production is blind to the egg-laying circuit by construction. A real uterus is not a
-bucket that fills regardless. Small model change — but it lands in `worm/egglaying.py`, which
-is reference-worm physiology that ships in the browser, so §1's invariant in
-[`docs/project-architecture.md`](docs/project-architecture.md) applies: the fitness degeneracy
-is a reason to *look*, and adopting a change needs reference evidence rather than the fitness
-argument.
+dissolves the fitness degeneracy for Track B's main line. The physiology question stands
+only if the scalar `EVO_FITNESS=eggs` measure is to be kept honest for short assays:
+**make egg production depend on laying having made room for it** — `laid + held` is
+conserved across a laying event, so the measure is intake in different units. It lands in
+`worm/egglaying.py`, which is reference physiology that ships in the browser, so §1's
+invariant applies: adopting the change needs reference evidence, not the fitness argument.
 
 **3. Re-run the adversarial probe once the genome is bigger.** Priced at twelve seeds, about
 five and a half hours. Not worth spending before (1): the current fifteen genes were chosen so
 that none can reach a conversion factor, so a null result is the gene list working rather than
 the model being clean.
-
----
-
-## Blocked, or needs an owner decision
-
-
-### Settled
-
-- **`test_medium_changes_the_gait` asserts direction now.** The seed count it wanted was
-  measured (16 seeds, the test's exact protocol): buffer faster at 16 of 16, ratios
-  1.214–1.308, weakest directional margin three FFT bins. The bound is 1.15 directional —
-  under the weakest measured seed with margin, and strictly stronger than the old
-  direction-free 1.2, which accepted a backwards animal. Own commit, own seed count, own
-  argument, per the rule this item set for itself.
-
-- **Gait experiment order** — the (f, λ) locus test went first, and has now run
-  (`tools/flambda_locus.py`, 2026-08-12). It subsumed the reach sweep's question — the reach
-  sweep is retired with it — and the cascade work in (2) is unblocked.
-- **The 25 uncertain tools stay where they are.** [`tools/README.md`](tools/README.md) solved
-  the discoverability problem the move was for. Six could not have moved anyway: five are
-  cited by path in `worm/params.py` as the provenance for shipped constants
-  (`gate_calibrate.py`, `modulator_sweep.py`, `osc_control.py`, `reversal_test.py`,
-  `tau_sweep.py`) and `twi_by_region.py` is cited from `tools/reflex_gain.py`.
-- **`tools/optimise.py` stays live, and its search space is now pinned.** It covers four
-  parameters `BOUNDS` deliberately excludes — `proprio_reach`, `peak_moment`, `head_tau`,
-  `head_reach` — so it is not redundant with `wasm/evolve.mjs`. `tests/test_genome.py` pins
-  that every `SPACE` name resolves, that the shared/search-only partition holds, and that the
-  shared envelopes still overlap.
 
 ---
 

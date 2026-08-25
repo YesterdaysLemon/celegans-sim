@@ -287,10 +287,12 @@ class NeuralParams:
     # cord: AVA makes 102 gap-junction contacts onto 20 of the 21 A-class units and rests
     # at -26.7 mV, against AVB's 55 contacts onto 18 B-class units at -24.4 mV. Same
     # architecture, same descending-drive-holds-it-at-the-bifurcation story.
-    # -- synaptic depression, which is the only memory in this model -----------------------
-    # Everything else here forgets. The adaptation filters in Senses exist precisely to
-    # discard the past, the modulators integrate over tens of seconds and then decay, and
-    # nothing at all outlives a minute. So the animal cannot learn, and the first learning
+    # -- synaptic depression, one of the two memories in this model ------------------------
+    # Almost everything else here forgets. The adaptation filters in Senses exist precisely
+    # to discard the past, the modulators integrate over tens of seconds and then decay,
+    # and until the sleep homeostat (SleepParams -- pressure builds over minutes and
+    # survives an arousal on purpose) nothing at all outlived a minute. So the animal
+    # cannot learn much, and the first learning
     # it should be able to do is the simplest kind there is: habituation.
     #
     # Rankin, Beck & Chiba (1990) Behav. Brain Res. 37:89 tap a plate every ten seconds and
@@ -389,8 +391,10 @@ class NeuralParams:
     #
     # So the correction is the same one already made for AVL and DVB, run the other way,
     # and it uses the same per-synapse reversal machinery: name the glutamatergic senders
-    # and the cells that answer them with a chloride channel. AIB is deliberately not in
-    # the list -- it holds GLR-1 and should stay excited.
+    # and the cells that answer them with a chloride channel. AIB was deliberately kept
+    # out at first -- it holds GLR-1 -- until the ASEL -> AIB measurement below split
+    # that by presynaptic partner (2026-08-25): the OFF cell's synapse stays excitatory,
+    # the ON cell's answers with chloride.
     # Named per *cell*, not per class, and that is the whole point. ASEL and ASER are one
     # anatomical class and a genuine opponent pair -- Senses gives ASEL +dC/dt and ASER
     # -dC/dt -- but they project onto the same first-layer interneurons with the same sign,
@@ -484,8 +488,11 @@ class NeuralParams:
     # the calibrated value, the ratio falls back to 0.66. So there is a second route from
     # ASE to the backward pool that promotes reversals as the attractant rises, and it
     # outruns the AIY arm when both are driven hard. The likely one is ASE onto AIB onto
-    # RIM, which reaches the backward pool through 16 gap junctions, and it is not
-    # correctable the same way -- AIB holds GLR-1 and is *supposed* to be excited.
+    # RIM, which reaches the backward pool through 16 gap junctions, and at the time this
+    # was written it looked uncorrectable -- AIB holds GLR-1 and is supposed to be
+    # excited. It was correctable after all, by the OFF cell and not the ON one: the
+    # ASEL -> AIB entry below is that correction, and this paragraph is why it took a
+    # second look.
     #
     # What is missing is the opponency itself. ASEL should be the cell that says "better"
     # and ASER the cell that says "worse", and in this reconstruction they are wired almost
@@ -1105,8 +1112,10 @@ class SensoryParams:
     # chemotaxis uses: suppress turning while conditions *improve*. That needs a derivative,
     # and every other channel in this file already has one -- chemosensation, odour and
     # thermosensation all adapt and report deviation from their own baseline. Oxygen was
-    # the only purely tonic channel, and it is the only one whose taxis pointed the wrong
-    # way.
+    # the only purely tonic channel then, and the first whose taxis pointed the wrong way
+    # -- the repellent (repellent_d_gain below) turned out to be the second, failing the
+    # same way for the same reason. Since the BAG route the downshift half of this
+    # derivative has its own carrier cell, as the biology has it.
     #
     # Both terms are kept because both are real: URX is a genuinely tonic receptor, and the
     # tonic part is what sets how much the animal turns at all, while the differential part
@@ -1482,7 +1491,7 @@ class SensoryParams:
     touch_gain: float = 75.0         # pA per uN of smoothed indentation force
     touch_tau: float = 0.35          # s   mechanoreceptor adaptation
 
-    # Habituation, and the only thing in this model that remembers anything.
+    # Habituation: the sensory side's memory (the other is sleep's homeostat).
     #
     # Rankin, Beck & Chiba (1990) tap a plate every ten seconds; the reversal response
     # falls away over about thirty taps, recovers over minutes of rest, and habituates
@@ -2107,7 +2116,9 @@ class ModulatorParams:
 
     Sources are matched by name prefix against the connectome. Time constants are the slow
     end of what these systems do -- seconds to tens of seconds -- because that is the whole
-    point: they are the only thing in this model that integrates rather than differentiates.
+    point: this is the slow layer, integrating where the wired model differentiates (the
+    sleep homeostat in SleepParams integrates slower still, and rides on this object's
+    quiescence gate).
     """
 
     dopamine_sources: tuple = ("CEP", "ADE", "PDE")
@@ -2504,10 +2515,12 @@ class SleepParams:
     What belongs here is what the numbers mean and why they are what they are.
 
     The clock is the dish's, not the animal's: real satiety quiescence follows hours of
-    feeding; here pressure crosses threshold after ~3-4 minutes on a lawn (dopamine's
-    positive deviation on food runs ~0.10-0.15, so build_fed * 0.12 ~ 0.0036/s reaches
-    0.7 in ~200 s) and a bout discharges 0.7 -> 0.25 in about one tau_sleep. The
-    *structure* is the biology; the rates are watchable.
+    feeding; here it depends on how rich the plate is, through the dopamine level. On a
+    dense wall-to-wall lawn the deviation runs ~0.44 and pressure crosses 0.7 in about a
+    minute -- measured, t = 57 s, the day this landed, when the pharynx fixture's animal
+    fell asleep mid-assay -- while on the viewer's sparser lawns (~0.10-0.15) it takes
+    3-4 minutes; a bout discharges 0.7 -> 0.25 in about one tau_sleep. The *structure*
+    is the biology; the rates are watchable.
 
     Below threshold_on the whole module is provably inert: drive exactly 0, FLP-11
     exactly 0 (release gated on the driven bout -- worm/sleep.py has the measured

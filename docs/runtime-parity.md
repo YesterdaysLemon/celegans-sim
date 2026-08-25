@@ -109,8 +109,8 @@ does; see below.
 
 ## Route 3 — the Python-only paths
 
-Four families, two of which crossed into the runtime on 2026-08-14 (the cascade and the
-amine path — see their entries). **All are off by default**, and the two still
+Five families, two of which crossed into the runtime on 2026-08-14 (the cascade and the
+amine path — see their entries). **All are off by default**, and the three still
 Python-only are what `tests/test_runtime_parity.py` pins.
 
 ### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`, `modulator.dopamine_muscle_rate`) — the amine load-sensing path
@@ -206,6 +206,24 @@ crawl where the model is calibrated.
 lineage that has to pay for shortening velocity is a different question from whether the
 reference animal's span widens. Nothing in the repository has asked that question.
 
+### `sensory.as_field_gain` (+ `as_field_direction`) — the AS-class receptive field
+**Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
+
+The last field-blind cord motor class given the same anterior/posterior receptive-field
+machinery DA/DB/VA/VB carry, behind a ratio gain shipping at `0.0` — the field matrix is
+never built at zero, so the default animal is bit-identical and the pin is airtight.
+`as_field_direction` needs no entry of its own (the `load_half` shape: with the gain at
+zero the direction is never read).
+
+*Measured* (2026-08-25, tables at `SensoryParams.as_field_gain`): at ratio 1.0 with the
+anterior field, **every gait guardrail improves at once** — speed 0.281 → 0.399 mm/s,
+travelling index +0.886 → +0.936, dorsoventral antagonism −0.758 → −0.843, frequency
+stable — 16/16 seeds keep the head-to-tail wave, and the gain helps in all three media.
+The direction itself was a finding: Tolstenkov 2018's A-biased wiring suggested the
+posterior side, and the sweep overruled it. Adoption is gated in `NEXT.md` item 1¾ —
+scorecard/ethogram against frozen main, backward locomotion and omega depth, then the
+port this entry exists to demand.
+
 ### `sensory.omega_wave_suppression` — standing the body wave down during a turn
 **Runtime: not implemented. Lifecycle: `HISTORICAL_NEGATIVE`.**
 
@@ -242,8 +260,8 @@ thing to believe falsely.
 | `neural.v_clamp` | `(-80, 45)` | `G.V_CLAMP_LO/HI` | n/a — a value, not a branch | — |
 
 Almost every name in `tools/export_model.py`'s `NEURAL_SCALARS`, `MUSCLE_SCALARS`,
-`SENSORY_SCALARS`, `MODULATOR_SCALARS`, `PHARYNX_SCALARS`, `EGGLAYING_SCALARS` and
-`WORLD_SCALARS` is Route 2 as well. `_export_scalars` raises on a name that does not resolve,
+`SENSORY_SCALARS`, `MODULATOR_SCALARS`, `PHARYNX_SCALARS`, `EGGLAYING_SCALARS`,
+`SLEEP_SCALARS` and `WORLD_SCALARS` is Route 2 as well. `_export_scalars` raises on a name that does not resolve,
 so that list cannot silently lose an entry — which is how `sen_nose_touch_gain` was lost once,
 and why it cannot be lost again.
 
@@ -257,7 +275,9 @@ scalar list" is not by itself evidence that the runtime honours it:
 | `WORLD_RADIUS` | redundant. The runtime uses `WORLD_EXTENT`, exported separately from the same `p.radius`. |
 
 Verified by checking each `export const` in `model_gen.ts` for a `G.<name>` reference in
-`index.ts`, **restricted to the seven scalar-group names above** — that restriction matters:
+`index.ts`, **restricted to the eight scalar-group names above** (every `SLP_*` scalar is
+read by `stepSleep`, so the sleep group adds nothing to the unread count) — that
+restriction matters:
 run unrestricted, the same method also returns `BODY_LENGTH`, `BODY_RADIUS_MAX`, the four
 `MED_*` medium constants, `ODOUR_DECAY`, `TOUCH_DECAY` and `N_NODES`, none of which
 `index.ts` reads either. So the honest count of exported-but-unread constants is around

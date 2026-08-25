@@ -266,6 +266,11 @@ NO_CI_NEEDED = {
         "prose -- the record of the 2026-08-24 branch sweep: names and tip SHAs of the "
         "43 deleted branches, kept so a dangling commit stays findable. Asserts nothing "
         "a job could re-check.",
+    "docs/research-log/next-history-2026-08-05-through-2026-08-25.md":
+        "prose -- the second archived pruning of NEXT.md, section text preserved "
+        "verbatim. Asserts nothing a job could re-check; the measurements it narrates "
+        "are pinned where they always were, in the tool docstrings and params "
+        "provenance.",
     "docs/architecture/bonsai-pass-1-report.md":
         "prose -- the record of a maintainability pass. Dated and closed; it describes what "
         "was done rather than asserting anything a job could re-check.",

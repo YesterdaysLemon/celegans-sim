@@ -24,9 +24,13 @@ Reading of the first run (2026-08-24), so the headline is on the record:
   unrouted. HSN/VC are NOT idle -- egg-laying reads them as actuators -- and the DD/VD
   cross-inhibitors are driven by the anatomy, which is correct.
 
-Second reading (2026-08-24, after the phasmid + BAG routes went in): 109/302 reachable.
-PHA/PHB now carry the repellent at the tail and BAG the oxygen downshift, so the top
-two entries above are paid off; AWB, ADF/ASI/ASG/ASJ, the AS class and PVD remain.
+Third reading (2026-08-25): 110/302 reachable. PHA/PHB carry the repellent at the tail,
+BAG the oxygen downshift, and RIS joined the roster when the sleep homeostat landed --
+its drive current is an input route like any other. Of what remains: AWB was probed and
+is held deaf ON PURPOSE (tools/awb_probe.py -- both rectifications hurt the escape),
+the AS class has a measured field shipped at as_field_gain = 0.0 (still counted
+field-blind below because the default builds no field; worm/params.py has the dossier),
+and ADF/ASI/ASG/ASJ and PVD are still simply unrouted.
 """
 
 from __future__ import annotations

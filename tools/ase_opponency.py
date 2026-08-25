@@ -3,9 +3,9 @@
 `Senses` gives ASEL a current proportional to +dC/dt and ASER one proportional to -dC/dt,
 which is a genuine opponent pair and the right biology: ASEL depolarises when a
 water-soluble attractant rises, ASER when it falls (Suzuki et al. 2008). But both cells
-project onto the same first-layer interneurons with the same sign -- ASEL makes 19
-contacts onto AIY and ASER 16 -- so AIY receives (+dC/dt) + (-dC/dt) and **the opponency
-cancels itself at the first synapse**. That is why making both of them inhibitory together
+projected onto the same first-layer interneurons with the same sign -- ASEL makes 19
+contacts onto AIY and ASER 16 -- so AIY received (+dC/dt) + (-dC/dt) and **the opponency
+cancelled itself at the first synapse**. That is why making both of them inhibitory together
 only moved the pirouette ratio from 0.68 to 1.22: it shifted the common mode, which is not
 where the signal is.
 
@@ -14,7 +14,12 @@ directions. One transmitter, two receptors, and this model already has the machi
 the reversal potential is per synapse, so ASEL and ASER can answer with different ones
 even though they are one anatomical class.
 
-Which way round is an empirical question and this settles it. The measurement is the
+Which way round was an empirical question, and this tool is the instrument that settled
+it: SETTLED AND ADOPTED. The shipped model answers glutamate from the ON cells with
+chloride -- `NeuralParams.glucl_pre/post` carry ("ASEL","AWA","PHB") -> ("AIY","AVA",
+"AIB") with the whole measurement chain in their provenance, and
+tests/test_behaviour.py pins the AIB asymmetry as a fact of wiring. Do not re-run this
+to decide anything; re-run it only to re-measure. The measurement is the
 pirouette bias directly: drive the pair as a rising attractant would (ASEL up, ASER down)
 and count reversals, then drive it as a falling one would and count again. A chemotaxing
 animal reverses *less* while things improve, so
@@ -44,6 +49,10 @@ SEEDS = (0, 1, 3, 5)
 DRIVE = 3.0            # pA into the pair, the scale a real gradient delivers
 
 # (label, which cells answer glutamate with a chloride channel)
+# These arms are the 2026-08 sets the recorded run compared -- before PHB joined
+# glucl_pre and AIB/AVA joined glucl_post -- kept as they were so a re-measurement
+# stays comparable with the recorded numbers. The winner ("ASEL only") is what shipped,
+# since widened; the arms are not the current default.
 ASSIGNMENTS = [
     ("neither", ()),
     ("both", ("ASE", "AWC")),

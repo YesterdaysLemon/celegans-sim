@@ -26,7 +26,7 @@ papers do, so the numbers are comparable to something:
 Run one:   PYTHONPATH=. .venv/bin/python tools/assays.py chemotaxis
 Run all:   PYTHONPATH=. .venv/bin/python tools/assays.py all
 
-THIS IS ALSO INFRASTRUCTURE. It is imported by **32** other modules, which makes it the
+THIS IS ALSO INFRASTRUCTURE. It is imported by **37** other modules, which makes it the
 second-largest hub in `tools/` after `diagnose_loop`, and the imported surface is wider
 than the assay list above:
 

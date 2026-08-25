@@ -78,8 +78,8 @@ came to be misread as one-offs, but their importers outnumber every other file h
 
 | tool | imp | the imported surface |
 |---|---|---|
-| `diagnose_loop.py` | **42** | `analyse`, `bare_world`, `travelling_index`, `_dominant`. `analyse`'s return dict is this project's operational definition of "what the gait is doing". |
-| `assays.py` | **32** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`, `apply_overrides`, `current_params`. |
+| `diagnose_loop.py` | **47** | `analyse`, `bare_world`, `travelling_index`, `_dominant`. `analyse`'s return dict is this project's operational definition of "what the gait is doing". |
+| `assays.py` | **37** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`, `apply_overrides`, `current_params`. |
 | `stats.py` | 6 | `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict`, `fmt`, `BOOTSTRAP`, `clears_zero`, `two_sample_ci`. Reached transitively by everything through `assays`. |
 | `coherence.py` | 3 | `profile` — per-position wave coherence. A small library rather than a hub, but it has importers and no documentation elsewhere. |
 
