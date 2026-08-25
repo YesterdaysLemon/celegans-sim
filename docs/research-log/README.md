@@ -54,6 +54,7 @@ Improving *placement and discoverability* is always allowed. Improving *content*
 | File | Covers | Snapshot of |
 |---|---|---|
 | [`next-history-through-2026-08-04.md`](next-history-through-2026-08-04.md) | Roughly the project's first three weeks: the gait-modulation investigation and its two retractions, the head-cascade measurements, force-velocity, internal damping, the omega-turn ceiling, the evolution project's decided shape, the exporter rework, the egg-measure negative result, and the accumulated *things that will bite whoever picks this up* | `NEXT.md` as of commit `987129c` (2026-08-04), preserved byte-for-byte |
+| [`next-history-2026-08-05-through-2026-08-25.md`](next-history-2026-08-05-through-2026-08-25.md) | The second pruning: the amine load-sensing dossier through its behavioural gate and attribution, the clamp experiment's split verdict, the deaf-cells campaign (phasmids, BAG, the chloride adoptions, AWB's negative, the AS-field dossier), the skater hunts' null, the sex-vs-asex study, and the settled decisions | Sections of `NEXT.md` as of `edd91db` (2026-08-25), section text preserved verbatim |
 
 **Provenance of the snapshot.** It was moved with `git mv`, so `git log --follow` on it
 reaches the whole history of `NEXT.md`. Its SHA-256 is
