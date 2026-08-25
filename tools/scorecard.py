@@ -201,6 +201,15 @@ def main():
         print("  %-9s %7.2f +- %.2f %7.2f +- %.2f %7.3f +- %.3f   %s"
               % (med, f_.mean(), f_.std(), w_.mean(), w_.std(), v_.mean(), v_.std(),
                  ref[med]))
+        # A mean +- sd cannot show a bimodal medium, and buffer IS one: at the shipped
+        # defaults about one seed in five settles into a slow near-standing mode by the
+        # gait window (measured 2026-08-25: seed 0 at 0.325 Hz with the wavelength
+        # estimator reading 6.4 L off a whole-body standing flip, the other four at 0.850 Hz / 0.88 L --
+        # the same bistability the amine notes hit at muscle coefficients >= 0.7,
+        # present at defaults given ~45 s of settling). Per-seed frequencies are
+        # therefore printed for every medium, so a fallen seed is a visible outlier
+        # rather than a mysterious +-.
+        print("  %-9s   per-seed freq: %s" % ("", " ".join("%.2f" % x for x in f_)))
     fa = np.mean([r["freq"] for r in allrows if r["medium"] == "agar"])
     fb = np.mean([r["freq"] for r in allrows if r["medium"] == "buffer"])
     print()

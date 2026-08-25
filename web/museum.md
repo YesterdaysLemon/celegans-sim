@@ -129,6 +129,21 @@ reconstruction currently cannot have basal slowing and load sensing be independe
 honest at this operating point. Named as an adoption precondition in `NEXT.md`. Pinned:
 `worm/params.py` (`SensoryParams` docstring).
 
+**III.4 — the reconstruction wires danger signals backwards, three times measured.**
+Contact counts carry no receptor identity, so every synapse ships excitatory until a
+measurement objects — and for the escape circuitry the objection is now systematic.
+Routed as-reconstructed: PHB (tail repellent) *depolarised* the backward command harder
+than ASH at the head did (+0.714 vs +0.566 mV dAVA — danger behind out-commanding danger
+ahead), ASEL ("things improving") *promoted* reversals (+0.67/min under drive), and AWB
+injected either way — relief-timed or presence-timed — made escape from a drop worse
+(paired d_final −6.83/−3.85 mm). The first two are corrected by named glutamate-chloride
+receptors (`NeuralParams.glucl_pre/post`), each adopted on its own paired measurement;
+the third is *held*, deaf on purpose, because no measurement here yet names its receptor
+fix. The pattern is the exhibit: where a wrong sign would kill the animal, the biology
+put the sign in the receptor, and the wiring diagram alone cannot see it. Pinned:
+`worm/params.py` (`NeuralParams.glucl_pre`), `tools/awb_probe.py`,
+`tests/test_behaviour.py` (the AIB asymmetry as a fact of wiring).
+
 ## Wing IV — live specimens: what the dish has actually found
 
 Exhibits from the arena, where the finders have no incentive to be polite. Everything here

@@ -226,7 +226,7 @@ jobs:
       # port gets measured against a model that no longer exists.
       - name: reference trajectories, then compare
         run: |
-          python tools/conform.py > web/conform.json
+          python tools/conform.py
           node wasm/conform.mjs
         env:
           PYTHONPATH: .

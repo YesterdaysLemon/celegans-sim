@@ -12,6 +12,7 @@ Run:  PYTHONPATH=. .venv/bin/python tools/conform.py > web/conform.json
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import numpy as np
@@ -484,6 +485,19 @@ def multi_case():
 
 
 def main():
+    # The reference is written to web/conform.json DIRECTLY, with stdout kept as an
+    # explicit opt-in (`--stdout`, what check_all's redirect pipeline still uses). It
+    # used to be stdout-only with the filename living in the caller's redirect, and
+    # that was a measured trap: run bare, the reference lands in a scrollback or a log
+    # file, web/conform.json stays stale, and the next `node wasm/conform.mjs` compares
+    # the runtime against an old Python -- which cost twenty minutes of chasing a
+    # phantom 35 mV divergence the day the phasmids landed. A tool whose output has
+    # exactly one meaningful destination should put it there itself.
+    out = sys.stdout
+    if "--stdout" not in sys.argv[1:]:
+        out = open(os.path.join(os.path.dirname(__file__), "..", "web", "conform.json"),
+                   "w")
+        print("writing web/conform.json ...", file=sys.stderr)
     json.dump({"body": body_case(), "folded": folded_case(),
                "full": full_case(), "ablated": ablated_case(),
                # 0.30 is the coefficient ModulatorParams.serotonin_mod1 documents as
@@ -505,7 +519,9 @@ def main():
                # Several animals on one plate. Everything above is one animal, and one
                # animal cannot reach the batch settlement or the shared world advance.
                "multi": multi_case()},
-              sys.stdout)
+              out)
+    if out is not sys.stdout:
+        out.close()
     return 0
 
 

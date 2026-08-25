@@ -175,7 +175,7 @@ if (has('--selftest')) {
   fs.rmdirSync(d);
   assert(true, 'mkdtemp under os.tmpdir() works');
   const simple = ['node tools/check_web.mjs', 'node --test wasm/medium.test.mjs'];
-  const posix = ['"$PY" tools/conform.py > web/conform.json',
+  const posix = ['"$PY" tools/conform.py',
                  'cp a b && cd wasm && npx asc', 'docker run --rm -d --name x \\'];
   for (const c of simple) assert(!NEEDS_SHELL.test(c), `shell-free: ${c}`);
   for (const c of posix) assert(NEEDS_SHELL.test(c), `needs sh: ${c.slice(0, 30)}...`);
@@ -302,7 +302,7 @@ const GATES = [
     id: 'conform', job: 'conformance', step: 'reference trajectories, then compare',
     covers: ['reference trajectories, then compare', 'regenerated pair conforms to the Python model'],
     needs: ['python', 'model'], mutates: ['web/conform.json'],
-    run: sh('"$PY" tools/conform.py > web/conform.json && node wasm/conform.mjs',
+    run: sh('"$PY" tools/conform.py && node wasm/conform.mjs',
             { PYTHONPATH: '.', PY: PY || 'python3' }),
   },
   {
