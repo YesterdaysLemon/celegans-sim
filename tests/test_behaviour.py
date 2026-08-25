@@ -334,6 +334,96 @@ def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
         "channel has become a second URX")
 
 
+def _sleepy(seed=0):
+    """A fed animal on a lawn with the sleep clock compressed for testing.
+
+    flp11_tau drops to 1 s so the quiescence gate follows the bout within a couple of
+    seconds instead of ten, and tau_sleep stretches so the bout outlasts the test. The
+    homeostat's *rates* are what is compressed -- the circuit under test is untouched.
+    """
+    import dataclasses
+
+    p = Params()
+    p = dataclasses.replace(p, sleep=dataclasses.replace(
+        p.sleep, flp11_tau=1.0, tau_sleep=60.0))
+    w = World(p.world, np.random.default_rng(0))
+    w.add_food_patch(0.0, 0.0, 1.2, density=1.0, attractant=1.0, length_scale=4.0)
+    return Simulation(p, seed=seed, world=w, placement=(0.0, 0.0, 0.0))
+
+
+def _mid_speed(sim, seconds):
+    n = len(sim.body.nodes())
+    a = sim.body.nodes()[n // 2].copy()
+    sim.run(seconds)
+    return float(np.hypot(*(sim.body.nodes()[n // 2] - a))) / seconds
+
+
+def test_a_worm_with_sleep_pressure_stops_and_a_poke_wakes_it():
+    """Sleep is a state, and rapid reversibility is what separates it from paralysis.
+
+    RIS drive quiets the command and head circuits through its own GABAergic wiring and
+    FLP-11 gates the cords, the head oscillator and the pump (worm/sleep.py; Turek et
+    al. 2013, 2016). Driven above threshold the animal must actually stop moving and
+    stop pumping -- and a strong touch must wake it within seconds, because arousal
+    keeps full gain through the sleeping state. Measured on one seed with the pressure
+    seeded directly: the homeostat's slow build is the clock, not the circuit, and the
+    circuit is what this test pins.
+    """
+    sim = _sleepy()
+    sim.run(6.0)
+    v_awake = _mid_speed(sim, 2.0)
+
+    sim.sleep.pressure = 0.95
+    sim.run(4.0)      # bout fires at once; the peptide gate follows within seconds
+    assert sim.sleep.bout, "pressure above threshold did not start a bout"
+    assert sim.sleep.quiescence() > 0.9, (
+        "the bout is on but FLP-11 never closed the gate (quiescence %.3f)"
+        % sim.sleep.quiescence())
+    assert sim.pharynx.rate < 0.2, (
+        "a sleeping animal is still pumping at %.2f Hz" % sim.pharynx.rate)
+    v_asleep = _mid_speed(sim, 3.0)
+    assert v_asleep < 0.5 * v_awake, (
+        "quiescence did not slow the animal: %.4f mm/s asleep against %.4f awake"
+        % (v_asleep, v_awake))
+
+    for _ in range(int(0.3 / sim.dt)):
+        sim.poke("anterior", strength=3.0)
+        sim.step()
+    assert not sim.sleep.bout, "a strong anterior touch did not interrupt the bout"
+    assert sim.sleep.refractory > 0.0
+    v_woken = _mid_speed(sim, 2.0)
+    assert v_woken > 2.0 * v_asleep, (
+        "the poked animal did not move off: %.4f mm/s woken against %.4f asleep"
+        % (v_woken, v_asleep))
+
+
+def test_sleep_needs_ris():
+    """Ablate RIS and the animal cannot sleep -- Turek et al. 2013, reproduced.
+
+    The homeostat still crosses its threshold (it is upstream of the cell), but the
+    switch it closes is RIS itself: a dead RIS reads activation zero, releases no
+    FLP-11 -- exactly none, which is asserted exactly -- and every quiescence gate
+    stays wide open. The pump keeps running and the animal keeps its speed, on the
+    same seed and plate where the intact animal stops.
+    """
+    sim = _sleepy()
+    sim.nervous.set_ablated(sim.sleep.ris)
+    sim.run(6.0)
+    sim.sleep.pressure = 0.95
+    sim.run(4.0)
+    assert sim.sleep.flp11 == 0.0, (
+        "an ablated RIS released FLP-11 (%.4f): the peptide is not coming from the "
+        "cell, and the ablation experiment this circuit is built on would not "
+        "reproduce" % sim.sleep.flp11)
+    assert sim.sleep.quiescence() == 0.0
+    assert sim.pharynx.rate > 0.5, (
+        "the pump stopped (%.2f Hz) without any FLP-11 to stop it" % sim.pharynx.rate)
+    v = _mid_speed(sim, 3.0)
+    assert v > 0.02, (
+        "the RIS-ablated animal stopped moving anyway (%.4f mm/s): quiescence is "
+        "reaching the motor circuit by some route that is not the sleep neuron" % v)
+
+
 def test_a_repellent_at_the_tail_does_not_command_a_reversal():
     """Escape direction is a head-versus-tail comparison, and this is the comparison.
 

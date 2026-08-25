@@ -20,7 +20,18 @@ SETTLE, MEASURE = 15.0, 60.0
 
 
 def _run(on_food=True, ablate=(), seconds=MEASURE, seed=0):
+    import dataclasses
+
+    # The pump numbers this file pins are Avery & Horvitz's, measured on animals that
+    # were actively feeding. On this wall-to-wall lawn dopamine runs high enough that
+    # the satiety homeostat crosses its threshold INSIDE the measurement window: the
+    # animal fell asleep at about a minute, pumping legitimately stopped, and the mean
+    # rate read 194 against an awake 250 (worm/sleep.py; caught by CI the day sleep
+    # landed). The claim under test is the awake pump, so the sleep drive is disabled
+    # -- ris_drive = 0 is the sleepless control SleepParams documents, and with it the
+    # sleep module touches nothing.
     p = Params()
+    p = dataclasses.replace(p, sleep=dataclasses.replace(p.sleep, ris_drive=0.0))
     w = World(p.world, np.random.default_rng(0))
     if on_food:
         w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)

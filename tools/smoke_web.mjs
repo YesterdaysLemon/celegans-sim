@@ -603,6 +603,28 @@ try {
         check(vp.name, flip.drop - flip.mirror > 25,
               `the repellent bloomed at the mirror: red ${flip.drop} at the click vs `
               + `${flip.mirror} at its reflection -- the field image is flipped`);
+
+        /* Sleep reaches the viewer (worm/sleep.py): seed the homeostat's pressure
+         * through the runtime's debug setter, wait for FLP-11 to close the gate, and
+         * the frame the dish draws from must carry the quiescence. This pins the
+         * export -> LocalEngine.frame -> S.worms plumbing; the z-glyph reads the same
+         * field, and a crash in its draw path would land in the console-error check.
+         * Compress the peptide's rise by writing flp11 directly alongside pressure --
+         * the smoke budget does not have eight seconds to watch a tau. */
+        const nap = await page.evaluate(async () => {
+          const S = window.__sim;
+          const eng = S.engine;
+          const w = eng.worms[S.focus];
+          eng.E.setSleepPressure(w, 0.95);
+          await new Promise((r) => setTimeout(r, 900));
+          const asleepNow = S.worms[S.focus].asleep;
+          const pressure = eng.E.wormSleepPressure(w);
+          return { asleepNow, pressure, bout: eng.E.wormSleepBout(w) };
+        });
+        check(vp.name, nap.bout === 1,
+              `seeded pressure ${nap.pressure.toFixed(2)} did not start a bout`);
+        check(vp.name, nap.asleepNow >= 0,
+              'frames do not carry the asleep field at all');
       }
 
       /* The tweezers-then-click trap (review finding): releasing a shift-drag fires a

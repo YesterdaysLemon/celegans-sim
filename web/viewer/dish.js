@@ -104,6 +104,23 @@ export function drawDish() {
     } else {
       paint(ctx, G, o, scale);
     }
+    // A sleeping animal gets its z's. `asleep` is the runtime's quiescence gate
+    // (0 awake .. 1 fully quiescent -- worm/sleep.py); frames without the field
+    // (the server transport) simply never draw one.
+    if (o.asleep > 0.5) {
+      let zx = 0, zy = 0;
+      for (let k = 0; k < G.n; k++) { zx += G.px[k]; zy += G.py[k]; }
+      zx /= G.n; zy /= G.n;
+      ctx.save();
+      ctx.globalAlpha = 0.45 + 0.25 * Math.sin((S.frame ? S.frame.t : 0) * 2.5);
+      ctx.fillStyle = theme().dark ? 'rgba(233,226,214,0.85)' : 'rgba(74,66,56,0.75)';
+      const zs = Math.max(9, 0.22 * scale);
+      ctx.font = zs + 'px ui-rounded, system-ui, sans-serif';
+      ctx.fillText('z', zx + 0.30 * scale, zy - 0.35 * scale);
+      ctx.font = (zs * 0.72) + 'px ui-rounded, system-ui, sans-serif';
+      ctx.fillText('z', zx + 0.30 * scale + zs * 0.8, zy - 0.35 * scale - zs * 0.7);
+      ctx.restore();
+    }
   };
   for (let i = 0; i < S.worms.length; i++) {
     if (i === S.focus) continue;

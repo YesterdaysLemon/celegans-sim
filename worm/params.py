@@ -2434,6 +2434,47 @@ class EggLayingParams:
 
 
 @dataclass(frozen=True)
+class SleepParams:
+    """RIS-gated quiescence: the homeostat, the drive, and FLP-11's targets.
+
+    The circuit and its provenance live in worm/sleep.py (Turek et al. 2013 for RIS;
+    Turek et al. 2016 for FLP-11; You et al. 2008 for satiety quiescence in the adult).
+    What belongs here is what the numbers mean and why they are what they are.
+
+    The clock is the dish's, not the animal's: real satiety quiescence follows hours of
+    feeding; here pressure crosses threshold after ~3-4 minutes on a lawn (dopamine's
+    positive deviation on food runs ~0.10-0.15, so build_fed * 0.12 ~ 0.0036/s reaches
+    0.7 in ~200 s) and a bout discharges 0.7 -> 0.25 in about one tau_sleep. The
+    *structure* is the biology; the rates are watchable.
+
+    Below threshold_on the whole module is provably inert: drive exactly 0, FLP-11
+    exactly 0 (release gated on the driven bout -- worm/sleep.py has the measured
+    reason), every gain multiplier exactly 1.0. An animal that has not yet slept is
+    bit-identical to the animal before sleep existed, which is what keeps every pinned
+    trajectory and conformance case standing.
+
+    An assay that feeds the animal on a dense lawn for longer than about a minute now
+    contains sleep, and that is the model, not a confound to tune away: the pharynx
+    fixture's animal fell asleep mid-measurement the day this landed and its mean pump
+    rate dropped from 250 to 194 a minute. When the claim under test is about the
+    AWAKE animal, run the sleepless control: `ris_drive = 0.0` disables the drive, and
+    with it this module touches nothing (tests/test_pharynx.py does exactly this).
+    """
+    ris_drive: float = 30.0          # pA into RIS while the homeostat says sleep
+    release_threshold: float = 0.75  # RIS activation where FLP-11 release begins
+    flp11_tau: float = 8.0           # s   peptide level's time constant
+    quiescence_gain: float = 1.4     # FLP-11 -> motor/pump gate, clipped to [0, 1]
+    build_fed: float = 0.030         # /s  pressure per unit positive dopamine deviation
+    build_base: float = 0.0005       # /s  the trickle off food (starved animals barely sleep)
+    threshold_on: float = 0.7        # pressure where a bout begins
+    threshold_off: float = 0.25      # pressure where it ends -- the Schmitt gap
+    tau_sleep: float = 45.0          # s   pressure discharge during a bout
+    arousal_touch: float = 0.5       # summed touch_state that interrupts a bout
+    arousal_refractory: float = 15.0  # s  sleep held off after an arousal
+    arousal_clear: float = 0.8       # fraction of standing FLP-11 an arousal clears
+
+
+@dataclass(frozen=True)
 class Params:
     neural: NeuralParams = field(default_factory=NeuralParams)
     muscle: MuscleParams = field(default_factory=MuscleParams)
@@ -2443,6 +2484,7 @@ class Params:
     modulator: ModulatorParams = field(default_factory=ModulatorParams)
     pharynx: PharynxParams = field(default_factory=PharynxParams)
     egglaying: EggLayingParams = field(default_factory=EggLayingParams)
+    sleep: SleepParams = field(default_factory=SleepParams)
     medium: MediumParams = field(default_factory=lambda: MEDIA["agar"])
 
     def validate(self) -> "Params":

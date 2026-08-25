@@ -576,6 +576,48 @@ declare namespace __AdaptedExports {
    */
   export function pokeWorm(w: number, anterior: number, strength: number): void;
   /**
+   * assembly/index/wormAsleep
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function wormAsleep(w: number): number;
+  /**
+   * assembly/index/wormSleepPressure
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function wormSleepPressure(w: number): number;
+  /**
+   * assembly/index/wormFlp11
+   * @param w `i32`
+   * @returns `f64`
+   */
+  export function wormFlp11(w: number): number;
+  /**
+   * assembly/index/wormSleepBout
+   * @param w `i32`
+   * @returns `i32`
+   */
+  export function wormSleepBout(w: number): number;
+  /**
+   * assembly/index/setSleepPressure
+   * @param w `i32`
+   * @param pr `f64`
+   */
+  export function setSleepPressure(w: number, pr: number): void;
+  /**
+   * assembly/index/setSleepClock
+   * @param w `i32`
+   * @param flpRate `f64`
+   * @param decay `f64`
+   * @param buildFed `f64`
+   * @param buildBase `f64`
+   * @param thrOn `f64`
+   * @param thrOff `f64`
+   * @param refract `f64`
+   */
+  export function setSleepClock(w: number, flpRate: number, decay: number, buildFed: number, buildBase: number, thrOn: number, thrOff: number, refract: number): void;
+  /**
    * assembly/index/translateWorm
    * @param w `i32`
    * @param dx `f64`

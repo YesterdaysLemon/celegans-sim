@@ -153,6 +153,11 @@ class Pharynx:
         i2 = self._dev(a, self.i2)
         rate = p.myogenic_rate + p.mc_rate_gain * mc - p.i2_rate_gain * i2
         self.rate = float(np.clip(rate, 0.0, p.max_rate))
+        # Sleeping animals stop pumping -- feeding quiescence is half of what defines
+        # the state (You et al. 2008; the gate itself lives in worm/sleep.py). Awake
+        # the multiplier is exactly 1.0.
+        if mods is not None:
+            self.rate *= (1.0 - mods.quiescence)
 
         # -- the pump itself -------------------------------------------------------------
         # The cycle runs during the pump as well as between pumps, so `rate` is the rate

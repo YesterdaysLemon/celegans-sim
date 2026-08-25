@@ -78,6 +78,14 @@ class Modulators:
         self.baseline = 0.5
         self.level = {n: 0.0 for n in self.NAMES}
 
+        # The sleep gate. Not a level of this object's own -- worm/sleep.py owns the
+        # state and the engine writes the value here each step -- but it lives on this
+        # object because everything that consumes a modulator effect (the cords, the
+        # head reflex, the pharyngeal pump) already reads through here, and quiescence
+        # is a gain on the same targets. 0 = awake, and at exactly 0 every multiplier
+        # below is exactly 1.0.
+        self.quiescence = 0.0
+
         # MOD-1, the serotonin-gated chloride channel on AIB. Peak conductance is a
         # fraction of each target's own resting conductance, so the coefficient means the
         # same thing whatever the cell's size. See ModulatorParams.serotonin_mod1.
@@ -146,7 +154,10 @@ class Modulators:
              - p.dopamine_slowing * self.level["dopamine"]
              - p.serotonin_slowing * self.level["serotonin"]
              + p.octopamine_speeding * self.level["octopamine"])
-        return float(np.clip(s, 0.25, 1.6))
+        # Sleep multiplies *outside* the floor: food slows a worm to half speed and no
+        # further, but a sleeping worm genuinely stops, which is the observable that
+        # separates quiescence from slowing (Turek et al. 2013). Awake this is x 1.0.
+        return float(np.clip(s, 0.25, 1.6)) * (1.0 - self.quiescence)
 
     def gated_conductance(self) -> np.ndarray | None:
         """Ligand-gated conductance the modulators are currently opening, per neuron.
@@ -209,6 +220,15 @@ class Modulators:
         if c == 0.0:
             return 1.0
         return float(np.clip(1.0 - c * max(0.5 - self.level["dopamine"], 0.0), 0.5, 1.0))
+
+    def head_gain_scale(self) -> float:
+        """Multiplier on the head reflex's gain: 1 awake, 0 fully quiescent.
+
+        The head oscillator is the other motor and a sleeping animal stands it down
+        too -- lethargic posture is relaxed, not oscillating in place. Distinct from
+        head_lag_scale, which is the amine path's *latency* knob and untouched here.
+        """
+        return 1.0 - self.quiescence
 
     def turn_bias(self) -> float:
         """Added to the direction gate's 50/50 point.

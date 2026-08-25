@@ -436,6 +436,60 @@ console.log(`  path actually did something   ${amineEffect.toExponential(3)} mV 
 const amineOk = amXY < 1e-6 && amV < 1e-6 && amGate === 0 && amineEffect > 1e-3;
 console.log(amineOk ? '  PASS' : '  FAIL');
 
+// --- sleep -----------------------------------------------------------------------------
+/* The whole life of a bout on a compressed clock: entry from seeded pressure, the FLP-11
+ * gates on cords, head and pump, an arousal delivered as anterior pokes, the refractory,
+ * re-entry, discharge and exit. The runtime is handed the exact per-step rates the Python
+ * reference computed (setSleepClock), and beyond the trajectory the homeostat itself is
+ * compared frame by frame -- pressure, peptide, and the bout flag. */
+const slc = ref.sleeping;
+if (!slc) { console.error('reference has no `sleeping` case -- regenerate it'); process.exit(1); }
+if (!slc.sleep_cfg) { console.error('sleeping case carries no config -- regenerate it'); process.exit(1); }
+E.resetWorld();
+E.clearWorms();
+E.setNoise(0);
+E.addFood(-6.0, 4.0, 5.0, 1.0, 1.0, 9.0);
+E.addRepellent(7.0, -3.0, 0.9, 5.0);
+E.addFood(0.0, 0.0, 3.0, 1.0, 0.6, 6.0);
+const w7 = E.createWorm(0, 0.0, 0.0, 0.0);
+const sc = slc.sleep_cfg;
+E.setSleepClock(w7, sc.flp_rate, sc.sleep_decay, sc.build_fed, sc.build_base,
+                sc.threshold_on, sc.threshold_off, sc.arousal_refractory);
+E.setSleepPressure(w7, sc.pressure0);
+let slXY = 0, slV = 0, slGate = 0, slHome = 0, slBoutBad = 0;
+let slStep = 0;
+let sawBout = false, sawWake = false;
+for (const f of slc.frames) {
+  while (slStep < f.step) {
+    if (slStep >= sc.poke_from && slStep < sc.poke_to) E.pokeWorm(w7, 1, sc.poke_strength);
+    E.step(w7, 1);
+    slStep++;
+  }
+  const nx = F64().subarray(E.ptrNodesX(w7) >> 3, (E.ptrNodesX(w7) >> 3) + f.x.length);
+  const ny = F64().subarray(E.ptrNodesY(w7) >> 3, (E.ptrNodesY(w7) >> 3) + f.y.length);
+  const vv = F64().subarray(E.ptrV(w7) >> 3, (E.ptrV(w7) >> 3) + f.V.length);
+  for (let i = 0; i < f.x.length; i++)
+    slXY = Math.max(slXY, Math.abs(nx[i] - f.x[i]), Math.abs(ny[i] - f.y[i]));
+  for (let i = 0; i < f.V.length; i++) slV = Math.max(slV, Math.abs(vv[i] - f.V[i]));
+  if (E.getGateForward(w7) !== f.gate) slGate++;
+  if (!f.sleep) { console.error('  sleeping frame has no `sleep` -- regenerate it'); process.exit(1); }
+  slHome = Math.max(slHome, Math.abs(E.wormSleepPressure(w7) - f.sleep[0]),
+                    Math.abs(E.wormFlp11(w7) - f.sleep[1]));
+  if (E.wormSleepBout(w7) !== f.sleep[2]) slBoutBad++;
+  if (f.sleep[2] === 1.0) sawBout = true;
+  if (sawBout && f.sleep[2] === 0.0) sawWake = true;
+}
+console.log(`\nSLEEP -- a bout, an arousal, and a second bout on a compressed clock, ${slc.steps} steps, noise off`);
+console.log(`  worst node disagreement       ${slXY.toExponential(3)} mm`);
+console.log(`  worst membrane potential      ${slV.toExponential(3)} mV`);
+console.log(`  worst homeostat state         ${slHome.toExponential(3)}   (pressure, FLP-11)`);
+console.log(`  bout flag disagreed on        ${slBoutBad} of ${slc.frames.length} samples`);
+console.log(`  direction gate disagreed on   ${slGate} of ${slc.frames.length} samples`);
+console.log(`  the reference actually slept  ${sawBout} and woke ${sawWake}   (a case that never sleeps checks nothing)`);
+const sleepOk = slXY < 1e-6 && slV < 1e-6 && slHome < 1e-9 && slBoutBad === 0
+             && slGate === 0 && sawBout && sawWake;
+console.log(sleepOk ? '  PASS' : '  FAIL');
+
 // --- the path the browser actually runs ----------------------------------------------
 // Everything above drives `step(w, n)`. The viewer drives `stepAll(n)`, which is a
 // different function with its own loop and its own world advance, and nothing had ever
@@ -686,7 +740,7 @@ const multiOk = pXY < MULTI_TOL.xy && pV < MULTI_TOL.V && pPh < MULTI_TOL.ph
   && plateLost > 0 && relGap < 1e-9 && flat.length === 0;
 console.log(multiOk ? '  PASS' : '  FAIL');
 
-const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && cascadeOk && amineOk && allOk && multiOk;
+const ok = mechOk && foldOk && fullOk && ablOk && mod1Ok && cascadeOk && amineOk && sleepOk && allOk && multiOk;
 console.log(ok ? '\nThe port reproduces the Python model.'
                : '\nThe port does NOT reproduce the Python model.');
 // Only a completed numeric comparison may use the dedicated finding code. Missing or
