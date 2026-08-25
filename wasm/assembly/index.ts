@@ -21,7 +21,7 @@
  * Layout: one shared Model (read-only, the payload), one shared World (the fields the
  * animals eat from), one block of shared per-step scratch, and N independent Worms. The
  * 302x302 matrices are anatomy, identical for every animal, so only state is duplicated --
- * but state is not nothing. A second animal costs a measured 240,208 bytes, 235 kB, of
+ * but state is not nothing. A second animal costs a measured 240,304 bytes, 235 kB, of
  * which 210,936 is the head-delay line alone. See the scratch block below and #33; the
  * figure is asserted by wasm/memory.mjs, which also checks that every document quoting it
  * quotes this number, because the previous one was out by a factor of a hundred and stayed
@@ -328,7 +328,7 @@ class World {
    * WHAT IT COSTS. Two f64 grids a patch, 2 * 65,536 * 8 = 1,048,576 bytes, plus the
    * patch's own lawn density over its bounding box -- 6,496 bytes for the 5 mm lawn in the
    * conformance plate, at most 524,288 for one that covers the dish. So 1.0 MB a patch in
-   * the ordinary case and 1.5 MB in the worst, against 240,208 bytes for a whole animal:
+   * the ordinary case and 1.5 MB in the worst, against 240,304 bytes for a whole animal:
    * a lawn is four worms. MAX_FOOD_PATCHES is what stops the viewer's drop-food button
    * from turning that into an unbounded leak; past it, `addPatch` refuses and counts the
    * refusal, the same way a full plate refuses an egg. */

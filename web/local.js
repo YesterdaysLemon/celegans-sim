@@ -255,7 +255,7 @@ export class LocalEngine {
   }
 
   /* Worms come and go at runtime. They share the plate, the anatomy and the runtime's
-   * per-step scratch, so adding one costs state and nothing else -- but state is 240,208
+   * per-step scratch, so adding one costs state and nothing else -- but state is 240,304
    * bytes, 235 kB, of which 210,936 is the head-reflex delay line. Measured off the
    * allocator's per-worm stride by `node wasm/memory.mjs`; this comment claimed a few
    * kilobytes until #33 went and checked, and it was out by a factor of a hundred.

@@ -2448,10 +2448,17 @@ class SleepParams:
     *structure* is the biology; the rates are watchable.
 
     Below threshold_on the whole module is provably inert: drive exactly 0, FLP-11
-    exactly 0 (release_threshold sits above any activation RIS reaches from wiring
-    alone -- measured before shipping), every gain multiplier exactly 1.0. An animal
-    that has not yet slept is bit-identical to the animal before sleep existed, which
-    is what keeps every pinned trajectory and conformance case standing.
+    exactly 0 (release gated on the driven bout -- worm/sleep.py has the measured
+    reason), every gain multiplier exactly 1.0. An animal that has not yet slept is
+    bit-identical to the animal before sleep existed, which is what keeps every pinned
+    trajectory and conformance case standing.
+
+    An assay that feeds the animal on a dense lawn for longer than about a minute now
+    contains sleep, and that is the model, not a confound to tune away: the pharynx
+    fixture's animal fell asleep mid-measurement the day this landed and its mean pump
+    rate dropped from 250 to 194 a minute. When the claim under test is about the
+    AWAKE animal, run the sleepless control: `ris_drive = 0.0` disables the drive, and
+    with it this module touches nothing (tests/test_pharynx.py does exactly this).
     """
     ris_drive: float = 30.0          # pA into RIS while the homeostat says sleep
     release_threshold: float = 0.75  # RIS activation where FLP-11 release begins
