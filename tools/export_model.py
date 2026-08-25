@@ -150,6 +150,12 @@ MODULATOR_SCALARS = ("dopamine_slowing", "serotonin_slowing", "dopamine_waveleng
 PHARYNX_SCALARS = ("myogenic_rate", "mc_rate_gain", "i2_rate_gain", "serotonin_to_mc",
                    "octopamine_to_mc", "max_rate", "pump_duration", "m3_duration_gain",
                    "volume_per_pump", "m4_transport", "m4_gain", "lumen_capacity")
+# The two sleep taus are folded into derived per-step rates on the way out
+# (slp_flp_rate, slp_sleep_decay), the same trip chemo_tau_adapt takes -- see the note
+# above `GENES` on what that means for gene eligibility.
+SLEEP_SCALARS = ("ris_drive", "release_threshold", "quiescence_gain", "build_fed",
+                 "build_base", "threshold_on", "threshold_off", "arousal_touch",
+                 "arousal_refractory", "arousal_clear")
 EGGLAYING_SCALARS = ("myogenic", "hsn_gain", "serotonin_gain", "vc_gain", "vm_tau",
                      "vm_threshold", "off_food_floor", "eggs_per_food", "uterus_capacity",
                      "eggs_initial", "resource_tau", "resource_cost", "resource_off",
@@ -170,6 +176,7 @@ SCALAR_GROUPS = (
     ("modulator", "mod_", MODULATOR_SCALARS),
     ("pharynx", "ph_", PHARYNX_SCALARS),
     ("egglaying", "egl_", EGGLAYING_SCALARS),
+    ("sleep", "slp_", SLEEP_SCALARS),
     ("world", "world_", WORLD_SCALARS),
 )
 
@@ -547,6 +554,16 @@ def export(path=OUT, params=None):
     # The browser keeps eggs in a fixed ring rather than a growing list: a tab left
     # open overnight lays thousands, and the plate is a picture, not a record.
     b.i("max_eggs", 4096)
+
+    # -- sleep ---------------------------------------------------------------------------
+    # RIS-gated quiescence (worm/sleep.py). The cell's index travels like every other
+    # pool, and the two taus travel as the per-step rates both implementations must
+    # share exactly -- the same trip every other first-order state takes.
+    slp = sim.sleep
+    b.arr("idx_ris", np.asarray(slp.ris, dtype=np.int32), "i4")
+    b.f("slp_flp_rate", slp._flp_rate)
+    b.f("slp_sleep_decay", slp._sleep_decay)
+    _export_scalars(b, p.sleep, SLEEP_SCALARS, "slp_")
 
     # -- world ---------------------------------------------------------------------------
     wp = p.world

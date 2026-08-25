@@ -28,6 +28,7 @@ from .body import Body
 from .errors import DivergentSimulation
 from .modulators import Modulators
 from .egglaying import EggLaying
+from .sleep import Sleep
 from .pharynx import Pharynx
 from .muscle import Muscles
 from .nervous import NervousSystem
@@ -81,6 +82,7 @@ class Simulation:
                                      g_rest=self.nervous.g_rest)
         self.pharynx = Pharynx(self.conn, self.p.pharynx, self.p.neural.dt)
         self.egglaying = EggLaying(self.conn, self.p.egglaying, self.p.neural.dt)
+        self.sleep = Sleep(self.conn, self.p.sleep, self.p.neural.dt)
 
         self.dt = self.p.neural.dt
         self.t = 0.0
@@ -152,12 +154,23 @@ class Simulation:
         # that within a step the wireless layer is one step behind the wired one -- the
         # same consistent unit delay used everywhere else in this model.
         self.modulators.step(activation, alive=self.nervous.alive)
+        # Sleep steps beside the other slow state, reading the same one-step-old
+        # activation, the touch the mechanosensors are already smoothing, and the
+        # dopamine level that means "on food" everywhere else in the model. Its
+        # quiescence gate rides the modulator object so every consumer of modulator
+        # effects -- cords, head, pharynx -- sees one consistent value per step.
+        ris_I = self.sleep.step(activation, float(self.senses.touch_state.sum()),
+                                self.modulators.level["dopamine"],
+                                alive=self.nervous.alive)
+        self.modulators.quiescence = self.sleep.quiescence()
         # The amine load-sensing path reads the drag force the cuticle bore on the
         # previous step -- the same unit delay as every other sensory quantity. Only
         # computed when the path is on, so the shipped animal pays nothing.
         load = (self.body.drag_load() if self.p.sensory.load_gain != 0.0 else 0.0)
         I_ext = self.senses.sense(self.world, nodes, self._contact, curvature, activation,
                                   self.modulators, load=load)
+        if ris_I != 0.0:
+            I_ext[self.sleep.ris] += ris_I
 
         self.nervous.step(I_ext, g_mod=self.modulators.gated_conductance(),
                           g_exc=self.senses.prop_g, E_exc=self.p.sensory.proprio_E_rev,
@@ -378,6 +391,7 @@ class Simulation:
             "food_eaten": round(self.food_eaten, 4),
             "pharynx": {k: round(float(v), 5) for k, v in self.pharynx.readout().items()},
             "egglaying": {k: round(float(v), 5) for k, v in self.egglaying.readout().items()},
+            "sleep": {k: round(float(v), 5) for k, v in self.sleep.readout().items()},
             "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
         }
 

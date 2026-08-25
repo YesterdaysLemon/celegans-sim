@@ -1100,6 +1100,17 @@ class Worm {
   pokeA: f64 = 0.0; pokeP: f64 = 0.0;
   goingForward: bool = true;
   omega: f64 = 0.0; omegaSign: f64 = 1.0; revSteps: i32 = 0;
+  // sleep -- worm/sleep.py: the satiety homeostat, the bout, and the FLP-11 level.
+  slpPressure: f64 = 0.0; slpFlp11: f64 = 0.0; slpRefract: f64 = 0.0;
+  slpBout: bool = false;
+  /* The clock, per worm and seeded from the payload -- the amine path's pattern. A
+   * conformance case compresses these so a bout fits inside its window, and a policy
+   * may one day breed sleepy and sleepless strains; either way the payload default is
+   * the canonical animal untouched. */
+  slpFlpRate: f64 = G.SLP_FLP_RATE; slpDecay: f64 = G.SLP_SLEEP_DECAY;
+  slpBuildFed: f64 = G.SLP_BUILD_FED; slpBuildBase: f64 = G.SLP_BUILD_BASE;
+  slpThrOn: f64 = G.SLP_THRESHOLD_ON; slpThrOff: f64 = G.SLP_THRESHOLD_OFF;
+  slpRefractS: f64 = G.SLP_AROUSAL_REFRACTORY;
   // modulators, in the order used by model_gen: dopamine, serotonin, octopamine, pdf
   modDA: f64 = 0.0; modSER: f64 = 0.0; modOA: f64 = 0.0; modPDF: f64 = 0.0;
   // pharynx
@@ -1728,10 +1739,65 @@ class Worm {
   }
   turnBias(): f64 { return G.MOD_SEROTONIN_TURNING * this.modSER - G.MOD_PDF_ROAMING * this.modPDF; }
   locomotorScale(): f64 {
+    // Sleep multiplies *outside* the food-slowing floor: a fed worm slows to half
+    // speed and no further, a sleeping worm genuinely stops (worm/sleep.py). Awake
+    // the factor is exactly 1.0.
     return clamp(1.0 - G.MOD_DOPAMINE_SLOWING * this.modDA
                      - G.MOD_SEROTONIN_SLOWING * this.modSER
-                     + G.MOD_OCTOPAMINE_SPEEDING * this.modOA, 0.25, 1.6);
+                     + G.MOD_OCTOPAMINE_SPEEDING * this.modOA, 0.25, 1.6)
+           * (1.0 - this.quiescence());
   }
+
+  /* ----------------------------------------------------------------------- sleep ---
+   * RIS-gated quiescence: worm/sleep.py owns the circuit and its provenance (Turek
+   * 2013 for RIS, Turek 2016 for FLP-11, You 2008 for the satiety homeostat). The
+   * shapes here follow it line for line. Below threshold_on the whole path is exactly
+   * inert -- drive 0, FLP-11 exactly 0, every gain multiplier exactly 1.0 -- which is
+   * what keeps every animal that has not yet slept bit-identical to the model before
+   * sleep existed. */
+  stepSleep(): f64 {
+    // FLP-11 follows RIS's own activation, gated on the bout: a dead RIS reads 0 and
+    // releases nothing however hard the homeostat drives it (ablation abolishes sleep).
+    let act: f64 = 0.0;
+    const r = mi(G.OFF_idx_ris, 0);
+    if (!this.anyDead || unchecked(this.alive[r])) act = unchecked(this.act[r]);
+    let target: f64 = 0.0;
+    if (this.slpBout) {
+      const d = act - G.SLP_RELEASE_THRESHOLD;
+      target = (d > 0.0 ? d : 0.0) / (1.0 - G.SLP_RELEASE_THRESHOLD);
+    }
+    this.slpFlp11 += (target - this.slpFlp11) * this.slpFlpRate;
+
+    // Arousal: strong touch interrupts the bout, clears most of the standing peptide
+    // (waking is fast where falling asleep is slow), and holds sleep off for the
+    // refractory. Pressure is untouched -- that is sleep rebound.
+    if (this.slpRefract > 0.0) {
+      const t = this.slpRefract - G.DT;
+      this.slpRefract = t > 0.0 ? t : 0.0;
+    }
+    if (this.slpBout && this.touchA + this.touchP > G.SLP_AROUSAL_TOUCH) {
+      this.slpBout = false;
+      this.slpRefract = this.slpRefractS;
+      this.slpFlp11 *= (1.0 - G.SLP_AROUSAL_CLEAR);
+    }
+
+    // The homeostat: builds while awake -- fast on food, read off dopamine's positive
+    // deviation -- and discharges during a bout. Schmitt trigger, so bouts are bouts.
+    if (this.slpBout) {
+      this.slpPressure *= this.slpDecay;
+      if (this.slpPressure < this.slpThrOff) this.slpBout = false;
+    } else {
+      const dop = this.modDA;
+      const rate = this.slpBuildBase + this.slpBuildFed * (dop > 0.0 ? dop : 0.0);
+      const pp = this.slpPressure + rate * G.DT;
+      this.slpPressure = pp < 1.0 ? pp : 1.0;
+      if (this.slpPressure > this.slpThrOn && this.slpRefract <= 0.0) {
+        this.slpBout = true;
+      }
+    }
+    return this.slpBout ? G.SLP_RIS_DRIVE : 0.0;
+  }
+  quiescence(): f64 { return clamp(G.SLP_QUIESCENCE_GAIN * this.slpFlp11, 0.0, 1.0); }
   wavelengthShortening(): f64 { return clamp(G.MOD_DOPAMINE_WAVELENGTH * this.modDA, 0.0, 1.0); }
 
   /* ------------------------------------------------------------------------ senses --- */
@@ -1952,6 +2018,9 @@ class Worm {
       const f = 1.0 - G.SEN_OMEGA_REFLEX_SUPPRESSION * Math.abs(this.omega);
       headGain *= f > 0.0 ? f : 0.0;
     }
+    // Sleep stands the head oscillator down along with the cords -- worm/sleep.py.
+    // Awake the factor is exactly 1.0.
+    headGain *= 1.0 - this.quiescence();
     for (let j = 0; j < J; j++) {
       unchecked(sKh[j] = this.headDelayN > 0 ? unchecked(this.headHist[headOff + j])
                                              : unchecked(sKn[j]));
@@ -2041,6 +2110,9 @@ class Worm {
     const i2 = this.meanDev(G.OFF_idx_i2, G.LEN_idx_i2);
     this.phRate = clamp(G.PH_MYOGENIC_RATE + G.PH_MC_RATE_GAIN * mc - G.PH_I2_RATE_GAIN * i2,
                         0.0, G.PH_MAX_RATE);
+    // Sleeping animals stop pumping -- worm/pharynx.py carries the same line and the
+    // provenance. Awake the multiplier is exactly 1.0.
+    this.phRate *= 1.0 - this.quiescence();
 
     // The cycle runs during the pump as well as between pumps, so the rate is the one the
     // animal achieves; what remains is a refractory period, capping it at 1/duration.
@@ -2098,10 +2170,15 @@ class Worm {
     // wireless layer is one step behind the wired one -- the same consistent unit delay
     // used everywhere else in this model.
     this.stepModulators();
+    // Sleep steps beside the other slow state, reading the same one-step-old
+    // activation and touch; its RIS drive joins the sensory currents after sense()
+    // builds them, exactly as in worm/engine.py.
+    const risI = this.stepSleep();
     // The amine path reads the drag force the cuticle bore on the previous step -- the
     // same unit delay every other sensory quantity carries (worm/engine.py).
     this.amLoad = this.amLoadGain != 0.0 ? this.dragLoad() : 0.0;
     this.sense();
+    if (risI != 0.0) this.addTo(G.OFF_idx_ris, G.LEN_idx_ris, risI);
     this.stepNervous();
     this.stepMuscle();
     this.contact();
@@ -3382,6 +3459,26 @@ export function getSensed(w: i32, which: i32): f64 {
 export function pokeWorm(w: i32, anterior: i32, strength: f64): void {
   const wm = byId(w);
   if (anterior != 0) wm.pokeA += strength; else wm.pokeP += strength;
+}
+/* Sleep, read and driven. `wormAsleep` is the viewer's window (0 awake .. 1 fully
+ * quiescent); `setSleepPressure` exists for conformance and debugging -- it writes the
+ * homeostat's pressure directly so a bout can be provoked without minutes of feeding,
+ * exactly as Python tests assign `sim.sleep.pressure`. */
+export function wormAsleep(w: i32): f64 { return byId(w).quiescence(); }
+export function wormSleepPressure(w: i32): f64 { return byId(w).slpPressure; }
+export function wormFlp11(w: i32): f64 { return byId(w).slpFlp11; }
+export function wormSleepBout(w: i32): i32 { return byId(w).slpBout ? 1 : 0; }
+export function setSleepPressure(w: i32, pr: f64): void { byId(w).slpPressure = pr; }
+/* The compressed clock, for conformance: hands the runtime the exact per-step rates the
+ * Python reference computed, so both sides share floats rather than each deriving its
+ * own from a tau. Mirrors setAminePath's contract. */
+export function setSleepClock(w: i32, flpRate: f64, decay: f64, buildFed: f64,
+                              buildBase: f64, thrOn: f64, thrOff: f64,
+                              refract: f64): void {
+  const wm = byId(w);
+  wm.slpFlpRate = flpRate; wm.slpDecay = decay;
+  wm.slpBuildFed = buildFed; wm.slpBuildBase = buildBase;
+  wm.slpThrOn = thrOn; wm.slpThrOff = thrOff; wm.slpRefractS = refract;
 }
 /* Tweezers: rigidly translate an animal. The pose is a head anchor plus link angles, so
  * a translation is two additions and a node rebuild -- the shape, the gait phase and

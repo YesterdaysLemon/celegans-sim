@@ -499,6 +499,7 @@ export class LocalEngine {
       eggsLaid: E.getEggsLaid(w),
       vulva: E.getVulvalMuscle(w),
       eglActive: E.getEglActive(w),
+      asleep: E.wormAsleep(w),
       sensed: {
         attractant: E.getSensed(w, 0), temperature: E.getSensed(w, 1),
         oxygen: E.getSensed(w, 2), food: E.getSensed(w, 3),

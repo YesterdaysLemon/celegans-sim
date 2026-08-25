@@ -99,7 +99,7 @@ def folded_case():
 
 
 def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau=0.0,
-              amine=False):
+              amine=False, sleep=False):
     """The whole loop -- neurons, muscle, senses, body -- with the noise switched off.
 
     Noise is the one thing that cannot match: it is numpy's PCG64 through a ziggurat
@@ -141,6 +141,15 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
             modulator=dataclasses.replace(
                 p.modulator, dopamine_head_lag=1.30, dopamine_reach_swim=2.0,
                 dopamine_muscle_rate=0.5))
+    # Sleep, on a compressed clock so one 2 s window holds the whole life of a bout:
+    # entry (pressure seeded above threshold), FLP-11 release and the three gain gates,
+    # an arousal (the poke window below), the refractory, re-entry, discharge and exit.
+    # At the shipped clock none of those branches fire inside any conformance window,
+    # and a branch never taken is not being checked -- the MOD-1 lesson a third time.
+    if sleep:
+        p = dataclasses.replace(p, sleep=dataclasses.replace(
+            p.sleep, tau_sleep=0.35, threshold_on=0.4, threshold_off=0.3,
+            build_fed=3.0, flp11_tau=0.15, arousal_refractory=0.4))
     # A plate with something on it. A bare world leaves most of the sensory layer reading
     # zero -- and a term that is only ever multiplied by zero is not being checked. The
     # lawn exercises the attractant, odour, food and oxygen paths and the drop exercises
@@ -159,6 +168,22 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
     sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     steps = 4000
     out = {"steps": steps, "sample": 200, "frames": []}
+    if sleep:
+        # Pressure seeded above threshold so the bout fires at once, and the exact
+        # Python-computed per-step rates handed over so the runtime is configured with
+        # the same floats -- the cascade's contract. The poke window is the arousal.
+        sim.sleep.pressure = 0.95
+        out["sleep_cfg"] = {
+            "pressure0": 0.95,
+            "flp_rate": float(sim.sleep._flp_rate),
+            "sleep_decay": float(sim.sleep._sleep_decay),
+            "build_fed": float(p.sleep.build_fed),
+            "build_base": float(p.sleep.build_base),
+            "threshold_on": float(p.sleep.threshold_on),
+            "threshold_off": float(p.sleep.threshold_off),
+            "arousal_refractory": float(p.sleep.arousal_refractory),
+            "poke_from": 600, "poke_to": 700, "poke_strength": 8.0,
+        }
     if sim.senses._head_stages > 1:
         # The exact constants the Python side computed, so the runtime is configured with
         # the same floats rather than recomputing them and eating a rounding difference.
@@ -173,6 +198,8 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
                         "reach_blend": mo.dopamine_reach_swim,
                         "muscle_rate": mo.dopamine_muscle_rate}
     for i in range(steps):
+        if sleep and 600 <= i < 700:
+            sim.poke("anterior", strength=8.0)
         sim.step()
         if (i + 1) % 200 == 0:
             nodes = sim.body.nodes()
@@ -199,6 +226,11 @@ def full_case(serotonin_mod1=0.0, head_stages=0, head_delay=None, head_stage_tau
                         round(float(sim.egglaying.eggs), 10),
                         round(float(sim.egglaying.resource), 10),
                         float(sim.egglaying.laid)],
+                # The homeostat, the peptide, and the bout flag -- only for the sleep
+                # case, so every other case's frames stay byte-for-byte what they were.
+                **({"sleep": [round(float(sim.sleep.pressure), 12),
+                              round(float(sim.sleep.flp11), 12),
+                              1.0 if sim.sleep.bout else 0.0]} if sleep else {}),
             })
     return out
 
@@ -466,6 +498,10 @@ def main():
                # gets: dopamine must integrate the transduced load and move three
                # effects for this to agree.
                "amine": full_case(amine=True),
+               # Sleep on a compressed clock: bout entry, the FLP-11 gates, an arousal
+               # by poke, the refractory, re-entry, discharge and exit -- all inside
+               # one 2 s window. See the sleep block in full_case.
+               "sleeping": full_case(sleep=True),
                # Several animals on one plate. Everything above is one animal, and one
                # animal cannot reach the batch settlement or the shared world advance.
                "multi": multi_case()},

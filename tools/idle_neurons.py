@@ -63,6 +63,8 @@ def routed_map(sim):
     mark(np.where(sn.W_head_sign != 0)[0], 'head reflex')
     if hasattr(sn, '_omega_v'):
         mark(sn._omega_v, 'omega'); mark(sn._omega_d, 'omega')
+    if hasattr(sim, 'sleep'):
+        mark(sim.sleep.ris, 'sleep drive')   # the homeostat's current -- worm/sleep.py
     return routed
 
 
