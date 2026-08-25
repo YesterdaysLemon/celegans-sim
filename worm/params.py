@@ -435,8 +435,33 @@ class NeuralParams:
     # to carry the forward half. The cross-product below adds exactly those four
     # synapses: ASEL/AWA -> AVA and PHB -> AIY have no contacts in this reconstruction,
     # which was checked before widening the lists.
+    #
+    # ASEL -> AIB joined the list next (2026-08-25), and it is the route the paragraph
+    # above the table predicted: "ASE onto AIB onto RIM ... promotes reversals as the
+    # attractant rises, and it is not correctable the same way -- AIB holds GLR-1 and is
+    # *supposed* to be excited." Supposed to be excited BY THE OFF CELL: worsening should
+    # reverse, and ASER -> AIB (12 contacts) keeps its excitatory receptor. What the
+    # improvement signal needs on AIB is the other glutamate receptor -- the same
+    # one-transmitter-two-receptors logic Chalasani et al. 2007 mapped for AWC's targets
+    # -- and receptor-level evidence for this specific synapse is NOT in hand; the basis
+    # is functional, like AWA's, and unlike AWA's it is measured, twice:
+    #
+    #   direct (3 pA held into ASEL, reversal onsets/min, 3 seeds x 60 s, paired):
+    #     shipped   2.67 quiet -> 3.33 driven   +0.67  improving PROMOTES reversal
+    #     chloride  2.33 quiet -> 2.33 driven   +0.00  the wrong-way route is gone
+    #   assay (chemotaxis plate, 8 seeds x 200 s, paired, events pooled over time):
+    #     shipped   rate_up 2.83  rate_down 1.47   ratio 0.520
+    #     chloride  rate_up 2.32  rate_down 2.02   ratio 0.873
+    #
+    # Both conditional rates move the right way at once -- fewer reversals while climbing
+    # AND more while descending -- which is the opponency itself, not a gain effect. The
+    # outcome (approach, chemotaxis index) does not move at n=8 against +/-20 mm per-seed
+    # wander: the same mechanism-right-outcome-small standing everywhere in NEXT.md's
+    # second tier, and the ratio is still the wrong side of 1. The cross-product check
+    # again: AWA -> AIB and PHB -> AIB have no contacts, so widening post to AIB flips
+    # exactly the nine ASEL -> AIB contacts and nothing else.
     glucl_pre: tuple = ("ASEL", "AWA", "PHB")   # ON cells, plus the tail's repellent line
-    glucl_post: tuple = ("AIY", "AVA")          # targets expressing the chloride receptor
+    glucl_post: tuple = ("AIY", "AVA", "AIB")   # targets expressing the chloride receptor
     # Adopted at 1.0. Measured directly, as reversals per minute under a steady 3 pA into
     # ASEL -- which is what "the attractant is rising" looks like to the circuit:
     #
