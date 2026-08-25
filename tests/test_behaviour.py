@@ -334,6 +334,32 @@ def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
         "channel has become a second URX")
 
 
+def test_improvement_is_chloride_on_aib_and_worsening_is_not():
+    """The ASE opponency at its second synapse, pinned where it is a fact of wiring.
+
+    ASEL (rising attractant, "better") answers glutamate with chloride on AIB, the
+    reversal-promoting interneuron; ASER (falling attractant, "worse") keeps the
+    excitatory receptor on the same cell -- worsening SHOULD reverse. One transmitter,
+    two receptors, decided postsynaptically per presynaptic partner, the shape
+    Chalasani et al. 2007 mapped for AWC's targets. NeuralParams.glucl_pre has both
+    measurements: with the pair symmetric-excitatory, driving ASEL *promoted* reversals
+    (+0.67/min) and the pirouette ratio sat at 0.52; with this asymmetry the wrong-way
+    route reads +0.00 and the ratio 0.87. Losing either half silently un-does that, so
+    both halves are asserted.
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=bare_world(p))
+    ix = sim.conn.index
+    E = sim.nervous.E_syn                     # (N, N), [post, pre]
+    for post in ("AIBL", "AIBR"):
+        assert E[ix[post], ix["ASEL"]] == p.neural.E_inh, (
+            "%s hears ASEL through an excitatory receptor: 'better' will command "
+            "reversals again" % post)
+        assert E[ix[post], ix["ASER"]] == p.neural.E_exc, (
+            "%s hears ASER through chloride: 'worse' can no longer command the "
+            "reversal it is supposed to" % post)
+
+
 def _sleepy(seed=0):
     """A fed animal on a lawn with the sleep clock compressed for testing.
 

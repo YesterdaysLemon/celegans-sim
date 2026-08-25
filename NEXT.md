@@ -177,7 +177,10 @@ behavioural assay at once.
   Not citable as a working phenotype.
 - **Taxis magnitude.** Mechanisms point the right way with small outcomes. Re-run after a
   turn-depth mechanism clears its own paired gate; do not tune the assays around the current
-  shallow turn.
+  shallow turn. The mechanism side keeps improving while the outcome waits: ASEL → AIB
+  chloride (2026-08-25, `NeuralParams.glucl_pre` provenance) moved both conditional
+  pirouette rates the right way at once and took the paired ratio 0.52 → 0.87 — still the
+  wrong side of 1, approach unmoved at n=8, same ceiling.
 
 ---
 
