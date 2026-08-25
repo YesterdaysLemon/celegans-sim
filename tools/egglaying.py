@@ -10,7 +10,12 @@ does that. The claims worth testing are the ones that would fail if the thing we
                   coefficient of variation of the intervals is well above 1 -- a Poisson
                   process gives exactly 1, and a metronome gives 0. Nothing in
                   worm/egglaying.py schedules a phase or counts events; if the clustering
-                  is there it is what the depleting resource does.
+                  is there it is what the depleting resource does -- OR, since the sleep
+                  homeostat (worm/sleep.py), what sleep does: a sleeping animal stops
+                  pumping and laying on a bouts-of-tens-of-seconds, threshold-at-about-a-
+                  minute-on-food clock, which produces exactly this bimodal shape. Before
+                  reading the CV as the resource's signature, run the sleepless control
+                  (SleepParams.ris_drive = 0) and compare.
 
     FOOD          On food an animal lays freely; off food it retains eggs. This is a
                   gate, not a bias -- the difference should be large.

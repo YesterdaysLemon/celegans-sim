@@ -62,8 +62,18 @@ def _plate(p, on_food):
 
 
 def _job(job):
+    import dataclasses
+
     label, cells, on_food, seed = job
+    # The awake animal, deliberately: on this wall-to-wall lawn the satiety homeostat
+    # crosses its threshold at about a minute (worm/sleep.py -- the pharynx test fixture
+    # was caught measuring a sleeping animal at 194 pumps/min against an awake 250), and
+    # a sleeping animal stops pumping. The pins this tool reports against are Avery &
+    # Horvitz's actively feeding animals, and the ablation arms shift dopamine and
+    # therefore WHEN sleep lands, which would contaminate their directions too. So the
+    # sleepless control is run here, same as tests/test_pharynx.py.
     p = Params()
+    p = dataclasses.replace(p, sleep=dataclasses.replace(p.sleep, ris_drive=0.0))
     sim = Simulation(p, seed=seed, world=_plate(p, on_food), placement=(0.0, 0.0, 0.0))
     if cells:
         sim.set_ablated(list(cells))

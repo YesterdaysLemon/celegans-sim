@@ -8,9 +8,11 @@ where the biology is asymmetric the model is too. Three cases are worth calling 
   That single opponent pair is most of what makes salt chemotaxis work.
 * AWC is an OFF cell: it is *silenced* by odour and fires on its removal, which is why
   removing an attractant triggers a reversal.
-* Sensation is differential, not absolute. Each channel keeps an adapting baseline and
-  reports the deviation from it, so the animal responds to change. A worm sitting in a
-  uniform concentration, however high, stops responding to it within seconds.
+* Sensation is differential more than absolute. Most channels keep an adapting baseline
+  and report the deviation from it, so the animal responds to change -- a worm sitting in
+  a uniform concentration stops responding to it within seconds. The exceptions are
+  deliberate: the repellents and oxygen carry a tonic term beside the differential one
+  (their parameters say why), and touch and food are level senses.
 """
 
 from __future__ import annotations
@@ -87,10 +89,10 @@ class Senses:
                                           p.proprio_reach_food, +1)
         self.W_a_food = _receptive_fields(conn, self.da, self.va, joint_s,
                                           p.proprio_reach_food, -1)
-        # The AS class -- the cord's dorsal-only motor neurons, the last class without
-        # a receptive field. Only built when the gain is set, so the shipped animal is
-        # bit-identical with it off; see SensoryParams.as_field_gain for the provenance
-        # and the adoption gate.
+        # The AS class -- the cord's dorsal-only motor neurons, the last class whose
+        # field is still off by default. Only built when the gain is set, so the shipped
+        # animal is bit-identical with it off; see SensoryParams.as_field_gain for the
+        # provenance and the adoption gate.
         self.asn = idx(*["AS%02d" % i for i in range(1, 12)])
         self.W_as = None
         if p.as_field_gain != 0.0:

@@ -8,7 +8,9 @@ A *Caenorhabditis elegans* simulated from its connectome down: 302 graded-potent
 neurons wired by the reconstructed synapse-by-synapse anatomy, driving 95 individually
 simulated body-wall muscle cells, driving an inextensible body in a viscous medium at
 zero Reynolds number, inside a petri dish with food, chemical gradients, a thermal
-gradient and obstacles. Plus a browser front end to watch it in.
+gradient and obstacles. It smells with both ends, it feeds, lays eggs — and it sleeps:
+RIS-gated quiescence on a satiety homeostat, poke-wakeable, abolished by ablating the
+one neuron the biology says to ablate. Plus a browser front end to watch it all in.
 
 The worm is the project. The web app is a media player for it.
 
@@ -112,8 +114,8 @@ statement of that line.
 
 ```
 worm/       the model: params (every constant with provenance), nervous, muscle,
-            body, world, senses, pharynx, egglaying, engine, server
-tools/      ~40 measurement instruments; tools/README.md is the index
+            body, world, senses, modulators, sleep, pharynx, egglaying, engine, server
+tools/      ~75 measurement instruments; tools/README.md is the index
 wasm/       the browser runtime and its test suites
 web/        the viewer: native ES modules, no build step, no dependencies
 tests/      the Python suite (~37 min) — the load-bearing behavioural checks

@@ -61,7 +61,9 @@ BOUNDS: Mapping[str, Bound] = MappingProxyType({
     # The calibrated sweep in ModulatorParams spans 0.0 through 0.6; leave headroom for
     # selection while keeping the conductance coefficient in a conservative envelope.
     "modulator.serotonin_mod1": Bound(0.0, 1.0, 0.05),
-    # One live gain per sensory channel.
+    # One live gain per evolvable sensory channel. Not every routed channel has a gene:
+    # the phasmid and BAG gains (2026-08-24) ship as plain scalars until a population is
+    # given a reason to tune them.
     "sensory.chemo_gain": Bound(0.0, 100.0, 5.0),
     "sensory.thermo_gain": Bound(0.0, 40.0, 2.0),
     "sensory.oxygen_gain": Bound(0.0, 200.0, 10.0),

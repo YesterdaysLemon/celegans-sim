@@ -58,6 +58,13 @@ inhibitory because they stain for GABA. AVL and DVB release GABA onto EXP-1, a G
 *cation* channel (Beg & Jorgensen 2003), so their synapses depolarise their targets. We
 keep them GABAergic and make their synapses excitatory.
 
+**And three glutamatergic synapse sets are inhibitory**, the same correction run the other
+way: the sign of a synapse belongs to the receptor, not the transmitter, and named cells
+answer the ON chemosensors' and the phasmids' glutamate with chloride —
+`NeuralParams.glucl_pre/post` carries ASEL/AWA/PHB onto AIY/AVA/AIB, each pairing adopted
+on its own measurement (that list is why PHB → AVA is a brake on reversal rather than a
+reversal driver, and why "things improving" no longer commands one).
+
 ### Muscle
 
 All 95 body-wall muscle cells are simulated individually, in their four quadrants, with
@@ -77,9 +84,11 @@ cell's presynaptic partners stays exactly as reconstructed.
 
 ### Memory
 
-One thing here remembers. Every other state variable forgets on purpose: the sensory
-adaptation filters exist to discard the past, and the modulators integrate over tens of
-seconds and then decay. The mechanoreceptor carries a depleting resource — repeated taps
+Two things here remember. Everything else forgets on purpose: the sensory adaptation
+filters exist to discard the past, and the modulators integrate over tens of seconds and
+then decay. The second memory is sleep's — the satiety homeostat (`worm/sleep.py`) builds
+pressure over minutes and deliberately keeps it across an arousal, which is what makes a
+poked sleeper go back to sleep. The first: the mechanoreceptor carries a depleting resource — repeated taps
 consume it, rest refills it with its own time constant — which reproduces the three things
 Rankin, Beck & Chiba (1990) measured in tap habituation from one equation rather than
 three fits: the response decrements, it recovers with rest, and a shorter interval
@@ -242,6 +251,19 @@ does not depend on the timestep.
 **Spontaneous reversals**, at 3.3 a minute against the animal's 3.2–3.5 off food, in
 episodes long enough to be reversals rather than threshold flicker.
 
+**Sleep, and it wakes to a poke.** A satiety homeostat builds pressure while the animal
+feeds — about a minute to threshold on a dense lawn, measured the day it landed when the
+pharynx assay's animal fell asleep mid-measurement — and above threshold it drives RIS,
+the one neuron whose activation the biology calls sufficient for quiescence (Turek 2013).
+RIS quiets the command and head circuits through its own GABAergic wiring and releases
+FLP-11, which stands down the cords, the head oscillator and the pharyngeal pump: the
+animal stops moving and stops pumping, keeps full touch sensitivity, and a strong poke
+wakes it within a second (arousal clears most of the standing peptide — rapid
+reversibility is what separates sleep from paralysis). Pressure survives the arousal, so
+a poked sleeper naps again: rebound for free. Ablate RIS and sleep is abolished, FLP-11
+exactly zero — the Turek experiment, reproduced. An animal that has never slept is
+bit-identical to the pre-sleep model, which is what kept every conformance case standing.
+
 **Egg-laying, and it is clustered.** HSN and the VCs drive vulval muscle; the uterus fills
 from what the pharynx actually transported, so an animal that does not eat does not make
 eggs. Five animals for an hour each give **11.0 eggs/hour with an interval CV of 1.79** —
@@ -354,8 +376,9 @@ conductance** — a conductance, not a current, so it shunts and saturates like 
 channel. AIB, where MOD-1 actually is, does not carry: the channel silences AIB perfectly
 (−20 → −45 mV) and reaches RIM, but AVA moves 0.584 → 0.572 and the command difference not
 at all. On the command pool itself it works — on-food reversals 6.45 → 2.85/min, and a
-**pirouette ratio of 1.58**, the best this model has produced against every other
-configuration sitting within noise of 1.
+**pirouette ratio of 1.58**, the best this model has produced; every other configuration
+measured before the GluCl opponency work sat within noise of 1 (the shipped wiring now
+reads 0.87 paired — see *What it does not get right*).
 
 It ships at zero anyway, because the chemotaxis index falls +0.083 → +0.014 with it on. A
 better mechanism and a worse outcome: the reversals being suppressed are the same ones
@@ -402,9 +425,13 @@ Read that carefully, because it is not the result the old assay was reaching for
 animal does not get out **faster** — time-to-clear is unchanged, and the interval says so.
 It gets out **further, and stays out**. Heading into the drop, the derivative term is
 positive and drives ASH; heading out of it, the same term is negative and *suppresses*
-ASH, so the animal does not turn round and wander back in. That asymmetry is the whole
-mechanism, and it is invisible to a tonic sense, which by construction cannot tell the two
-directions apart.
+ASH, so the animal does not turn round and wander back in. That asymmetry was the whole
+mechanism when it was measured; the escape has a second half now — the phasmids sense the
+same repellent at the tail on their own baseline, with PHB's synapses onto AVA answering
+in chloride, so danger *behind* the animal no longer out-commands danger ahead of it
+(a +0.714 mV wrong-way dAVA before the correction, +0.070 after; the provenance is at
+`NeuralParams.glucl_pre`). Both halves are invisible to a tonic sense, which by
+construction cannot tell the two directions apart.
 
 It also inverts the mechanism panel the old assay was proud of: reversals while exposed are
 now 0.22/min against 0.58/min while clear, a difference whose interval spans zero. Fewer
@@ -493,17 +520,26 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   source. The animal covers plenty of ground now (24 mm in 200 s); it simply has no net
   bias about where.
 
-  The reason is measured. `Senses` gives ASEL +dC/dt and ASER −dC/dt, a genuine opponent
-  pair, but both project onto AIY with the same sign — 19 contacts against 16 — so AIY
-  receives (+dC/dt) + (−dC/dt) and the opponency dies at the first synapse. Giving the ON
-  cell a glutamate-gated chloride channel and the OFF cell not makes them push the same
-  way and the sign comes right, but the effect is 0.009 σ of the command difference where
-  biasing the walk wants of order 0.1 — a hundredfold short, and not through attenuation,
-  since the chain is strong at every stage.
+  The reason was measured, and the correction ships. `Senses` gives ASEL +dC/dt and ASER
+  −dC/dt, a genuine opponent pair, but both projected onto AIY — 19 contacts against
+  16 — with the same sign, so AIY received (+dC/dt) + (−dC/dt) and the opponency died at
+  the first synapse. The shipped model now answers the ON cells' glutamate with chloride
+  (`NeuralParams.glucl_pre`: ASEL/AWA/PHB onto AIY/AVA/AIB, adopted in two measured
+  steps), which turned the sign right at AIY and then killed the second wrong-way route,
+  ASE → AIB → RIM: with ASEL → AIB inhibitory, both conditional rates move correctly at
+  once and the paired ratio reads 0.52 → 0.87. Still the wrong side of 1, and the
+  outcome — index, approach — is unmoved against ±20 mm of per-seed wander: the
+  mechanism is right and roughly a hundredfold short of biasing the walk, the same
+  magnitude gap as everywhere in the second tier.
 
-- **Aerotaxis does not work at all**: 20.9% oxygen occupied against an ambient 21%, where
-  N2 prefers 5–12%. URX/AQR/PQR make 44 contacts onto the backward command pool, more than
-  any other sensory pathway, so this one should be reachable and is not.
+- **Aerotaxis still underperforms its wiring.** The first reading was "does not work at
+  all" — 20.9% oxygen occupied against an ambient 21%, where N2 prefers 5–12% — despite
+  URX/AQR/PQR making 44 contacts onto the backward command pool. Oxygen sensing has both
+  its edges now (URX the level and upshift, BAG the downshift), and the border behaviour
+  is real but thin: at a lawn's oxygen dent the routed animal turns nearly twice as often
+  and wanders less far, but the dwell gain is carried by 2 of 8 seeds
+  (`tools/bag_border.py`). The turn the circuit asks for is shallower than the animal's;
+  the ceiling is turn depth, not the sensor.
 
 - **The gait's step dependence was a coupling bug, not a numerical one, and the previous
   entry here was wrong.** `BodyParams.dt` was documented as "shared with the neural step"
@@ -622,11 +658,18 @@ on a full plate meaning what it did.
 Sensory transduction is routed to the neurons that actually carry it, and where the biology
 is asymmetric so is the model: ASEL and ASER are a matched ON/OFF pair (ASEL depolarises
 when attractant concentration rises, ASER when it falls); AWC is an OFF cell, silenced by
-odour and firing on its removal; AFD is a warm receptor above the cultivation temperature;
-URX/AQR/PQR report oxygen; ALM/AVM and PLM carry anterior and posterior touch; the eight
-dopaminergic neurons sense the bacterial lawn mechanically. Every channel adapts, because
-sensation is differential — a worm sitting in a uniform concentration, however high, stops
-responding to it within seconds.
+odour and firing on its removal, beside AWA, the ON cell; ASH/ADL/ASK carry the repellent
+at the nose and PHA/PHB — the phasmids — carry the same repellent at the tail, so escape
+*direction* is a head-versus-tail comparison (Hilliard 2002); AFD is a warm receptor above
+the cultivation temperature; URX/AQR/PQR report the oxygen level and its upshift and BAG
+the downshift (Zimmer 2009 — the two edges of one signal, split between carriers as the
+biology has it); ALM/AVM and PLM carry anterior and posterior touch, OLQ/FLP/CEP the nose
+touch; the eight dopaminergic neurons sense the bacterial lawn mechanically and NSM tastes
+it in the pharynx; and RIS, driven by the satiety homeostat, puts the animal to sleep
+through its own GABAergic wiring and FLP-11 (`worm/sleep.py`). Most channels adapt,
+because sensation is largely differential — a worm sitting in a uniform concentration
+stops responding to it within seconds — with deliberate tonic exceptions the parameters
+document (the repellents, oxygen, touch, food).
 
 ---
 

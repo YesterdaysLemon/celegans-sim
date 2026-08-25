@@ -86,7 +86,9 @@ class Modulators:
         # below is exactly 1.0.
         self.quiescence = 0.0
 
-        # MOD-1, the serotonin-gated chloride channel on AIB. Peak conductance is a
+        # MOD-1, the serotonin-gated chloride channel, placed on the backward command
+        # pool (mod1_targets -- AIB was tried first and measured not to carry; see
+        # ModulatorParams.serotonin_mod1 for that record). Peak conductance is a
         # fraction of each target's own resting conductance, so the coefficient means the
         # same thing whatever the cell's size. See ModulatorParams.serotonin_mod1.
         idx = conn.group(*p.mod1_targets)
@@ -162,9 +164,9 @@ class Modulators:
     def gated_conductance(self) -> np.ndarray | None:
         """Ligand-gated conductance the modulators are currently opening, per neuron.
 
-        Only MOD-1 so far: serotonin opening a chloride channel on AIB, which is how food
-        suppresses reversals. Returns None when nothing is switched on, so the wired model
-        is untouched. See ModulatorParams.serotonin_mod1.
+        Only MOD-1 so far: serotonin opening a chloride channel on the backward command
+        pool, which is how food suppresses reversals. Returns None when nothing is
+        switched on, so the wired model is untouched. See ModulatorParams.serotonin_mod1.
         """
         if not self._any_mod1:
             return None

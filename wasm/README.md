@@ -111,7 +111,11 @@ threaded — so it is not in CI. It is the check to run after touching anything 
 
 ## Status: complete and matching, one animal and four
 
-Conformance, with noise off, comparing against the Python step for step:
+Conformance, with noise off, comparing against the Python step for step. (The excerpt
+below is the recorded four-case run from when this section was written; the suite has
+since grown to nine cases — folded self-contact, MOD-1, the head cascade, the amine
+path, and a sleep bout entered, poked awake and re-entered — all agreeing at the same
+precision. `tools/conform.py::main` is the current list.)
 
 ```
 MECHANICS -- prescribed moment, 2000 steps, no biology
@@ -157,7 +161,8 @@ which reaches the rest of the animal through a single gap junction and nothing e
 
 Those figures are the rounding granularity of the reference file, so the two agree to at
 least the precision the reference stores. Everything is ported: nervous system, muscle,
-body, senses, modulators, pharynx, world — including the plate's chemistry, which
+body, senses, modulators, sleep, pharynx, egg-laying, world — including the plate's
+chemistry, which
 diffuses and decays on its own clock. That last one was missing for a while, and the way
 it was missed is instructive: the conformance plate was an empty dish, and a field of
 zeros diffuses to zeros, so nothing disagreed. It surfaced only once the plate had a lawn

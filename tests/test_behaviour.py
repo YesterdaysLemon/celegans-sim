@@ -455,7 +455,7 @@ def test_a_repellent_at_the_tail_does_not_command_a_reversal():
 
     Hilliard et al. 2002: a repellent at the head drives reversal, the same repellent at
     the tail drives forward acceleration. The model's half of that is PHB answering
-    glutamate with chloride on AVA (SensoryParams.glucl_pre has the measurements): as
+    glutamate with chloride on AVA (NeuralParams.glucl_pre has the measurements): as
     reconstructed, with every synapse excitatory, a current step into the phasmids
     depolarised AVA *more* than the same step into ASH (+0.714 mV against +0.566) --
     danger behind the animal out-commanded danger ahead of it, and routing the tail
@@ -1088,10 +1088,18 @@ def test_the_worm_still_travels_on_a_lawn():
     fine throughout -- only in where the animal ended up. Net-to-path was 0.05 on a lawn
     while the travelling-wave index was still healthy, because the animal was reversing
     every couple of seconds and retracing its own track.
+
+    Measured on the sleepless control: on this wall-to-wall lawn the satiety homeostat
+    crosses threshold at about a minute (worm/sleep.py), a sleeping animal makes no
+    progress on purpose, and the claim under test is about the awake gait -- with sleep
+    on, the margin would silently become a statement about bout timing instead.
     """
-    w = World(Params().world, np.random.default_rng(0))
+    import dataclasses
+    p = dataclasses.replace(Params(), sleep=dataclasses.replace(
+        Params().sleep, ris_drive=0.0))
+    w = World(p.world, np.random.default_rng(0))
     w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)
-    sim = Simulation(Params(), seed=0, world=w, placement=(0.0, 0.0, 0.0))
+    sim = Simulation(p, seed=0, world=w, placement=(0.0, 0.0, 0.0))
     sim.run(8.0)
 
     start = sim.body.centroid().copy()
