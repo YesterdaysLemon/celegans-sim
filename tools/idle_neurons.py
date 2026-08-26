@@ -31,6 +31,11 @@ is held deaf ON PURPOSE (tools/awb_probe.py -- both rectifications hurt the esca
 the AS class has a measured field shipped at as_field_gain = 0.0 (still counted
 field-blind below because the default builds no field; worm/params.py has the dossier),
 and ADF/ASI/ASG/ASJ and PVD are still simply unrouted.
+
+Fourth reading (2026-08-26): 112/302 reachable. PVD joined -- harsh touch, the
+whole-body contact total high-passed at pvd_threshold so the gentle pathway keeps
+its own phenotype (worm/senses.py; Way & Chalfie 1989). ADF/ASI/ASG/ASJ remain the
+last deaf chemosensors (issue #199 holds that design).
 """
 
 from __future__ import annotations
@@ -59,6 +64,7 @@ def routed_map(sim):
     mark(sn.bag, 'oxygen downshift')
     mark(sn.touch_anterior, 'touch'); mark(sn.touch_posterior, 'touch')
     mark(sn.nose_touch, 'nose touch')
+    mark(sn.pvd, 'harsh touch')
     mark(sn.dopaminergic, 'food'); mark(sn.nsm, 'food')
     mark(sn.avb, 'command'); mark(sn.ava, 'command')
     mark(np.where(np.abs(sn.W_b).sum(axis=1) > 0)[0], 'proprioception')

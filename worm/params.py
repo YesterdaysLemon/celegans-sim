@@ -1160,6 +1160,21 @@ class SensoryParams:
     as_field_gain: float = 0.0       # x the A/B field strength; 0 = the shipped animal
     as_field_direction: int = +1     # +1 anterior field (B-family) -- the measured winner
 
+    # Harsh touch: PVD, the multidendritic nociceptors (Way & Chalfie 1989 for the
+    # phenotype -- harsh-touch escape survives ablating the gentle-touch cells;
+    # Chatzigeorgiou et al. 2010 for the receptor). The threshold is what makes the
+    # modality: everything below it belongs to ALM/AVM/PLM's smoothed, habituating
+    # pathway, and PVD hears only the excess. Calibrated against measurement
+    # (2026-08-26): 20 s crawls on the standard and bare plates never register any
+    # contact at all (max instantaneous total 0.0 across seeds 0-2), the behavioural
+    # suite's gentle pokes sum to 2.0, and a tweezers-grade prod of 6.0 clears the
+    # threshold by 3.0 and saturates the pool. Fires on the instantaneous total
+    # deliberately: the gentle pathway may smooth and habituate, an emergency
+    # channel must not -- so its drive also ends the moment the force does, and the
+    # phenotype is measured during the prod, not after it.
+    pvd_gain: float = 30.0           # pA per unit of contact force above threshold
+    pvd_threshold: float = 3.0       # summed instantaneous contact where harsh begins
+
     # The noxious drop, and the same lesson a second time.
     #
     # Every chemical sense in senses.py adapts and reports a deviation -- except this one,
