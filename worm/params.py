@@ -275,6 +275,16 @@ class NeuralParams:
     # reference neuromechanical models treat these cells -- Boyle et al. (2012) make their
     # B-type motor neurons frankly binary. Interneurons and sensory neurons stay well
     # inside the range.
+    #
+    # Who actually touches it was measured (2026-08-26, tools/clamp_occupancy.py census):
+    # the head motor pool and nobody else. SMB/SMD/RMD sit on each rail 28-41% of crawl
+    # instants per cell, RIV 6-8%, every other neuron under 3%, the A/B cords at 0% --
+    # so the scorecard's "some neuron is railed 75%/86% of the window" is the head
+    # oscillation saturating rhythmically. And the rail is a ceiling, not dynamics:
+    # widening it to (-100, 65) mV leaves frequency, wavelength, TWI, antagonism and
+    # curvature unchanged to seed noise, because the drive saturates downstream through
+    # the activation nonlinearity before the extra headroom matters. Keep it where the
+    # ion physics puts it; nothing behavioural is secretly resting on it.
     v_clamp: tuple = (-80.0, 45.0)    # mV
     # Both cords, not just the forward one. The B class got this treatment first because
     # forward locomotion was what was being measured, and that asymmetry turned out to be

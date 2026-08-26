@@ -18,6 +18,8 @@ Modes: `current` is the shipped animal; a bare number is a proprio_conductance i
 
 Run:  PYTHONPATH=. .venv/bin/python tools/clamp_occupancy.py current 5 10 20 40
       (each arm runs SEEDS x MEASURE s; ~a minute a trial, parallel)
+      PYTHONPATH=. .venv/bin/python tools/clamp_occupancy.py census
+      (per-neuron occupancy for all 302, plus the widened-clamp gait control)
 
 THE RECORD (both sweeps 2026-08-16, seeds 0/1/3, agar). First, the excitatory-only cut:
 
@@ -41,6 +43,18 @@ mattering). 5 nS is the speed optimum of this sweep.
 
 TRACK A: this is reference-worm physiology. The measurement decides nothing by itself;
 adoption of a conductance default is a separate decision against reference evidence.
+
+THE CENSUS (2026-08-26, seeds 0/1/3, agar). The scorecard printed "some neuron is on a
+clamp 75%/86% of the time -- should be neither" for years; the census names the
+culprits: the head motor pool, and nobody else. SMB/SMD/RMD sit on each rail 28-41% of sampled
+instants per cell (RIV 6-8%); no other neuron exceeds 2.6%, and the A/B cords are the
+0% THE RECORD above already measured. The control answers what it means: with v_clamp
+widened to (-100, 65) mV the gait does not move (freq 0.68/0.67, wave 0.83/0.84, twi
++0.88/+0.88, dvcorr -0.73/-0.70, k_rms 4.52/4.51 shipped/wide, seed means) -- the head
+oscillation slams into the ceiling a third of every cycle, but the wave it produces
+does not depend on where the ceiling is, because the drive saturates downstream through
+the activation nonlinearity first. The clamp is a physiological guardrail, not hidden
+dynamics; worm/params.py::v_clamp carries the note.
 """
 
 from __future__ import annotations
@@ -59,6 +73,77 @@ SETTLE = 6.0
 MEASURE = 30.0
 SEEDS = (0, 1, 3)
 RAIL_EPS = 0.5          # mV: "on the rail" means within this of v_clamp
+
+
+def _census_job(job):
+    """Per-neuron rail occupancy for one seed, plus the same seed's gait with the
+    clamp widened to (-100, 65) -- the two halves of the "who is on the rail, and
+    does it matter" question, paired so one row answers both."""
+    (seed,) = job
+    p = Params()
+    sim = Simulation(p, seed=seed, world=bare_world(p))
+    sim.run(SETTLE)
+    lo, hi = p.neural.v_clamp
+    every = max(1, int(round(0.01 / sim.dt)))
+    n = sim.conn.n
+    at_hi = np.zeros(n)
+    at_lo = np.zeros(n)
+    any_hi = any_lo = samples = 0
+    for i in range(int(MEASURE / sim.dt)):
+        sim.step()
+        if i % every == 0:
+            V = sim.nervous.V
+            hi_mask = V >= hi - RAIL_EPS
+            lo_mask = V <= lo + RAIL_EPS
+            at_hi += hi_mask
+            at_lo += lo_mask
+            any_hi += int(hi_mask.any())
+            any_lo += int(lo_mask.any())
+            samples += 1
+    r = analyse(sim, seconds=MEASURE)
+    shipped = (r["freq"], r["wavelength"], r["twi"], r["dv_corr"], r["kappa_rms"])
+
+    wide_p = dataclasses.replace(p, neural=dataclasses.replace(
+        p.neural, v_clamp=(-100.0, 65.0)))
+    wide = Simulation(wide_p, seed=seed, world=bare_world(wide_p))
+    wide.run(SETTLE)
+    rw = analyse(wide, seconds=MEASURE)
+    widened = (rw["freq"], rw["wavelength"], rw["twi"], rw["dv_corr"], rw["kappa_rms"])
+
+    # pooled ships results as JSON: lists, not arrays.
+    return dict(seed=seed, at_hi=(at_hi / samples).tolist(),
+                at_lo=(at_lo / samples).tolist(),
+                any_hi=any_hi / samples, any_lo=any_lo / samples,
+                names=[sim.conn.names[i] for i in range(n)],
+                shipped=shipped, widened=widened)
+
+
+def census():
+    rows = pooled(_census_job, [(s,) for s in SEEDS], procs=8)
+    if not rows:
+        print("  no trials completed")
+        return 1
+    print("RAIL CENSUS -- every neuron, %d seeds x %.0f s, rail = within %.1f mV "
+          "of v_clamp\n" % (len(SEEDS), MEASURE, RAIL_EPS))
+    for r in rows:
+        print("  seed %d: some neuron railed  hi %.0f%%  lo %.0f%%"
+              % (r["seed"], 100 * r["any_hi"], 100 * r["any_lo"]))
+    names = rows[0]["names"]
+    at_hi = np.mean([r["at_hi"] for r in rows], axis=0)
+    at_lo = np.mean([r["at_lo"] for r in rows], axis=0)
+    print("\n  %-8s %8s %8s   (every neuron above 1%% on either rail)"
+          % ("neuron", "@hi", "@lo"))
+    for i in np.argsort(-(at_hi + at_lo)):
+        if at_hi[i] + at_lo[i] < 0.01:
+            break
+        print("  %-8s %7.1f%% %7.1f%%" % (names[i], 100 * at_hi[i], 100 * at_lo[i]))
+    print("\n  gait with the clamp widened to (-100, 65) mV, same seeds:")
+    print("  %-8s %5s %5s %6s %6s %6s" % ("arm", "freq", "wave", "twi", "dvcorr",
+                                          "k_rms"))
+    for key in ("shipped", "widened"):
+        cols = np.array([r[key] for r in rows], dtype=float).mean(axis=0)
+        print("  %-8s %5.2f %5.2f %+6.2f %+6.2f %6.2f" % ((key,) + tuple(cols)))
+    return 0
 
 
 def _job(job):
@@ -100,6 +185,8 @@ def _job(job):
 
 
 def main(argv):
+    if argv and argv[0] == "census":
+        return census()
     modes = argv or ["current"]
     jobs = [(m, s) for m in modes for s in SEEDS]
     print("CLAMP OCCUPANCY -- %d seeds x %.0f s per arm, rail = within %.1f mV of "
