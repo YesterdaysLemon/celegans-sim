@@ -70,8 +70,10 @@ seeds; backward locomotion and omega depth re-checked; then the runtime port (Py
 today, pinned in `RUNTIME_UNSUPPORTED`). Elsewhere on the sensory roster: **AWB stays
 deaf on purpose** (measured, both signs hurt — `tools/awb_probe.py` has the reading and
 the receptor-level follow-up hypothesis), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
-of food quality, and PVD (harsh touch) is unrouted. The audit itself is
-`tools/idle_neurons.py`; current reading 109/302 reachable.
+of food quality (#199), and PVD carries harsh touch — the whole-body contact total
+high-passed at `pvd_threshold`, so escape survives ablating the gentle-touch sextet
+(Way & Chalfie 1989). The audit itself is `tools/idle_neurons.py`; current reading
+112/302 reachable.
 
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted

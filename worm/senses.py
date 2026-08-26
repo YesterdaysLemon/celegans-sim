@@ -64,6 +64,9 @@ class Senses:
         self.touch_posterior = idx("PLML", "PLMR", "PVM")
         self.nose_touch = idx("OLQDL", "OLQDR", "OLQVL", "OLQVR",
                               "FLPL", "FLPR", "CEPDL", "CEPDR", "CEPVL", "CEPVR")
+        # Harsh touch: the multidendritic nociceptors, gated above pvd_threshold so the
+        # gentle pathway keeps its own phenotype. See the transduction in sense().
+        self.pvd = idx("PVDL", "PVDR")
 
         # --- food, sensed by the dopaminergic mechanoreceptors --------------------------
         self.dopaminergic = idx("CEPDL", "CEPDR", "CEPVL", "CEPVR",
@@ -372,6 +375,19 @@ class Senses:
         half = len(mag) // 2
         ant = float(mag[:half].sum()) + self.poke[0]
         post = float(mag[half:].sum()) + self.poke[1]
+        # Harsh touch, before anything smooths or habituates it: PVD are the
+        # multidendritic nociceptors, and their defining phenotype is that a HARD
+        # stimulus still escapes when the gentle-touch cells are gone (Way & Chalfie
+        # 1989; Chatzigeorgiou et al. 2010 for the receptor). Modelled as the whole-body
+        # contact total, high-passed at pvd_threshold: ordinary crawling and wall
+        # brushing sit far below it, a gentle prod sits below it, and only genuinely
+        # harsh force reaches the pool -- which is exactly the gentle/harsh split the
+        # ablation experiment tests. Reads the same instantaneous quantity the
+        # smoothed pathway is fed, deliberately unsmoothed: a nociceptor that
+        # low-passes its emergency is not one.
+        harsh = ant + post - p.pvd_threshold
+        if harsh > 0.0:
+            I[self.pvd] += p.pvd_gain * harsh
         # Smoothed contact, not accumulated contact. This used to be
         #     touch_state = touch_state * decay + force
         # which adds a whole force every step regardless of how long a step is, so its

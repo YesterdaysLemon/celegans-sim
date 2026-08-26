@@ -1884,6 +1884,12 @@ class Worm {
       if (i == 0) mag0 = mg; else if (i == 1) mag1 = mg;
       if (i < half) ant += mg; else post += mg;
     }
+    // Harsh touch: PVD hears only the instantaneous excess above the threshold --
+    // deliberately unsmoothed, before habituation; worm/senses.py has the provenance.
+    const harshPvd = ant + post - G.SEN_PVD_THRESHOLD;
+    if (harshPvd > 0.0) {
+      this.addTo(G.OFF_idx_pvd, G.LEN_idx_pvd, G.SEN_PVD_GAIN * harshPvd);
+    }
     this.touchA += (ant - this.touchA) * G.TOUCH_RATE;
     this.touchP += (post - this.touchP) * G.TOUCH_RATE;
     this.pokeA = 0.0; this.pokeP = 0.0;

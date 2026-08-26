@@ -266,6 +266,59 @@ def test_anterior_touch_drives_a_reversal():
         "(%.4f without the touch, %.4f with it)" % (quiet, touched))
 
 
+def test_harsh_touch_survives_losing_the_gentle_touch_cells():
+    """The Way & Chalfie (1989) dissection: two touch modalities, one body.
+
+    Ablate all six gentle-touch cells (ALM/AVM/PLM/PVM) and a HARD prod still reaches
+    the backward command pool, because PVD carries it (PVD synapses onto AVA and PVC
+    in the reconstruction; nothing here scripts that path); a GENTLE prod no longer
+    does, because the only cells that could hear it are gone. Paired against an
+    identical unpoked run, same seed, so the gait cancels exactly and only the
+    stimulus remains (see test_anterior_touch_drives_a_reversal for why).
+
+    Measured DURING a sustained 0.3 s prod, not after it: the PVD transduction is
+    deliberately unsmoothed, so its drive exists only while the force does, and the
+    escape it produces is the escape from an ongoing stimulus. (The gentle pathway
+    would pass an after-the-fact protocol only because its EMA keeps pushing once the
+    stimulus is gone.) The strengths bracket pvd_threshold = 3.0: 2.0 is the suite's
+    standard gentle poke, 6.0 is tweezers-grade. The gentle case is asserted at zero
+    to machine precision, because a below-threshold poke on this animal enters
+    nothing but ablated cells -- if that margin ever grows, gentle touch has found a
+    live path it should not have.
+    """
+    def means_during(strength):
+        p = Params()
+        sim = Simulation(p, seed=5, world=bare_world(p))
+        s = sim.senses
+        sim.nervous.set_ablated(np.concatenate([s.touch_anterior, s.touch_posterior]))
+        sim.run(8.0)
+        steps_poke = int(0.3 / sim.dt)
+        pvd, ava = [], []
+        for k in range(int(0.4 / sim.dt)):
+            if k < steps_poke and strength > 0.0:
+                sim.poke("anterior", strength=strength)
+            sim.step()
+            a = sim.nervous.activation()
+            pvd.append(float(np.mean(a[s.pvd])))
+            ava.append(float(np.mean(a[s.ava])))
+        return float(np.mean(pvd)), float(np.mean(ava))
+
+    quiet_pvd, quiet_ava = means_during(0.0)
+    gentle_pvd, gentle_ava = means_during(2.0)
+    hard_pvd, hard_ava = means_during(6.0)
+    assert hard_pvd - quiet_pvd > 0.1, (
+        "a hard prod did not depolarise PVD -- the harsh transduction is dead "
+        "(quiet %.4f, hard %.4f)" % (quiet_pvd, hard_pvd))
+    assert hard_ava - quiet_ava > 0.003, (
+        "a hard prod failed to reach the backward pool without the gentle-touch "
+        "cells -- PVD is not carrying harsh touch (quiet %.4f, hard %.4f)"
+        % (quiet_ava, hard_ava))
+    assert abs(gentle_ava - quiet_ava) < 1e-6 and abs(gentle_pvd - quiet_pvd) < 1e-6, (
+        "a gentle poke moved the network without the cells that sense it -- the "
+        "harsh threshold is letting gentle touch through (dAVA %+0.6f, dPVD %+0.6f)"
+        % (gentle_ava - quiet_ava, gentle_pvd - quiet_pvd))
+
+
 def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
     """The two ends of the animal are different sensors, and oxygen has two edges.
 
