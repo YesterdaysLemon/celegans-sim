@@ -61,13 +61,16 @@ them), the scorecard/ethogram baseline of item 2's protocol, and a runtime condu
 path ([`docs/runtime-parity.md`](docs/runtime-parity.md) — a Python-only default is not a
 default).
 
-**1¾. Finish the cord: adopt (or refuse) the AS-class field.** The mechanism is built and
-its opening dossier is the best wave number on record (`SensoryParams.as_field_gain`,
-tables at the parameter): +42% speed with the travelling index and dorsoventral antagonism
-improving together, 16/16 seeds forward, better in all three media. The remaining gates,
-in order: `tools/scorecard.py` + `tools/ethogram.py` against frozen main on identical
-seeds; backward locomotion and omega depth re-checked; then the runtime port (Python-only
-today, pinned in `RUNTIME_UNSUPPORTED`). Elsewhere on the sensory roster: **AWB stays
+**1¾. The AS-class field: measured, REFUSED (#193).** The opening dossier was the best
+wave number on record; the behavioural battery said no, twice (2026-08-26, full tables at
+`SensoryParams.as_field_gain`). At gain 1.0 turns deepen beautifully (fraction over 120°
++23 points) but the animal veers — heading drift 2.9 → 8.2 °/s, spontaneous reversals in
+clean space double, pirouette food-conditioning collapses. At 0.5 the nociception and
+chemotaxis guards recover but the navigation gains vanish with them, and the drift stays
+detectable (+2.85 °/s). The depth-with-drift coupling is inherent — a standing field rides
+the direction gate all the time, not just in turns — so the field ships at 0.0, and the
+follow-up hypothesis belongs to the turn-depth thread (#196): a turn-phase-gated field
+that exists only while an omega is being commanded. Elsewhere on the sensory roster: **AWB stays
 deaf on purpose** (measured three times now — plain OFF, plain ON, and the
 OFF+chloride-on-AIZ second chance all lose to deaf; `tools/awb_probe.py` has all three
 readings), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
