@@ -68,8 +68,9 @@ improving together, 16/16 seeds forward, better in all three media. The remainin
 in order: `tools/scorecard.py` + `tools/ethogram.py` against frozen main on identical
 seeds; backward locomotion and omega depth re-checked; then the runtime port (Python-only
 today, pinned in `RUNTIME_UNSUPPORTED`). Elsewhere on the sensory roster: **AWB stays
-deaf on purpose** (measured, both signs hurt — `tools/awb_probe.py` has the reading and
-the receptor-level follow-up hypothesis), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
+deaf on purpose** (measured three times now — plain OFF, plain ON, and the
+OFF+chloride-on-AIZ second chance all lose to deaf; `tools/awb_probe.py` has all three
+readings), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
 of food quality (#199), and PVD carries harsh touch — the whole-body contact total
 high-passed at `pvd_threshold`, so escape survives ablating the gentle-touch sextet
 (Way & Chalfie 1989). The audit itself is `tools/idle_neurons.py`; current reading

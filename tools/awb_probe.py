@@ -28,7 +28,22 @@ PHB -> AVA and ASEL -> AIB, but with no receptor-level fix named by any prior
 measurement here. The follow-up hypothesis, recorded and not adopted: an OFF-response
 AWB with chloride on AIZ (relief inhibiting the reversal path) would have the
 Pierce-Shimomura shape; it wants its own paired run before any list is widened.
-Until then AWB stays deaf, on the record and on purpose.
+
+The second chance was run (2026-08-26, issue #203), and it is the THIRD negative:
+
+    arm none   d_final 34.78  d_max 35.05  t_clear 25.2 s   cleared 6/6
+    arm offcl  d_final 26.89  d_max 28.32  t_clear 24.8 s   cleared 6/6
+    paired d_final vs none: -7.89 mm  [-8.4 +1.1 -21.9 +12.1 -6.1 -24.2]
+
+The chloride half of the hypothesis does what it promised -- clearance time fell from
+the OFF arm's 37.3 s back to 24.8 s, level with deaf -- but the animal still ends
+7.9 mm CLOSER to the drop than the deaf control, 4 of 6 seeds worse. Relief inhibiting
+AIZ gets the escape started on time and then bleeds it of distance. Two notes for
+whoever reopens this: (1) the surgical route was forced -- widening the glucl class
+lists would also flip AWA -> AIZ (x17) and AWBL -> AIBR (x1), measured in trial()'s
+comment -- so any adoption needs a per-pair mechanism first; (2) with three paired
+measurements against it (ON, OFF, OFF+chloride), AWB's deafness is now the
+best-supported null in the sensory roster. It stays deaf, on the record and on purpose.
 """
 import os
 
@@ -57,13 +72,28 @@ def trial(job):
     awb = sim.conn.select("AWBL", "AWBR")
     base = s.sense
 
+    if arm == "offcl":
+        # The receptor-level half of the hypothesis: chloride on AWB -> AIZ, and on
+        # that pair alone. The class-list mechanism (NeuralParams.glucl_pre/post) cannot
+        # express this without contamination -- widening the lists would also flip
+        # AWA -> AIZ (x17) and AWBL -> AIBR (x1), measured 2026-08-26 -- so the probe
+        # rewrites the two matrix entries surgically, the way an adoption would have
+        # to (a per-pair route, not a wider list).
+        nv = sim.nervous
+        aiz = sim.conn.select("AIZL", "AIZR")
+        gc = p.neural.glucl_strength
+        E = nv.E_syn.copy()
+        E[np.ix_(aiz, awb)] = (1.0 - gc) * p.neural.E_exc + gc * p.neural.E_inh
+        nv.E_syn = E
+        nv.GE_syn = nv.G_syn * E
+
     def wrapped(world, nodes, *a, **k):
         rep = float(world.sample(world.repellent, nodes[0][0], nodes[0][1]))
         prior = s.rep_adapt
         I = base(world, nodes, *a, **k)
         if prior is not None and arm != "none":
             drep = rep - prior
-            if arm == "off":
+            if arm in ("off", "offcl"):
                 I[awb] += GAIN_OFF * max(0.0, -drep)
             else:
                 I[awb] += GAIN_ON_T * rep + GAIN_ON_D * max(0.0, drep)
@@ -89,7 +119,7 @@ def trial(job):
 
 
 if __name__ == "__main__":
-    arms = ("none", "off", "on")
+    arms = ("none", "off", "on", "offcl")
     jobs = [(s, a) for s in SEEDS for a in arms]
     with ProcessPoolExecutor(max_workers=min(14, os.cpu_count() or 4)) as ex:
         rows = list(ex.map(trial, jobs))
@@ -100,7 +130,7 @@ if __name__ == "__main__":
             np.mean([r["d_max"] for r in sel]),
             np.mean([r["t_clear"] for r in sel]),
             sum(r["cleared"] for r in sel), len(sel)))
-    for a in ("off", "on"):
+    for a in ("off", "on", "offcl"):
         dd = [next(r["d_final"] for r in rows if r["seed"] == s and r["arm"] == a)
               - next(r["d_final"] for r in rows if r["seed"] == s and r["arm"] == "none")
               for s in SEEDS]
