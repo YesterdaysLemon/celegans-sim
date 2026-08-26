@@ -100,7 +100,7 @@ Documented in `README.md`'s layout table and expected to still work. Reach for t
 | tool | does |
 |---|---|
 | `kymo.py` | ASCII kymograph. **Look at the picture first** — a lot of time has gone into inferring behaviour from summary statistics that were hiding a statically bent worm. |
-| `scorecard.py` | Every headline number at once, across seeds, in three media. The README's table comes from here. |
+| `scorecard.py` | Every headline number at once, across seeds, in three media. With `--emit` it writes the README table block and `docs/scorecard.md` from the same run — `tests/test_scorecard_doc.py` pins the two copies identical, and the dispatch-only `scorecard` workflow refreshes them on demand. |
 | `idle_neurons.py` | Which neurons the world cannot reach: unions every input route and lists the deaf sensory cells, the field-blind motor classes, and the wiring-only interneurons. The routing roadmap's evidence. |
 | `bag_border.py` | Does BAG hold the animal where the food is? Paired lawn-dwell assay for the oxygen-downshift route; its docstring carries the first reading and the taxis-ceiling caveat. |
 | `awb_probe.py` | Would routing AWB help the escape? Three-arm injected probe (OFF, ON, neither); the docstring carries the negative reading — both signs hurt through the wiring as reconstructed — and the receptor-level follow-up hypothesis. The reason AWB stays deaf on purpose. |

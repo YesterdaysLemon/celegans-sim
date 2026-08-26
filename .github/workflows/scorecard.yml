@@ -1,0 +1,50 @@
+# Re-measure the scorecard and commit the refreshed pair.
+#
+# `tools/scorecard.py --emit` writes the benchmark table to docs/scorecard.md and to the
+# marker block in README.md from one five-seed, three-media run (~15 minutes on a CI
+# runner). tests/test_scorecard_doc.py pins the two copies identical but deliberately
+# does NOT gate freshness -- every legitimate model change moves behavioural numbers, and
+# a hard freshness gate would turn each real improvement into a mandatory repin (the
+# grazing-pin lesson). This workflow is the freshness arm: dispatch it after a batch of
+# model changes lands and it measures, emits, and pushes the result to main as its own
+# commit. The Actions token's contents:write is scoped to this repository and dies with
+# the run.
+#
+# tests/test_ci_policy.py excuses this file from path filters: it triggers on dispatch
+# only, so there is no push event for a filter to claim.
+
+name: scorecard
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  measure-and-commit:
+    name: measure the scorecard and commit the emitted pair
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: run the scorecard and emit both copies
+        env:
+          OMP_NUM_THREADS: '1'
+          OPENBLAS_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python tools/scorecard.py --emit
+      - name: commit the refreshed pair if the numbers moved
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- README.md docs/scorecard.md; then
+            echo "scorecard unchanged; nothing to commit"
+          else
+            git add README.md docs/scorecard.md
+            git commit -m "Scorecard re-measured by the scorecard workflow"
+            git push
+          fi
