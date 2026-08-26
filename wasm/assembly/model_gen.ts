@@ -362,6 +362,7 @@ export const SEN_TONIC_FORWARD: f64 = 22.0;
 export const SEN_TOUCH_GAIN: f64 = 75.0;
 export const SEN_TURN_BIAS_LIMIT: f64 = 0.3;
 export const SLP_AROUSAL_CLEAR: f64 = 0.8;
+export const SLP_AROUSAL_DEPTH: f64 = 1.0;
 export const SLP_AROUSAL_REFRACTORY: f64 = 15.0;
 export const SLP_AROUSAL_TOUCH: f64 = 0.5;
 export const SLP_BUILD_BASE: f64 = 0.0005;

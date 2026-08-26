@@ -1770,15 +1770,24 @@ class Worm {
 
     // Arousal: strong touch interrupts the bout, clears most of the standing peptide
     // (waking is fast where falling asleep is slow), and holds sleep off for the
-    // refractory. Pressure is untouched -- that is sleep rebound.
+    // refractory. Pressure is untouched -- that is sleep rebound. The threshold rides
+    // sleep depth -- standing FLP-11 times undischarged pressure fraction, rising then
+    // falling across a bout; worm/sleep.py::depth has the curve and the provenance.
     if (this.slpRefract > 0.0) {
       const t = this.slpRefract - G.DT;
       this.slpRefract = t > 0.0 ? t : 0.0;
     }
-    if (this.slpBout && this.touchA + this.touchP > G.SLP_AROUSAL_TOUCH) {
-      this.slpBout = false;
-      this.slpRefract = this.slpRefractS;
-      this.slpFlp11 *= (1.0 - G.SLP_AROUSAL_CLEAR);
+    if (this.slpBout) {
+      const remaining = clamp(
+        (this.slpPressure - this.slpThrOff) / (this.slpThrOn - this.slpThrOff),
+        0.0, 1.0);
+      const wake = G.SLP_AROUSAL_TOUCH
+                 + G.SLP_AROUSAL_DEPTH * this.slpFlp11 * remaining;
+      if (this.touchA + this.touchP > wake) {
+        this.slpBout = false;
+        this.slpRefract = this.slpRefractS;
+        this.slpFlp11 *= (1.0 - G.SLP_AROUSAL_CLEAR);
+      }
     }
 
     // The homeostat: builds while awake -- fast on food, read off dopamine's positive

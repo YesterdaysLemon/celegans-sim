@@ -156,7 +156,7 @@ PHARYNX_SCALARS = ("myogenic_rate", "mc_rate_gain", "i2_rate_gain", "serotonin_t
 # above `GENES` on what that means for gene eligibility.
 SLEEP_SCALARS = ("ris_drive", "release_threshold", "quiescence_gain", "build_fed",
                  "build_base", "threshold_on", "threshold_off", "arousal_touch",
-                 "arousal_refractory", "arousal_clear")
+                 "arousal_depth", "arousal_refractory", "arousal_clear")
 EGGLAYING_SCALARS = ("myogenic", "hsn_gain", "serotonin_gain", "vc_gain", "vm_tau",
                      "vm_threshold", "off_food_floor", "eggs_per_food", "uterus_capacity",
                      "eggs_initial", "resource_tau", "resource_cost", "resource_off",

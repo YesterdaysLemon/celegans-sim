@@ -2570,6 +2570,11 @@ class SleepParams:
     threshold_off: float = 0.25      # pressure where it ends -- the Schmitt gap
     tau_sleep: float = 45.0          # s   pressure discharge during a bout
     arousal_touch: float = 0.5       # summed touch_state that interrupts a bout
+    # Sleep depth (Nichols et al. 2017): the wake threshold rides the standing FLP-11
+    # times the undischarged pressure fraction -- worm/sleep.py::depth has the curve
+    # and the measured numbers. 1.0 means a deep mid-bout animal needs about twice
+    # the floor; the canonical strong prod always clears it with margin.
+    arousal_depth: float = 1.0       # touch units added per unit of sleep depth
     arousal_refractory: float = 15.0  # s  sleep held off after an arousal
     arousal_clear: float = 0.8       # fraction of standing FLP-11 an arousal clears
 
