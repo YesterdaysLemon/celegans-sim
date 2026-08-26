@@ -98,9 +98,11 @@ behavioural assay at once.
   turn-depth mechanism clears its own paired gate; do not tune the assays around the
   current shallow turn.
 - **Sleep's behavioural surface.** The circuit is in (worm/sleep.py) with its compressed
-  clock; unmeasured beyond its own gates: bout statistics against You 2008's satiety
-  quiescence, and whether arousal habituation should exist. Any long on-food assay now
-  contains sleep unless it runs the sleepless control (`SleepParams.ris_drive = 0`).
+  clock, and arousal now has a depth curve (threshold 0.74 → 1.13 → 0.86 across a bout,
+  Nichols 2017 — `Sleep.depth`); unmeasured beyond its own gates: bout statistics against
+  You 2008's satiety quiescence, and whether arousal habituation should exist (#197). Any
+  long on-food assay now contains sleep unless it runs the sleepless control
+  (`SleepParams.ris_drive = 0`).
 
 ---
 

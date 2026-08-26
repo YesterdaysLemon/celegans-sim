@@ -28,9 +28,12 @@ rather than flicker.
 Arousal is the touch pathway, deliberately left at full gain: a strong enough
 mechanical stimulus both fires the ordinary escape circuit *through* the sleeping
 animal and interrupts the bout here (sleep is rapidly reversible -- the property that
-separates it from paralysis). Pressure is *not* cleared by an arousal, so a poked
-animal goes back to sleep after the refractory: that is sleep rebound, and it comes
-free from the bookkeeping.
+separates it from paralysis). The threshold it must cross is not flat: sleep has a
+*depth* (Nichols et al. 2017), rising into the bout with the standing FLP-11 and
+falling out of it with the spent pressure -- ``depth`` below -- so a prod that wakes
+a dozing animal rolls off a deeply sleeping one, while a hard prod always wakes.
+Pressure is *not* cleared by an arousal, so a poked animal goes back to sleep after
+the refractory: that is sleep rebound, and it comes free from the bookkeeping.
 
 The clock is compressed. Real satiety quiescence follows hours of feeding with
 minutes-long bouts; this dish runs its whole ecology on a compressed clock (eggs,
@@ -98,10 +101,12 @@ class Sleep:
 
         # Arousal: a strong mechanical stimulus interrupts the bout and holds sleep off
         # for the refractory. Pressure is deliberately untouched -- see the module
-        # docstring on rebound.
+        # docstring on rebound. The threshold is not flat across the bout: sleep has a
+        # depth (arousal_threshold below), so a prod that wakes a dozing animal rolls
+        # off a deeply sleeping one.
         if self.refractory > 0.0:
             self.refractory = max(0.0, self.refractory - self.dt)
-        if self.bout and touch > p.arousal_touch:
+        if self.bout and touch > self.arousal_threshold():
             self.bout = False
             self.refractory = p.arousal_refractory
             # Waking is fast where falling asleep is slow: an arousal actively clears
@@ -123,6 +128,39 @@ class Sleep:
                 self.bout = True
 
         return p.ris_drive if self.bout else 0.0
+
+    def depth(self) -> float:
+        """0 to 1: how deeply asleep, from state the homeostat already keeps.
+
+        Real bouts have a depth curve -- arousal thresholds rise as the bout deepens
+        and fall again near its natural end (Nichols et al. 2017, Science 356:eaam6851:
+        graded arousability across sleep in C. elegans). Both halves of that curve are
+        already in this module's state: FLP-11 is the standing peptide (the depth on
+        the way in -- it takes flp11_tau to accumulate, so early-bout sleep is shallow),
+        and the undischarged pressure is how much sleep remains to defend (the depth on
+        the way out -- as pressure approaches threshold_off the bout is ending anyway,
+        and the animal is easy to wake again). Their product rises then falls across a
+        bout with nothing new integrated, and it is exactly zero in an animal that has
+        never slept, which keeps the never-slept trajectory bit-identical.
+        """
+        p = self.p
+        span = p.threshold_on - p.threshold_off
+        remaining = (self.pressure - p.threshold_off) / span
+        return float(self.flp11 * np.clip(remaining, 0.0, 1.0))
+
+    def arousal_threshold(self) -> float:
+        """The touch level that interrupts a bout, scaled by how deep the sleep is.
+
+        arousal_touch is the floor (a bout that has barely begun, or nearly ended);
+        arousal_depth is how much harder a deep mid-bout animal is to wake, in the
+        same summed-touch units. Measured on the shipped clock (2026-08-26, seed 0,
+        pressure seeded to 0.95): depth runs 0.24 -> 0.63 -> 0.36 at 2/20/35 s into
+        the bout, so the threshold runs 0.74 -> 1.13 -> 0.86 -- a prod delivering
+        ~0.95 wakes the dozing ends of the bout and rolls off its middle, while the
+        canonical hard prod (3.0 held, delivering ~1.7 within 0.3 s) always wakes.
+        """
+        p = self.p
+        return p.arousal_touch + p.arousal_depth * self.depth()
 
     def quiescence(self) -> float:
         """0 awake to 1 fully quiescent: the FLP-11 gain on the module's targets."""

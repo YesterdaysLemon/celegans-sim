@@ -476,6 +476,67 @@ def test_a_worm_with_sleep_pressure_stops_and_a_poke_wakes_it():
         % (v_woken, v_asleep))
 
 
+def test_sleep_has_a_depth_and_the_middle_of_a_bout_defends_it():
+    """Arousability is graded across a bout, not flat -- Nichols et al. 2017.
+
+    The wake threshold rides sleep depth: standing FLP-11 (slow to accumulate, so the
+    bout's start is shallow) times undischarged pressure (spent by the bout's end, so
+    its close is shallow again). Measured on the shipped clock, the threshold runs
+    0.74 -> 1.13 -> 0.86 at 2/20/35 s into a bout. Pinned twice: the curve itself
+    rises then falls, and the behaviour inverts -- a gentle prod (1.0, delivering
+    ~0.95 summed touch) wakes the dozing ends of the bout and rolls off its deep
+    middle, while the canonical hard prod still wakes the middle at once. The flat
+    baseline this replaces woke at every instant of the bout at any strength >= 1.0
+    (measured 2026-08-26 before the depth landed).
+    """
+    def bout_animal():
+        p = Params()
+        w = World(p.world, np.random.default_rng(0))
+        sim = Simulation(p, seed=0, world=w)
+        sim.run(6.0)
+        sim.sleep.pressure = 0.95
+        sim.run(0.5)
+        assert sim.sleep.bout, "seeded pressure did not start a bout"
+        return sim
+
+    def prod(sim, strength, seconds):
+        for _ in range(int(seconds / sim.dt)):
+            sim.poke("anterior", strength=strength)
+            sim.step()
+            if not sim.sleep.bout:
+                return True
+        return False
+
+    # One undisturbed bout: the threshold curve must rise and then fall, and the
+    # late-bout animal must wake at the gentle prod.
+    sim = bout_animal()
+    sim.run(1.5)
+    thr_early = sim.sleep.arousal_threshold()
+    sim.run(18.0)
+    thr_mid = sim.sleep.arousal_threshold()
+    sim.run(15.0)
+    thr_late = sim.sleep.arousal_threshold()
+    assert thr_mid > thr_early and thr_mid > thr_late, (
+        "the arousal threshold does not rise and fall across the bout "
+        "(2 s %.3f, 20 s %.3f, 35 s %.3f)" % (thr_early, thr_mid, thr_late))
+    assert prod(sim, 1.0, 1.2), (
+        "a gentle prod failed to wake a late-bout animal whose pressure is spent "
+        "(threshold was %.3f)" % thr_late)
+
+    # The inversion: the same gentle prod wakes an early bout and rolls off the middle
+    # -- and the middle still yields to the canonical hard prod immediately.
+    sim = bout_animal()
+    sim.run(1.5)
+    assert prod(sim, 1.0, 1.2), "a gentle prod failed to wake a shallow early bout"
+    sim = bout_animal()
+    sim.run(19.5)
+    assert not prod(sim, 1.0, 1.2), (
+        "a gentle prod woke a deep mid-bout animal: sleep has no depth")
+    assert prod(sim, 3.0, 0.5), (
+        "the canonical hard prod failed to wake the middle of a bout -- the depth "
+        "scaling is defending sleep against emergencies, which is paralysis")
+
+
 def test_sleep_needs_ris():
     """Ablate RIS and the animal cannot sleep -- Turek et al. 2013, reproduced.
 
