@@ -47,6 +47,12 @@ RUNNER = ROOT / "tools" / "check_all.mjs"
 # GitHub expresses as actions rather than as `run:` -- checkout, setup-python, setup-node --
 # carry no `name:` at all and so never reach this list.
 NOT_A_GATE = {
+    "run the scorecard and emit both copies":
+        "a dispatch-only maintenance action (scorecard.yml), not a check: it measures "
+        "and writes documentation. Locally the same thing is `tools/scorecard.py "
+        "--emit`, run when the owner wants fresh numbers, not as a gate.",
+    "commit the refreshed pair if the numbers moved":
+        "the maintenance action's commit step; nothing to check locally.",
     "build the cost-aware test matrix":
         "discovery, not a gate: it validates and emits the simulation shards for the job "
         "that follows. Locally the same helper validates them before running pytest.",
