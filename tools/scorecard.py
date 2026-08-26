@@ -357,8 +357,11 @@ def main():
     # The same two populations while the animal is actually crawling, which is a different
     # measurement and was for years reported under the resting rows' labels. It is kept
     # because it is the one place `v_clamp` becomes visible: the last line is the fraction
-    # of the window in which some neuron is sitting on a clamp, and a graded,
-    # sodium-channel-free network has no business being on one at all.
+    # of the window in which some neuron is sitting on a clamp. The census answered who
+    # (2026-08-26, tools/clamp_occupancy.py census): the head motor pool and nobody else
+    # -- SMB/SMD/RMD at 28-41% per rail per cell, every other neuron under 3%, cords at
+    # 0% -- and widening the clamp does not move the gait, so the rail is a ceiling the
+    # head oscillation saturates against, not dynamics. See v_clamp in worm/params.py.
     print("  %-27s %13s %-4s   %s"
           % ("Neuron potentials, crawling",
              "%.0f to %.0f" % (np.mean([r["v_lo"] for r in rows]),
@@ -374,7 +377,8 @@ def main():
           % ("  time on a clamp",
              "%.0f%% / %.0f%%" % (100 * float(np.mean([r["rail_hi"] for r in rows])),
                                   100 * float(np.mean([r["rail_lo"] for r in rows]))),
-             "", "at %+.0f / %+.0f mV -- should be neither" % (clamp[1], clamp[0])))
+             "", "at %+.0f / %+.0f mV -- the head pool (SMB/SMD/RMD) saturating; "
+             "gait identical with the clamp widened" % (clamp[1], clamp[0])))
 
     # Gait modulation. The medium is the whole story of it: a real animal crawls slowly
     # on agar and swims fast in water, and the *direction* of that change is what this
