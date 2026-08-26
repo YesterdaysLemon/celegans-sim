@@ -1163,10 +1163,28 @@ class SensoryParams:
     # do-not-repeat list ever managed. The gates run so far, at B 1.0: 16/16 seeds
     # keep the head-to-tail wave (speeds 0.20-0.41), and the gain helps in every
     # medium -- agar 0.281 -> 0.399, viscous 0.201 -> 0.245, buffer 0.036 -> 0.048,
-    # twi up 0.05-0.11 everywhere, frequency untouched. What adoption still wants:
-    # the scorecard and ethogram against the frozen baseline, backward locomotion and
-    # omega depth re-checked, and the runtime port (this is a Python-only path;
-    # docs/runtime-parity.md) -- NEXT.md item 1-3/4 carries the list.
+    # twi up 0.05-0.11 everywhere, frequency untouched.
+    #
+    # The adoption battery (2026-08-26, issue #193; tools/compare.py, paired on
+    # identical seeds) REFUSED it, at both gains:
+    #
+    #   gain 1.0  ethogram: mean reorientation +31.9 deg, fraction >120 deg +23.3
+    #             points (both better) -- BUT |heading drift| 2.87 -> 8.20 deg/s,
+    #             path speed lower. nociception: reversals/min in CLEAN space
+    #             2.03 -> 4.29 (worse). chemotaxis: approach +15 mm better, and the
+    #             pooled pirouette ratio falls 1.77 -> 1.02 (conditioning gone).
+    #   gain 0.5  nociception recovers (all no-effect), chemotaxis all no-effect
+    #             (the gains vanish with the harms), turns still deeper (mean
+    #             +25.4 deg) -- and drift still detected, +2.85 [+0.09, +6.21].
+    #
+    # The verdict is a mechanism lesson, not a tuning miss: a STANDING field rides
+    # the direction gate whenever it is open, so the same bias that deepens a
+    # reorientation also curves every straight run -- depth and drift arrive
+    # together at every gain. The follow-up hypothesis, recorded and not adopted:
+    # a turn-phase-gated field (built only while an omega is commanded) would keep
+    # the depth without touching the runs; that thread lives with the turn-depth
+    # question (#196). The field stays at 0.0 -- the guardrail tables above stand
+    # as the reason it was worth measuring properly.
     as_field_gain: float = 0.0       # x the A/B field strength; 0 = the shipped animal
     as_field_direction: int = +1     # +1 anterior field (B-family) -- the measured winner
 
