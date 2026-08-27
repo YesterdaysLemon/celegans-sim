@@ -245,12 +245,22 @@ RUNTIME_UNSUPPORTED = {
     "modulator.dopamine_head_lag": 0.0,
     "modulator.dopamine_reach_swim": 0.0,
     "modulator.dopamine_muscle_rate": 0.0,
+    # Proprioception as a conductance (2026-08-27): the clamp experiment's channel
+    # translation, measured better than the current on every FORWARD-gait guardrail and
+    # then refused by the behavioural battery -- it abolishes spontaneous reversals
+    # (the shunt outweighs the drive when the backward command tries to take the cord;
+    # tools/clamp_occupancy.py THE BATTERY has the tables). proprio_E_rev needs no
+    # entry of its own: with the conductance at zero the reversal is never read, the
+    # load_half shape.
+    "sensory.proprio_conductance": 0.0,
     # The AS-class receptive field (2026-08-25): the last field-blind cord motor class,
     # given the same anterior/posterior field machinery as DA/DB/VA/VB behind a ratio
     # gain that ships at zero. At 0.0 the matrix is never built and the animal is
     # bit-identical to the model before the field existed; as_field_direction needs no
     # entry of its own, the load_half shape -- with the gain at zero the direction is
-    # never read. Track A adoption is gated in NEXT.md item 1-3/4.
+    # never read. Adoption was REFUSED by the behavioural battery (2026-08-26, #193:
+    # a standing field deepens turns but curves every run); the dossier at
+    # SensoryParams.as_field_gain has both batteries.
     "sensory.as_field_gain": 0.0,
     # Omega wave suppression -- stands the body wave down during a turn. Distinct from
     # `omega_reflex_suppression`, which acts only on the head gain and IS in the runtime.

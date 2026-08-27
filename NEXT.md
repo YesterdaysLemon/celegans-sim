@@ -52,14 +52,17 @@ research log.
 > larger than the head reflex's entire budget, on a body with almost no drag on it. Both the
 > additive frame and the floor frame are dead.
 
-**1½. Decide proprio-as-conductance adoption.** The mechanism is built
-(`SensoryParams.proprio_conductance`, default 0/off) and measured better than the current
-on every gait guardrail (dv_corr −0.73 → −0.82, TWI +0.87 → +0.91, speed 0.304 → 0.361
-mm/s at 5 nS; the sweep record is in `tools/clamp_occupancy.py`). What adoption wants:
-reference evidence (whole-cell motor-neuron recordings under bend, if the literature has
-them), the scorecard/ethogram baseline of item 2's protocol, and a runtime conductance
-path ([`docs/runtime-parity.md`](docs/runtime-parity.md) — a Python-only default is not a
-default).
+**1½. Proprio-as-conductance: measured, REFUSED (#194).** Better than the current on
+every forward-gait guardrail (dv_corr −0.73 → −0.82, speed 0.304 → 0.361 mm/s at 5 nS) —
+and the behavioural battery showed why that table was incomplete: the conductance
+abolishes spontaneous reversals (2.03/min → exactly 0 in clean space; 1 reversal event
+against the baseline's 9 off food; reorientation 53° → 13°; chemotaxis approach 15 mm
+worse; pirouette conditioning inverted). A conductance shunts as well as drives: both
+halves raise the cord's total membrane conductance, so the backward command pushes on a
+leakier membrane and loses its lever — the wave keeps its shape and loses its ability to
+change direction. Current mode stays the animal; the refusal tables live in
+`tools/clamp_occupancy.py` (THE BATTERY), and the default is now pinned in the runtime
+registry like every other Python-only path.
 
 **1¾. The AS-class field: measured, REFUSED (#193).** The opening dossier was the best
 wave number on record; the behavioural battery said no, twice (2026-08-26, full tables at
