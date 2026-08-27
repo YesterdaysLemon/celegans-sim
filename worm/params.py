@@ -1107,6 +1107,34 @@ class SensoryParams:
     thermo_gain: float = 9.0         # pA per degC deviation from the cultivation temperature
     thermo_tau_adapt: float = 12.0   # s
     cultivation_temp: float = 20.0   # degC
+    # Thermotaxis memory (issue #198). The animal migrates to the temperature at which
+    # it was fed, and re-learns within hours of cultivation at a new one (Hedgecock &
+    # Russell 1975; Mori & Ohshima 1995). Three-column honesty: the EXISTENCE of the
+    # memory is solid biology; the learning rule here (an on-food-weighted slow average
+    # of experienced temperature, dopamine-gated like the sleep homeostat's build) is
+    # modelled; the rate is the dish's compressed clock. At the dense lawn's dopamine
+    # (~0.44) the setpoint tau is 1/(rate * 0.44) ~ 2 sim-minutes -- "hours of
+    # cultivation" compressed the same way sleep's clock is. The state always learns
+    # while the animal feeds and freezes off food (measured: 20.0 -> 19.729 C over
+    # three minutes on the lawn); it costs nothing and, at the shipped gain, nothing
+    # reads it.
+    #
+    # The GAIN stays 0.0 on a measured verdict, not caution (2026-08-27,
+    # tools/thermo_memory.py): every tonic routing of (T - setpoint) into AFD failed
+    # -- the signed form separated cultivation histories AWAY from home, its mirror
+    # and the rectified form were noise, and the primitive itself is flat: -20 to
+    # +40 pA held into AFD leaves end temperature unmoved on the gradient. AFD
+    # steers through its transient, not its level, so the memory's route into
+    # behaviour must CONDITION the differential (warming is good below home, bad
+    # above it) -- the recorded follow-up, which wants its own paired gate. Pinned
+    # in tools/export_model.py::RUNTIME_UNSUPPORTED meanwhile.
+    thermo_learn_rate: float = 0.02  # /s at dopamine 1.0; the memory's compressed clock
+    # "Fed" is a threshold: bare-agar crawling holds the dopamine level at 0.029 mean /
+    # 0.045 max (measured, never exactly zero -- the basal-slowing cells are
+    # mechanoreceptors), while the sparsest lawn reads 0.10+. Below this the setpoint
+    # is frozen exactly; the learning rate scales with the excess above it.
+    thermo_learn_dopamine: float = 0.08
+    thermo_setpoint_gain: float = 0.0  # pA per degC COLDER than the learned setpoint, into AFD
     oxygen_gain: float = 60.0        # pA per unit fractional O2 (so ~8 pA over the range)
     oxygen_preferred: float = 0.07   # fractional O2 that URX/AQR/PQR prefer
 

@@ -565,6 +565,37 @@ def test_sleep_has_a_depth_and_the_middle_of_a_bout_defends_it():
         "scaling is defending sleep against emergencies, which is paralysis")
 
 
+def test_the_thermal_setpoint_learns_where_the_animal_eats_and_freezes_off_food():
+    """The thermotaxis memory (issue #198): fed animals learn, fasting ones do not.
+
+    The setpoint is an on-food-weighted average of experienced temperature, gated on
+    the dopamine level that means "fed" everywhere else in this model (Hedgecock &
+    Russell 1975 for the phenomenon). Two claims, each exact where it can be: an
+    animal feeding on a lawn away from its declared cultivation temperature moves its
+    setpoint toward what it experiences; an animal that never eats keeps the declared
+    value TO THE BIT -- which is the off-state exactness the whole route rests on
+    (nothing reads the setpoint at the shipped gain, and nothing writes it off food).
+    """
+    p = Params()
+    w = World(p.world, np.random.default_rng(0))
+    w.add_food_patch(0.0, 0.0, 22.0, density=1.0, attractant=0.0, length_scale=9.0)
+    fed = Simulation(p, seed=0, world=w)
+    fed.run(60.0)
+    assert fed.senses.t_setpoint != p.sensory.cultivation_temp, (
+        "a minute of feeding on the gradient left the setpoint exactly at the "
+        "declared cultivation temperature: the memory is not learning")
+    assert abs(fed.senses.t_setpoint - p.sensory.cultivation_temp) < 2.0, (
+        "the setpoint moved %.2f C in a minute; the learning clock is far off its "
+        "documented rate" % abs(fed.senses.t_setpoint - p.sensory.cultivation_temp))
+
+    fasting = Simulation(p, seed=0, world=bare_world(p))
+    fasting.run(60.0)
+    assert fasting.senses.t_setpoint == p.sensory.cultivation_temp, (
+        "an animal that never ate moved its thermal setpoint (%.6f): the memory is "
+        "writing off food and the off-state is no longer exact"
+        % fasting.senses.t_setpoint)
+
+
 def test_sleep_needs_ris():
     """Ablate RIS and the animal cannot sleep -- Turek et al. 2013, reproduced.
 

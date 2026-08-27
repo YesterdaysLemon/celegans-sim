@@ -154,6 +154,12 @@ class Senses:
         self.c_adapt = None
         self.odour_adapt = None
         self.t_adapt = None
+        # The thermal setpoint MEMORY, distinct from t_adapt's 12 s baseline: the
+        # temperature at which the animal has been fed, learned while feeding and
+        # frozen off food. Initialised at the declared cultivation temperature so an
+        # animal that has never eaten behaves exactly as it always did. See the
+        # transduction below and SensoryParams.thermo_setpoint_gain for the dossier.
+        self.t_setpoint = float(p.cultivation_temp)
         self.o2_adapt = None
         self.rep_adapt = None
         self.tail_rep_adapt = None
@@ -353,6 +359,44 @@ class Senses:
         self.t_adapt += (T - self.t_adapt) * (1.0 - self._therm_decay)
         # AFD is a warm receptor above the cultivation temperature and silent below it.
         I[self.afd] += p.thermo_gain * np.clip(dT, -0.5, None)
+        # The setpoint memory (issue #198). The animal migrates to the temperature at
+        # which it was FED and re-learns a new one within hours of cultivation there
+        # (Hedgecock & Russell 1975; Mori & Ohshima 1995) -- so the setpoint is a slow
+        # average of experienced temperature taken only while feeding, gated on the
+        # same dopamine level that means "on food" everywhere else in the model (the
+        # sleep homeostat's build reads it identically). Off food the memory is frozen,
+        # which is what makes an animal that has never eaten bit-identical. Exact
+        # first-order update, so the learning does not depend on the step size.
+        # "Fed" is a threshold, not a sign: crawling on bare agar still tickles the
+        # dopaminergic mechanoreceptors (measured 2026-08-27: off-food level 0.029
+        # mean, 0.045 max over a minute, never zero), and the first cut of this rule
+        # -- learn on any positive level -- had a fasting animal quietly writing its
+        # own memory, caught by the off-state test the day it was written. The
+        # sparsest lawn reads 0.10+, so 0.08 separates the regimes with margin, and
+        # below it the setpoint is frozen EXACTLY, which is the bit-identical
+        # never-fed animal the whole route rests on.
+        if mods is not None:
+            dop = float(mods.level["dopamine"]) - p.thermo_learn_dopamine
+            if dop > 0.0:
+                self.t_setpoint += (T - self.t_setpoint) * (
+                    -np.expm1(-p.thermo_learn_rate * dop * self.dt))
+        # What the memory could drive, and what the measurement said (2026-08-27,
+        # tools/thermo_memory.py): a tonic setpoint deviation into AFD CANNOT steer
+        # this connectome. Three routings were measured -- signed both ways and
+        # rectified cold-side -- and then the primitive itself: a constant current
+        # held into AFD, -20 to +40 pA over 200 s on the gradient, leaves the
+        # animal's end temperature FLAT (20.4-21.1 C, sd ~1.5, n=8 per level). AFD's
+        # behavioural leverage here is its TRANSIENT -- the adapting differential
+        # above, phase-locked with the animal's own movement -- and a standing
+        # offset carries no phase information for a klinotaxis to use. Which is also
+        # the biology's answer: the setpoint conditions the RESPONSE to dT (warming
+        # is good below home and bad above it), it is not a second current. That
+        # follow-up -- making the differential's sign setpoint-conditional -- is the
+        # recorded hypothesis, and it must win its own paired gate before this term
+        # changes shape. Until then the gain ships at 0.0, provably inert, pinned in
+        # the runtime registry; the MEMORY above stays, learning, costing nothing.
+        if p.thermo_setpoint_gain != 0.0:
+            I[self.afd] += p.thermo_setpoint_gain * max(0.0, self.t_setpoint - T)
 
         # ------------------------------------------------------------------------- oxygen
         o2 = float(world.oxygen(nose[0], nose[1]))
