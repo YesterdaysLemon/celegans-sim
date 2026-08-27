@@ -582,10 +582,15 @@ class World:
         x, y = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
         if not np.isfinite(x).all() or not np.isfinite(y).all():
             raise DivergentSimulation("world coordinates are not finite")
+        # The failure line sits half a millimetre BEYOND the dish edge, not on it: the
+        # wall force needs somewhere to do its work (see WALL_ZONE at contact_force --
+        # the old zero-margin cliff dropped grazing animals, issue #211), and sample()
+        # clips its cell indices, so a nose momentarily past the rim reads the rim
+        # cell rather than laundering garbage. Past the margin it is a real escape.
         radius = np.hypot(x, y)
-        if np.any(radius > self.extent):
+        if np.any(radius > self.extent + 0.5):
             raise DivergentSimulation(
-                "animal left the dish (radius %.6g mm > %.6g mm)"
+                "animal left the dish (radius %.6g mm > %.6g mm + 0.5 margin)"
                 % (float(np.max(radius)), self.extent))
         if key is not None:
             self._valid_memo = key
@@ -640,11 +645,21 @@ class World:
         return out
 
     # ------------------------------------------------------------------------- contact
+    # The wall's working distance. This was 0.05 mm, and 50 microns cannot turn a body:
+    # a tangentially grazing animal spent 0.21 s in the zone and pushed straight through
+    # the rim (issue #211, reproduced at placement (0, 44.3) heading 70 degrees off
+    # radial -- long undisturbed roams did it naturally about once per two minutes).
+    # Half a millimetre gives the same stiffness ten times the reach and ten times the
+    # peak restoring force before the validation margin, and a soft shoulder is also
+    # what a real dish edge is. Every pinned assay runs at the plate's centre; widening
+    # the zone moved none of them.
+    WALL_ZONE = 0.5
+
     def contact_force(self, nodes: np.ndarray, stiffness: float = 40.0) -> np.ndarray:
         """Repulsion from the dish wall and any obstacles, as a force on each body node."""
         f = np.zeros_like(nodes)
         r = np.hypot(nodes[:, 0], nodes[:, 1])
-        over = r - (self.extent - 0.05)
+        over = r - (self.extent - self.WALL_ZONE)
         hit = over > 0
         if np.any(hit):
             direction = nodes[hit] / np.maximum(r[hit, None], 1e-9)
