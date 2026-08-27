@@ -83,18 +83,34 @@ def _events(mask):
     return list(zip(np.flatnonzero(d > 0), np.flatnonzero(d < 0)))
 
 
-def _reorientation(tr, spans, settle=2.0):
-    """Heading change across each event, in degrees.
+def _reorientation(tr, spans, settle=2.0, skip=5.0):
+    """Heading change across each event, in degrees: the new run against the old.
 
     Measured from the mean heading over a window before the event to the mean heading
     over a window after it, rather than instantaneously: the head of an undulating worm
     swings far enough each cycle to swamp the reorientation being measured.
+
+    The post window starts `skip` seconds after the event ends, not flush against it.
+    The omega bias decays over seconds (SensoryParams.omega_tau) and the heading keeps
+    rotating until it has spent itself, so a flush window averages the turn's INTERIOR
+    -- a rotating heading -- and underreads the result. Measured 2026-08-27 on
+    identical trajectories: at the shipped tau the flush window read a 53 deg median
+    where the finished turn reads ~82; at a candidate tau of 2.5 s it INVERTED the
+    sign of a paired treatment effect (deeper turns scored as shallower, because more
+    of each turn fell inside the window). Events whose post window would run into the
+    next event are dropped rather than contaminated.
     """
     w = max(1, int(round(settle / SAMPLE_DT)))
+    k = int(round(skip / SAMPLE_DT))
     ang = np.arctan2(tr["dir_y"], tr["dir_x"])
+    starts = [i0 for i0, _ in spans]
     out = []
-    for i0, i1 in spans:
-        pre, post = ang[max(0, i0 - w):i0], ang[i1:i1 + w]
+    for n, (i0, i1) in enumerate(spans):
+        j0 = i1 + k
+        nxt = starts[n + 1] if n + 1 < len(spans) else len(ang)
+        if j0 + w > nxt:
+            continue
+        pre, post = ang[max(0, i0 - w):i0], ang[j0:j0 + w]
         if len(pre) < w // 2 or len(post) < w // 2:
             continue
         a = np.arctan2(np.sin(post).mean(), np.cos(post).mean()) - \
