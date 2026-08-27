@@ -245,6 +245,11 @@ RUNTIME_UNSUPPORTED = {
     "modulator.dopamine_head_lag": 0.0,
     "modulator.dopamine_reach_swim": 0.0,
     "modulator.dopamine_muscle_rate": 0.0,
+    # Thermotaxis memory (issue #198): the learned thermal setpoint's route into AFD.
+    # The state itself (Senses.t_setpoint) always learns while the animal feeds, but at
+    # gain zero it is never read, so this one entry pins the whole path;
+    # thermo_learn_rate needs no entry of its own, the load_half shape.
+    "sensory.thermo_setpoint_gain": 0.0,
     # Proprioception as a conductance (2026-08-27): the clamp experiment's channel
     # translation, measured better than the current on every FORWARD-gait guardrail and
     # then refused by the behavioural battery -- it abolishes spontaneous reversals

@@ -80,8 +80,13 @@ OFF+chloride-on-AIZ second chance all lose to deaf; `tools/awb_probe.py` has all
 readings), ADF/ASI/ASG/ASJ wait on a `WorldParams` notion
 of food quality (#199), and PVD carries harsh touch — the whole-body contact total
 high-passed at `pvd_threshold`, so escape survives ablating the gentle-touch sextet
-(Way & Chalfie 1989). The audit itself is `tools/idle_neurons.py`; current reading
-112/302 reachable.
+(Way & Chalfie 1989). The **thermotaxis memory ships live but unrouted** (#198): the
+setpoint learns where the animal eats (dopamine-gated, frozen off food, bit-exact
+never-fed state) and every tonic routing into AFD was measured and refused — the
+transfer curve is flat, AFD steers through its transient — so the recorded follow-up is
+a setpoint-conditional differential (warming is good below home, bad above), which
+wants its own paired gate (`tools/thermo_memory.py` has all four measurements). The
+audit itself is `tools/idle_neurons.py`; current reading 112/302 reachable.
 
 **2. Decide the head cascade, then port it.** Four stages of 0.125 s with `head_delay = 0`
 match the shipped frequency, improve the wave in every medium, and retire the largest fitted

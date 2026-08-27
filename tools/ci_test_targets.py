@@ -63,6 +63,7 @@ SPECIAL_TARGETS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict([
         "test_improvement_is_chloride_on_aib_and_worsening_is_not",
         "test_a_repellent_at_the_tail_does_not_command_a_reversal",
         "test_a_worm_with_sleep_pressure_stops_and_a_poke_wakes_it",
+        "test_the_thermal_setpoint_learns_where_the_animal_eats_and_freezes_off_food",
         "test_sleep_has_a_depth_and_the_middle_of_a_bout_defends_it",
         "test_sleep_needs_ris",
         "test_omega_gain_of_one_changes_nothing",
