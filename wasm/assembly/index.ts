@@ -2325,7 +2325,9 @@ class Worm {
 
   contact(): void {
     const n = G.N_LINKS;
-    const stiff: f64 = 40.0, R = world.extent - 0.05;
+    // Wall zone 0.5 mm, mirroring World.WALL_ZONE: 50 microns could not turn a
+    // grazing body and the rim dropped it (issue #211); worm/world.py has the story.
+    const stiff: f64 = 40.0, R = world.extent - 0.5;
     for (let i = 0; i <= n; i++) {
       const x = unchecked(this.nodesX[i]), y = unchecked(this.nodesY[i]);
       const r = Math.sqrt(x * x + y * y);

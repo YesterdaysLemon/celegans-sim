@@ -770,14 +770,19 @@ function attractantAfter(nWorms) {
  * whether or not the arrays were shared, which is this file's recurring vacuous pass.
  */
 {
-  // Mouth on the wall at angle a, radius r; the body trails inward (heading = a + pi), so
-  // the animal travels outward and keeps pressing. See case 11 for why heading reads
-  // backwards.
-  const WALL = [[0.35, 45.00], [2.20, 45.15], [4.10, 44.90]];
+  // Mouth on the wall at angle a, radius r, pressing at `off` from straight-out; the body
+  // trails inward (heading = a + pi presses radially -- see case 11 for why heading reads
+  // backwards). The obliquities are what keep the three contacts DISTINCT: with the
+  // half-millimetre wall zone (issue #211) a pressing animal settles into smooth
+  // equilibrium contact instead of bouncing off a 0.05 mm lip, so three radial pressers
+  // converge to near-identical forces and the distinctness guard below trips vacuous.
+  // Pressing at different angles gives each animal its own sustained normal force.
+  const WALL = [[0.35, 45.00, 0.0], [2.20, 45.15, 0.5], [4.10, 44.90, -0.9]];
   const WALL_STEPS = 4000;                 // 2.0 s -- long enough for all three to be pressing
   const place = (E, i) => {
-    const [a, r] = WALL[i];
-    return E.createWorm(1000 + i * 7717, Math.cos(a) * r, Math.sin(a) * r, a + Math.PI);
+    const [a, r, off] = WALL[i];
+    return E.createWorm(1000 + i * 7717, Math.cos(a) * r, Math.sin(a) * r,
+                        a + Math.PI + off);
   };
   const sample = (E, id) => ({
     nodes: readArray(E, E.ptrNodesX(id), 49),

@@ -319,6 +319,34 @@ def test_harsh_touch_survives_losing_the_gentle_touch_cells():
         % (gentle_ava - quiet_ava, gentle_pvd - quiet_pvd))
 
 
+def test_the_dish_wall_turns_a_grazing_animal_instead_of_dropping_it():
+    """The rim is a wall, not a cliff -- issue #211.
+
+    With the wall engaging only in its last 0.05 mm, a tangentially grazing animal
+    spent 0.21 s in the zone and pushed straight through the rim, and long undisturbed
+    roams died on it about once per two minutes (three instruments hit it in one day).
+    This is that reproduced trajectory -- placed brushing the wall, heading 70 degrees
+    off radial, the worst measured approach -- which must now be turned by the widened
+    half-millimetre zone: no divergence, and the whole body back inside the dish
+    proper, with the validation margin never doing the containing.
+    """
+    p = Params()
+    w = bare_world(p)
+    sim = Simulation(p, seed=0, world=w,
+                     placement=(0.0, 44.3, float(np.pi / 2 + np.radians(70))))
+    rmax = 0.0
+    for _ in range(int(30.0 / sim.dt)):
+        sim.step()     # DivergentSimulation here is the regression this test pins
+        r = float(np.hypot(sim.body.nodes()[:, 0], sim.body.nodes()[:, 1]).max())
+        rmax = max(rmax, r)
+    assert rmax <= w.extent + 0.25, (
+        "the body reached %.3f mm; the wall is leaning on the validation margin "
+        "instead of containing the animal" % rmax)
+    r_end = float(np.hypot(sim.body.nodes()[:, 0], sim.body.nodes()[:, 1]).max())
+    assert r_end < w.extent, (
+        "after 30 s the animal still straddles the rim (max node r %.3f)" % r_end)
+
+
 def test_the_tail_feels_repellent_and_bag_feels_the_downshift():
     """The two ends of the animal are different sensors, and oxygen has two edges.
 

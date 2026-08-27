@@ -74,8 +74,12 @@ def test_world_rejects_nonfinite_and_out_of_dish_samples():
 
     with pytest.raises(DivergentSimulation, match="not finite"):
         world.sample(world.food, np.inf, 0.0)
+    # The failure line sits 0.5 mm beyond the rim (the wall zone's working margin --
+    # see World._validate_coordinates); just past the rim is a wall-contained nose
+    # reading the rim cell, past the margin is an escape.
+    world.sample(world.food, world.extent + 0.49, 0.0)   # contained: must not raise
     with pytest.raises(DivergentSimulation, match="left the dish"):
-        world.sample(world.food, world.extent + 0.01, 0.0)
+        world.sample(world.food, world.extent + 0.51, 0.0)
 
 
 def test_population_advances_a_shared_world_once_per_tick():
