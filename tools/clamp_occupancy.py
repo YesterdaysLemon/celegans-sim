@@ -44,6 +44,22 @@ mattering). 5 nS is the speed optimum of this sweep.
 TRACK A: this is reference-worm physiology. The measurement decides nothing by itself;
 adoption of a conductance default is a separate decision against reference evidence.
 
+THE BATTERY (2026-08-26/27, issue #194; tools/compare.py, paired on identical seeds)
+REFUSED the adoption at 5 nS, and the shape of the refusal is the finding. Nociception:
+spontaneous reversals in clean space fall from 2.03/min to exactly ZERO. Ethogram off
+food: 1 reversal event against the baseline's 9, reorientation 53 -> 13 degrees, no
+turn over 120 degrees. Chemotaxis: approach 15.4 mm WORSE [-19.7, -9.5], and the
+pooled pirouette ratio inverts, 1.47 -> 0.52. Forward locomotion is untouched -- which
+is exactly why the guardrail table above looked so good: every number in it is a
+forward-gait number. The mechanism reading: a conductance does not just drive, it
+SHUNTS -- both halves raise the cord's total membrane conductance, so when the
+backward command tries to take the cord over, it is pushing on a leakier membrane and
+loses its lever. The wave keeps its shape and loses its ability to change direction.
+With H2 already null (the cords do not occupy the rail, above) the translation has no
+problem to fix and a real behaviour to cost, so current mode stays the animal;
+proprio_conductance stays 0.0 and is now pinned in
+tools/export_model.py::RUNTIME_UNSUPPORTED like every other Python-only default.
+
 THE CENSUS (2026-08-26, seeds 0/1/3, agar). The scorecard printed "some neuron is on a
 clamp 75%/86% of the time -- should be neither" for years; the census names the
 culprits: the head motor pool, and nobody else. SMB/SMD/RMD sit on each rail 28-41% of sampled
