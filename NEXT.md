@@ -19,11 +19,12 @@ cases. One blocker remains: **the food/load confound on the dopamine scalar**
 the permanent-on-food state, and the behavioural gate measured exactly the reversal
 suppression that predicts). Separate basal dopamine from the load response, or power the
 amine-only chemotaxis arm to n=12 to confirm the attribution. Two protocol guards bind any
-further measurement: the swim end is bistable — at muscle coefficients ≥ 0.7 badly, and at
-the **shipped defaults** already measurably (2026-08-25: buffer seed 0 of {0,1,3,5,7} falls
-into a 0.33 Hz near-standing mode by t ≈ 46 s while the rest hold 0.85 Hz — the scorecard
-now prints per-seed frequencies for every medium so this cannot hide in a ±) — so re-run
-the stability grid before moving a knob; and any assay of an enabled-amine configuration
+further measurement: the swim end wobbles — at muscle coefficients ≥ 0.7 badly (a real
+bistability), and at the **shipped defaults** as a recurrent, self-ending ~15 s coil-up
+episode (mapped 2026-08-27, `tools/buffer_basin.py` #195: no seed ever stays in; the
+2026-08-25 "0.33 Hz by t ≈ 46 s" reading was one episode straddled by the scorecard's own
+window; the scorecard prints per-seed frequencies so an episode cannot hide in a ±) — so
+re-run the stability grid before moving a knob; and any assay of an enabled-amine configuration
 needs a settle ≥ 3 dopamine taus or it measures the transient. Full dossier:
 `tools/amine_gait.py` docstring, `docs/runtime-parity.md` (`REFERENCE_CANDIDATE`), and the
 research log.

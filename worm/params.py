@@ -1200,6 +1200,17 @@ class SensoryParams:
     # deliberately: the gentle pathway may smooth and habituate, an emergency
     # channel must not -- so its drive also ends the moment the force does, and the
     # phenotype is measured during the prod, not after it.
+    #
+    # One regime the calibration crawls did not visit, found the day after
+    # (tools/buffer_basin.py, #195): a SWIMMING animal's deep coil presses its own
+    # far side hard enough that the whole-body total reaches 3.6-8.3 in brief
+    # bursts -- the contact sum includes Body.self_contact_force -- so in buffer a
+    # hard coil is also a nociceptive event, and buffer trajectories moved when
+    # this channel landed (agar and viscous never self-contact at these totals;
+    # every determinism pin held). Biologically defensible -- PVD tiles the body
+    # wall and harsh body contact is harsh body contact -- and on the record
+    # rather than silently: if self-touch should ever be excluded, that is a
+    # mechanism decision with the episode map as its evidence.
     pvd_gain: float = 30.0           # pA per unit of contact force above threshold
     pvd_threshold: float = 3.0       # summed instantaneous contact where harsh begins
 

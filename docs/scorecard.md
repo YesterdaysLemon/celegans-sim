@@ -35,7 +35,9 @@ every row from the same run. Regenerate with `tools/scorecard.py --emit`, or dis
 | viscous | 0.85 ± 0.01 | 0.88 ± 0.01 | 0.221 ± 0.015 | 0.85 0.85 0.85 0.85 0.83 |
 | buffer | 0.72 ± 0.23 | 2.26 ± 2.40 | 0.037 ± 0.001 | 0.33 0.85 0.85 0.85 |
 
-The per-seed column is load-bearing: buffer is bimodal at the shipped defaults
-(about one seed in five settles into a ~0.33 Hz whole-body standing flip by the
-gait window), and a mean ± sd cannot show that. A fallen seed is a visible
-outlier here rather than a mysterious spread.
+The per-seed column is load-bearing: a buffer seed can spend the gait window
+inside a transient coil-up episode (a ~15 s spell of near-standing slow flip the
+animal enters and leaves on its own -- tools/buffer_basin.py mapped it, #195),
+and a mean ± sd cannot show that. A low seed here is an episode caught in the
+act, not a fallen animal. (The 0.33 row above is one such episode, straddled by
+the gait window on the pre-PVD animal this table was emitted from.)
