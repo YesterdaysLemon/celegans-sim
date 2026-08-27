@@ -100,11 +100,15 @@ behavioural assay at once.
   5.9×.
 - **Backward locomotion.** Reverses, but curvature and net speed stay poor after AVB removal.
   Not citable as a working phenotype.
-- **Taxis magnitude.** Mechanisms point the right way with small outcomes (latest: the
-  ASEL → AIB chloride moved both conditional pirouette rates correctly, ratio 0.52 → 0.87
-  paired, outcome unmoved — provenance at `NeuralParams.glucl_pre`). Re-run these after a
-  turn-depth mechanism clears its own paired gate; do not tune the assays around the
-  current shallow turn.
+- **Taxis magnitude — the turn-depth ceiling is CLEARED (#196).** The shared ceiling was
+  the omega bias LIFETIME: at `omega_tau = 1.5` s the bias decayed inside one undulation
+  period, amplitude never mattered (corr 0.04), and the shipped animal had slid to 13.6%
+  of reversals over 120° against its own fitted 32%. `omega_tau = 2.5` restores the
+  animal's ~35% with every guard clean (`tools/turn_depth.py` has the sweep;
+  `SensoryParams.omega_current` the refit dossier). NOW re-run the taxis magnitudes at
+  power: chemotaxis at tau 2.5 already trends better (CI +0.049, approach +5.6 mm) but
+  n = 4 resolves nothing under 0.111 — the ASEL → AIB ratio, BAG dwell, and nociception
+  d_gain question all deserve their paired re-runs against the deeper turn.
 - **Sleep's behavioural surface: measured (#197, `tools/sleep_surface.py`).** Bout
   duration belongs to the circuit (46 s ≈ tau_sleep·ln(0.69/0.25), near-deterministic);
   bout timing belongs to the ecology — intervals run metronomic to 114 ± 114 s depending

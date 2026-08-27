@@ -295,7 +295,7 @@ def test_the_plate_refuses_lawns_past_the_cap_and_counts_them(params):
 def test_an_animal_that_grazes_dims_its_own_lawn(params):
     """The whole loop, which is where the bug was reported from.
 
-    One worm on a 1.2 mm lawn for 30 s. It takes 0.057295 units off the plate -- the lawn
+    One worm on a 1.2 mm lawn for 30 s. It takes 0.021999 units off the plate -- the lawn
     holds about 8.8, so f_p ends at 0.997968 -- and that has to show up in both fields.
     Small, and the smallness is the point: this is what a *tenth of a minute's* grazing does
     to the gradients, where before #48 an hour of it did exactly nothing.
@@ -305,9 +305,13 @@ def test_an_animal_that_grazes_dims_its_own_lawn(params):
     oxygen field, and an animal crossing the dent feels its own downshifts through BAG);
     0.021996 until the ASE opponency was completed at AIB, whereupon eaten came nearly
     back -- an animal whose improvement signal no longer commands reversals stays over
-    its own lawn. Same seed, same plate, a different animal each time. The claims below
-    (the guard, and eaten showing up in every field's bookkeeping) are the test; these
-    constants just pin the loop's determinism.
+    its own lawn; 0.057295 until the omega bias lifetime was refit (#196, omega_tau
+    1.5 -> 2.5), whereupon it landed at 0.021999 -- an animal whose turns complete
+    swings off this tiny lawn where the shallow-turning one pivoted in place over it,
+    and that the number came back to within 3e-6 of the pre-opponency value is
+    coincidence, not restoration. Same seed, same plate, a different animal each time.
+    The claims below (the guard, and eaten showing up in every field's bookkeeping) are
+    the test; these constants just pin the loop's determinism.
 
     The guard that it ate at all is load-bearing and was watched failing: placing the animal
     on bare agar leaves every field untouched, `assert eaten > 0.01` goes red, and without
@@ -325,12 +329,12 @@ def test_an_animal_that_grazes_dims_its_own_lawn(params):
     eaten = before_food - float(w.food.sum())
     # THE GUARD. See the docstring.
     assert eaten > 0.01, "the animal ate %.6g; there is nothing to test" % eaten
-    assert eaten == pytest.approx(0.057295, abs=1e-6)
-    assert w._patch_frac[0] == pytest.approx(0.997968, abs=1e-6)
+    assert eaten == pytest.approx(0.021999, abs=1e-6)
+    assert w._patch_frac[0] == pytest.approx(0.999204, abs=1e-6)
 
     # Oxygen: the deficit is shallower than it was, so the animal is standing in more
     # oxygen than a full lawn would leave it.
-    assert float((before_o2 - w.o2_deficit).max()) == pytest.approx(3.0483e-04, rel=5e-3)
+    assert float((before_o2 - w.o2_deficit).max()) == pytest.approx(1.1937e-04, rel=5e-3)
     assert w.oxygen(0.0, 0.0) > params.world.o2_ambient - params.world.o2_depth
 
     # The attractant is compared against an ungrazed control rather than against its own

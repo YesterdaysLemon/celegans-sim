@@ -1420,8 +1420,25 @@ class SensoryParams:
     # model -- an order of magnitude above cord_drive. Nothing measures what the turn
     # circuit delivers. What is *not* fitted is the mechanism, which is why this is worth
     # more than the gain it replaces. 0.0 disables it and reproduces the previous model.
+    #
+    # THE REFIT (2026-08-27, issue #196; tools/turn_depth.py has the full tables). The
+    # fitted triple above had silently slid off its own target: mechanisms that landed
+    # after the fit moved what a turn completes to, and the shipped animal read 82 deg
+    # median / 13.6% over 120 against the fit's 106 / 32%. The instrument that ordered
+    # the hunt found where the depth goes: amplitude is NOT the lever -- reversal
+    # durations are healthy, the amplitude earned averages 0.84, and corr(amplitude,
+    # reorientation) = 0.04; doubling the current makes turns SHALLOWER (the held-drive
+    # saturation above, again). Time is: at tau 1.5 s the bias decays inside one
+    # undulation period and the wave overwrites it. The sweep over tau at 300 pA reads
+    # 13.6% / 20.3% / 34.8% / 56.1% over 120 deg at 1.5 / 2.0 / 2.5 / 3.0 s, and 2.5
+    # restores the animal's ~35% (Gray, Hill & Bargmann 2005). The paired battery at
+    # 2.5 (tools/compare.py, three families) shows the price is nothing measurable:
+    # every trajectory guard clean, |heading drift| numerically improving 2.87 -> 0.87
+    # deg/s, nociception and chemotaxis all no-effect with chemotaxis trending better
+    # (CI +0.049, approach +5.6 mm at n = 4). A turn is a differential held long
+    # enough to travel; 1.5 s was not long enough.
     omega_current: float = 300.0     # pA, ventral pool up and dorsal pool down by this
-    omega_tau: float = 1.5           # s   how long the bend is held after the edge
+    omega_tau: float = 2.5           # s   how long the bend is held after the edge
     omega_ref_reversal: float = 0.4  # s   reversal length earning a full-amplitude turn
     omega_ventral: tuple = ("RIVL", "RIVR", "SMDVL", "SMDVR",
                             "RMDVL", "RMDVR", "SMBVL", "SMBVR")
