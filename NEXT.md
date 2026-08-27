@@ -104,12 +104,15 @@ behavioural assay at once.
   paired, outcome unmoved — provenance at `NeuralParams.glucl_pre`). Re-run these after a
   turn-depth mechanism clears its own paired gate; do not tune the assays around the
   current shallow turn.
-- **Sleep's behavioural surface.** The circuit is in (worm/sleep.py) with its compressed
-  clock, and arousal now has a depth curve (threshold 0.74 → 1.13 → 0.86 across a bout,
-  Nichols 2017 — `Sleep.depth`); unmeasured beyond its own gates: bout statistics against
-  You 2008's satiety quiescence, and whether arousal habituation should exist (#197). Any
-  long on-food assay now contains sleep unless it runs the sleepless control
-  (`SleepParams.ris_drive = 0`).
+- **Sleep's behavioural surface: measured (#197, `tools/sleep_surface.py`).** Bout
+  duration belongs to the circuit (46 s ≈ tau_sleep·ln(0.69/0.25), near-deterministic);
+  bout timing belongs to the ecology — intervals run metronomic to 114 ± 114 s depending
+  on the animal's own foraging, and on the default plate sleep is a rare late event
+  (~7–8 min to onset). The variance the model still lacks against You 2008 is in bout
+  *durations*; if that ever matters it should come from satiety reaching tau_sleep, not a
+  noise dial. Arousal habituation remains unmeasured. Any long on-food assay contains
+  sleep unless it runs the sleepless control (`SleepParams.ris_drive = 0`). The surface
+  run also caught the dish rim dropping a roamer (#211).
 
 ---
 
