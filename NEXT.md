@@ -105,15 +105,19 @@ behavioural assay at once.
   5.9×.
 - **Backward locomotion.** Reverses, but curvature and net speed stay poor after AVB removal.
   Not citable as a working phenotype.
-- **Taxis magnitude — the turn-depth ceiling is CLEARED (#196).** The shared ceiling was
-  the omega bias LIFETIME: at `omega_tau = 1.5` s the bias decayed inside one undulation
-  period, amplitude never mattered (corr 0.04), and the shipped animal had slid to 13.6%
-  of reversals over 120° against its own fitted 32%. `omega_tau = 2.5` restores the
-  animal's ~35% with every guard clean (`tools/turn_depth.py` has the sweep;
-  `SensoryParams.omega_current` the refit dossier). NOW re-run the taxis magnitudes at
-  power: chemotaxis at tau 2.5 already trends better (CI +0.049, approach +5.6 mm) but
-  n = 4 resolves nothing under 0.111 — the ASEL → AIB ratio, BAG dwell, and nociception
-  d_gain question all deserve their paired re-runs against the deeper turn.
+- **Taxis magnitude — turn depth was NOT the bottleneck (measured at power,
+  2026-08-28).** The ceiling was cleared (#196: `omega_tau = 2.5` restores the animal's
+  ~35% deep turns, adopted on fit-maintenance grounds that still stand — the sweep is in
+  `tools/turn_depth.py`) and the promised re-opening was then measured properly:
+  `tools/chemo_power.py`, 16/16 paired seeds, every metric no-effect with point
+  estimates leaning worse (CI −0.045 [−0.154, +0.034]). The n = 4 "trending better" was
+  the noise its own MDE line warned about. The pirouette rows say where the bottleneck
+  actually lives: conditioning was weak even before (down/up ratio 1.41 against the
+  strong modulation of real worms) and reads 0.79 on the deep-turn animal — first
+  distinguish detector contamination (deep omegas fooling the mechanical reversal
+  detector, the estimator lesson a third time) from genuine dilution; then the hunt is
+  the SENSORY-TO-TURN COUPLING — how strongly dC/dt gates the pirouette machinery — not
+  the turn itself.
 - **Sleep's behavioural surface: measured (#197, `tools/sleep_surface.py`).** Bout
   duration belongs to the circuit (46 s ≈ tau_sleep·ln(0.69/0.25), near-deterministic);
   bout timing belongs to the ecology — intervals run metronomic to 114 ± 114 s depending
