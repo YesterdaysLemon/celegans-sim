@@ -82,6 +82,31 @@ def test_world_rejects_nonfinite_and_out_of_dish_samples():
         world.sample(world.food, world.extent + 0.51, 0.0)
 
 
+def test_invariants_share_the_worlds_escape_line():
+    """check_invariants and World draw the dish's edge in the same place.
+
+    The invariant kept the zero-margin cliff World._validate_coordinates gave up in #211,
+    so an animal the wall was holding a hair past the rim passed every sample and then
+    failed run()'s periodic check as "left the dish".
+    """
+    p = Params()
+    sim = Simulation(p, seed=0, world=World(p.world, np.random.default_rng(0)))
+
+    def outermost_at(r_target):
+        for _ in range(3):   # a translation also moves the other nodes' radii a little
+            nodes = sim.body.nodes()
+            sim.body.pos = sim.body.pos + np.array([r_target - nodes[:, 0].max(), 0.0])
+        return float(np.hypot(*sim.body.nodes().T).max())
+
+    r = outermost_at(sim.world.extent + 0.3)
+    assert sim.world.extent < r < sim.world.extent + World.ESCAPE_MARGIN
+    sim.check_invariants()                                   # held by the wall, not gone
+    r = outermost_at(sim.world.extent + 0.6)
+    assert r > sim.world.extent + World.ESCAPE_MARGIN
+    with pytest.raises(DivergentSimulation, match="left the dish"):
+        sim.check_invariants()
+
+
 def test_population_advances_a_shared_world_once_per_tick():
     p = Params()
     world = World(p.world, np.random.default_rng(0))

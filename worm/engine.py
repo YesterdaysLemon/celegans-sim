@@ -17,7 +17,6 @@ backwards down the body and pushes the animal forward against an anisotropic dra
 
 from __future__ import annotations
 
-import time
 from collections import deque
 from dataclasses import dataclass
 
@@ -100,14 +99,6 @@ class Simulation:
         self.ablated: list[str] = []
         self._nmj0 = None
 
-        # Rolling history for the viewer and for the behavioural measurements.
-        self.trail = deque(maxlen=4000)
-        self.history = {
-            "t": deque(maxlen=3000),
-            "speed": deque(maxlen=3000),
-            "curvature_mid": deque(maxlen=3000),
-            "attractant": deque(maxlen=3000),
-        }
         self._last_centroid = self.body.centroid().copy()
         self._velocity_smooth = np.zeros(2)
         self.path_speed = 0.0        # distance travelled per second, including sloshing
@@ -267,13 +258,6 @@ class Simulation:
         if span > 0.5 * self._speed_window:
             self.speed = float(np.hypot(*(centroid - hist[0][1]))) / span
 
-        if self.steps % 20 == 0:
-            self.trail.append((float(centroid[0]), float(centroid[1])))
-            h = self.history
-            h["t"].append(self.t)
-            h["speed"].append(self.speed)
-            h["curvature_mid"].append(float(curvature[len(curvature) // 2]))
-            h["attractant"].append(self.senses.readout.get("attractant", 0.0))
         self._pending_step = None
 
     def run(self, seconds: float, check_every: int | None = 1000) -> None:
@@ -323,10 +307,12 @@ class Simulation:
         if not np.isfinite(nodes).all():
             raise DivergentSimulation("body coordinates are not finite")
         radius = np.hypot(nodes[:, 0], nodes[:, 1])
-        if float(radius.max()) > self.world.extent:
+        # The world's own escape line (World.ESCAPE_MARGIN), not the rim: a node just past
+        # the rim is an animal the wall is holding.
+        if float(radius.max()) > self.world.extent + self.world.ESCAPE_MARGIN:
             raise DivergentSimulation(
-                "animal left the dish (radius %.6g mm > %.6g mm)"
-                % (float(radius.max()), self.world.extent))
+                "animal left the dish (radius %.6g mm > %.6g mm + %.6g margin)"
+                % (float(radius.max()), self.world.extent, self.world.ESCAPE_MARGIN))
 
     # -------------------------------------------------------------------------- control
     def set_medium(self, name: str) -> None:
@@ -351,7 +337,15 @@ class Simulation:
         self.ablated = [self.conn.names[i] for i in idx]
 
     def poke(self, where: str = "anterior", strength: float = 1.0) -> None:
-        """Deliver an eyebrow-hair touch, as in the classic gentle-touch assay."""
+        """Press on the body for the NEXT STEP ONLY -- the force is cleared as it is sensed.
+
+        An eyebrow-hair touch, as in the classic gentle-touch assay, is therefore a poke
+        held across a duration: call this before every step for, say, 50 ms (the tap
+        tools/habituation.py and the behaviour tests deliver). One call is one step of
+        force into a receptor that averages over tens of milliseconds -- a response that
+        scales with dt and is effectively nothing, which is what the viewer's and the
+        server's Poke buttons delivered until they learned to hold it.
+        """
         if where == "anterior":
             self.senses.poke[0] += strength
         else:
@@ -372,29 +366,6 @@ class Simulation:
         if float(np.hypot(*v)) < 1e-6:
             return "still"
         return "forward" if float(v @ self.body.body_direction()) > 0 else "backward"
-
-    def snapshot(self) -> dict:
-        nodes = self._nodes
-        d, v = self.muscles.row_tension()
-        return {
-            "t": round(self.t, 4),
-            "nodes": np.round(nodes, 4).tolist(),
-            "radius": np.round(self.body.radius, 4).tolist(),
-            "V": np.round(self.nervous.V, 2).tolist(),
-            "activation": np.round(self.nervous.activation(), 4).tolist(),
-            "muscle_dorsal": np.round(d, 4).tolist(),
-            "muscle_ventral": np.round(v, 4).tolist(),
-            "curvature": np.round(self.body.curvature(), 4).tolist(),
-            "speed": round(self.speed, 6),
-            "path_speed": round(self.path_speed, 6),
-            "direction": self.direction(),
-            "food_eaten": round(self.food_eaten, 4),
-            "pharynx": {k: round(float(v), 5) for k, v in self.pharynx.readout().items()},
-            "egglaying": {k: round(float(v), 5) for k, v in self.egglaying.readout().items()},
-            "sleep": {k: round(float(v), 5) for k, v in self.sleep.readout().items()},
-            "senses": {k: round(float(v), 5) for k, v in self.senses.readout.items()},
-        }
-
 
 class Population:
     """A collection of animals sharing one world and one explicit world timebase."""

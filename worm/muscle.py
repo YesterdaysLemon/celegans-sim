@@ -86,7 +86,6 @@ class Muscles:
 
         # Map muscle rows onto mechanical joints. Rows are sorted by body position so the
         # interpolation below is monotone.
-        n_joint = body.n_links - 1
         self.joint_s = (np.arange(1, body.n_links)) / body.n_links
         rows = np.unique(self.row)
         self.row_pos = np.array([self.pos[self.row == r][0] for r in rows])

@@ -230,7 +230,6 @@ class NervousSystem:
         self.s = np.full(n, s_half)
         self.a = np.full(n, self.n0)
         self.I_noise = np.zeros(n)
-        self.I_ext = np.zeros(n)
         # Ablation state. The guard flag keeps the ordinary path -- no cell ablated --
         # arithmetically identical to what it was before ablation existed.
         self.alive = np.ones(n, dtype=bool)

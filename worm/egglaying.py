@@ -112,7 +112,6 @@ class EggLaying:
         self.in_phase = True      # active or inactive; a Schmitt trigger on the resource
         self.refractory = 0.0     # seconds until the muscle can fire again
         self.laid = 0             # total events
-        self.last_event = -1e9    # simulated time of the most recent one
         self.t = 0.0
 
         # -expm1, not 1 - exp: see the note in senses.py. This is the worst of the
@@ -157,15 +156,19 @@ class EggLaying:
         p = self.p
         self.t += self.dt
 
-        # Resting levels, averaged over the first stretch of the run rather than assumed.
+        hsn = self._live(self.hsn, alive)
+        vc = self._live(self.vc, alive)
+
+        # Resting levels, averaged over the first stretch of the run rather than assumed --
+        # and over the LIVING VCs, the same pool d_vc is read from below. An ablated cell
+        # reads 0, so averaging it in while the deviation skipped it left a VC killed in
+        # the first two seconds as a standing brake (VC01+VC02: rest 0.310 for 0.559).
+        # Nothing ablated, the two pools are one and the arithmetic is unchanged.
         if self._rest_n < self._rest_steps:
             self._rest_n += 1
             k = 1.0 / self._rest_n
-            if self.vc.size:
-                self.vc_rest += (float(activation[self.vc].mean()) - self.vc_rest) * k
-
-        hsn = self._live(self.hsn, alive)
-        vc = self._live(self.vc, alive)
+            if vc.size:
+                self.vc_rest += (float(activation[vc].mean()) - self.vc_rest) * k
         # HSN enters as its *absolute* activation, the VCs as a deviation from their own
         # resting level. That asymmetry is the whole phenotype and it was wrong first
         # time: written as a deviation, like the pharynx's modulators, HSN contributes
@@ -227,7 +230,6 @@ class EggLaying:
                 and self.in_phase):
             self.eggs -= 1.0
             self.laid += 1
-            self.last_event = self.t
             self.refractory = p.refractory
             self.resource = max(0.0, self.resource - p.resource_cost)
             self.vm = 0.0
