@@ -33,3 +33,4 @@ web/egg-events.json
 .fv_phase_cache.jsonl
 .amine_gait_cache*.jsonl
 .chemo_power_cache.jsonl
+.pirouette_audit_cache/

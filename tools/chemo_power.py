@@ -36,6 +36,14 @@ the deeper turn genuinely dilutes conditioning by adding sensory-independent
 reorientation. Distinguish those first; then the chemotaxis-magnitude hunt is
 about the SENSORY-TO-TURN COUPLING -- how strongly dC/dt gates the pirouette
 machinery -- not about the turn itself.
+
+AUDITED (2026-09-24, `tools/pirouette_audit.py`): the detector, not the animal. The
+circuit's own up-gradient command rate did not move (3.65 -> 3.51/min); the longer
+omega made more of its ~0.35 s commands visible to `assays.reversals` (35% -> 59%) by
+sliding the body tail-first after them. Neither arm's circuit conditions detectably
+(command-onset ratios 0.98 and 1.15, both across 1), and the 1.41 -> 0.79 flip was never
+resolved (paired contrast -1.46 [-3.36, +0.03]). The pirouette rows above stand as what
+the detector read; they are not a reading of the decision.
 """
 import json
 import os

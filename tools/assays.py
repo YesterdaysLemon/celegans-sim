@@ -26,7 +26,7 @@ papers do, so the numbers are comparable to something:
 Run one:   PYTHONPATH=. .venv/bin/python tools/assays.py chemotaxis
 Run all:   PYTHONPATH=. .venv/bin/python tools/assays.py all
 
-THIS IS ALSO INFRASTRUCTURE. It is imported by **37** other modules, which makes it the
+THIS IS ALSO INFRASTRUCTURE. It is imported by **39** other modules, which makes it the
 second-largest hub in `tools/` after `diagnose_loop`, and the imported surface is wider
 than the assay list above:
 
@@ -36,9 +36,10 @@ than the assay list above:
     ASSAYS, DURATIONS, ORDER,         the assay registry, read by tools/compare.py
     THROUGHPUT, WORKERS, _dispatch
     _clean_plate                      private by name; imported by two sweeps regardless
+    _chemo_placement, _chemo_score    the chemotaxis trial's plate and scoring, for audits
 
-`_dispatch` and `_clean_plate` are load-bearing despite the underscore. Renaming either is
-a cross-module change, not a local one.
+`_dispatch`, `_clean_plate` and the two `_chemo_` helpers are load-bearing despite the
+underscore. Renaming any of them is a cross-module change, not a local one.
 
 The same warning as `diagnose_loop`: an assay's *scoring* is a scientific definition, and
 changing one silently makes new numbers incomparable with every number already recorded in
@@ -113,17 +114,23 @@ def current_params():
     return apply_overrides(Params(), OVERRIDE)
 
 
-def run_trial(build_world, placement, duration, seed, params=None):
-    """One animal, one plate. Returns sampled trajectory and sensory readouts."""
+def run_trial(build_world, placement, duration, seed, params=None, extra=()):
+    """One animal, one plate. Returns sampled trajectory and sensory readouts.
+
+    `extra` names further `senses.readout` keys to record alongside the standard ones
+    (`tools/pirouette_audit.py` needs "omega"). It only adds columns: the simulation and
+    every standard column are identical with or without it.
+    """
     p = params if params is not None else current_params()
     world = build_world(p)
     sim = Simulation(p, seed=seed, world=world, placement=placement)
     dt = p.neural.dt
     every = max(1, int(round(SAMPLE_DT / dt)))
 
-    rec = {k: [] for k in ("t", "x", "y", "nose_x", "nose_y", "dir_x", "dir_y",
-                           "attractant", "d_attractant", "repellent",
-                           "temperature", "oxygen", "gate_forward", "gate_backward")}
+    readouts = ("attractant", "d_attractant", "repellent",
+                "temperature", "oxygen", "gate_forward", "gate_backward") + tuple(extra)
+    rec = {k: [] for k in ("t", "x", "y", "nose_x", "nose_y", "dir_x", "dir_y")
+           + readouts}
     for i in range(int(duration / dt)):
         sim.step()
         if i % every:
@@ -138,8 +145,7 @@ def run_trial(build_world, placement, duration, seed, params=None):
         rec["x"].append(c[0]); rec["y"].append(c[1])
         rec["nose_x"].append(nose[0]); rec["nose_y"].append(nose[1])
         rec["dir_x"].append(d[0]); rec["dir_y"].append(d[1])
-        for k in ("attractant", "d_attractant", "repellent",
-                  "temperature", "oxygen", "gate_forward", "gate_backward"):
+        for k in readouts:
             rec[k].append(r.get(k, 0.0))
     return {k: np.asarray(v) for k, v in rec.items()}
 
@@ -149,6 +155,15 @@ def reversals(tr):
 
     Defined mechanically rather than from the command interneurons, so that it measures
     what the body did rather than what the circuit intended.
+
+    That makes it a reading of the TURN as much as of the decision, and a pirouette
+    ratio built on it cannot be compared across turn changes (`tools/pirouette_audit.py`,
+    2026-09-24). The model's reversal commands last ~0.35 s and mostly vanish into the
+    1 s boxcar; what registers is often the omega after them, which slides the body
+    tail-first for seconds, so a longer omega raised the share of commands this sees
+    from 35% to 59% and doubled an up-gradient rate the circuit had not changed.
+    Condition on command onsets (`gate_backward` rising edges) when the question is
+    whether dC/dt gates the reversal decision.
     """
     vx = np.gradient(tr["x"], tr["t"])
     vy = np.gradient(tr["y"], tr["t"])
@@ -336,8 +351,18 @@ def _chemo_job(seed):
     Outcome, mechanism and second mechanism all come from the same run: they are three
     questions about one behaviour, and running the plate three times would only add noise.
     """
-    ang = (seed % 8) * (2 * np.pi / 8)
-    tr = run_trial(_clean_plate(), (0.0, 0.0, float(ang)), 200.0, seed)
+    return _chemo_score(run_trial(_clean_plate(), _chemo_placement(seed), 200.0, seed),
+                        seed)
+
+
+def _chemo_placement(seed):
+    """Centre of the plate, facing one of eight bearings -- the source is 12 mm east."""
+    return (0.0, 0.0, float((seed % 8) * (2 * np.pi / 8)))
+
+
+def _chemo_score(tr, seed):
+    """`_chemo_job`'s scoring, split out so an audit can score a trajectory it recorded
+    with extra columns (tools/pirouette_audit.py) by exactly the shipped definition."""
     src = np.array([12.0, 0.0])
 
     # -- outcome: Ward's chemotaxis index, and how much closer it ended up ------------
