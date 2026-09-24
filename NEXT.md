@@ -111,13 +111,29 @@ behavioural assay at once.
   `tools/turn_depth.py`) and the promised re-opening was then measured properly:
   `tools/chemo_power.py`, 16/16 paired seeds, every metric no-effect with point
   estimates leaning worse (CI −0.045 [−0.154, +0.034]). The n = 4 "trending better" was
-  the noise its own MDE line warned about. The pirouette rows say where the bottleneck
-  actually lives: conditioning was weak even before (down/up ratio 1.41 against the
-  strong modulation of real worms) and reads 0.79 on the deep-turn animal — first
-  distinguish detector contamination (deep omegas fooling the mechanical reversal
-  detector, the estimator lesson a third time) from genuine dilution; then the hunt is
-  the SENSORY-TO-TURN COUPLING — how strongly dC/dt gates the pirouette machinery — not
-  the turn itself.
+  the noise its own MDE line warned about. **The pirouette flip (1.41 → 0.79) was the
+  detector, audited 2026-09-24** (`tools/pirouette_audit.py`, the estimator lesson a
+  third time): the circuit's own up-gradient command rate did not move (3.65 → 3.51/min);
+  the longer omega made more of the model's ~0.35 s reversal commands visible to
+  `assays.reversals` (35% → 59%) by sliding the body tail-first after them, and the flip
+  itself never cleared noise. The same audit says where the bottleneck lives: **neither
+  animal's circuit conditions its reversals on dC/dt detectably** — command-onset ratios
+  0.98 [0.77, 1.27] and 1.15 [0.95, 1.40], against the animal's ~2. So the hunt is the
+  SENSORY-TO-TURN COUPLING — how strongly dC/dt gates the reversal decision — measured on
+  command onsets (`gate_backward` rising edges), never on `assays.reversals`, whose
+  reading moves with the turn.
+- **The omega backs the body up (measured 2026-09-24).** Cloned at the end of a backward
+  command and run on with and without the omega (same state, same noise; `pirouette_audit.py
+  omega`, 27 command ends), the omega adds +0.88 s [+0.56, +1.22] of *uncommanded*
+  tail-first sliding along the body's own arc in the next 4 s — single turns slide for up
+  to 2.8 s — dose-dependent (r = 0.58 with |omega|), and, unexplained, far stronger after
+  t = 100 s (+1.41 s against +0.31 s). A real omega is a forward manoeuvre. First find which
+  stage carries it (the ventral/dorsal differential stalling the forward wave is the
+  obvious suspect; `omega_wave_suppression` is 0, so the wave is not being gated off);
+  then ask whether the model's reversal *commands* are too brief — median 0.35 s, which
+  barely backs the body — since the two defects hide each other: in the shipped animal
+  two thirds of what the mechanical detector calls a reversal begins ≥ 0.5 s after the
+  command has ended.
 - **Sleep's behavioural surface: measured (#197, `tools/sleep_surface.py`).** Bout
   duration belongs to the circuit (46 s ≈ tau_sleep·ln(0.69/0.25), near-deterministic);
   bout timing belongs to the ecology — intervals run metronomic to 114 ± 114 s depending

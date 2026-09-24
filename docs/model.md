@@ -532,6 +532,20 @@ Stated plainly, because a simulation that oversells itself is worse than useless
   mechanism is right and roughly a hundredfold short of biasing the walk, the same
   magnitude gap as everywhere in the second tier.
 
+  **The pirouette ratios above were all read through `assays.reversals`, and that
+  detector sees the turn as much as the decision** (audited 2026-09-24 on the shipped
+  and pre-#215 animals, `tools/pirouette_audit.py`). It is mechanical, the model's
+  reversal commands last ~0.35 s — mostly too brief to register — and what it often
+  catches instead is the omega that follows, which slides the body tail-first for
+  seconds with the command reading forward. Lengthening the omega (#215) lifted the
+  share of commands it sees from 35% to 59% and flipped the ratio 1.41 → 0.79 while the
+  circuit's own up-gradient command rate stood still (3.65 → 3.51/min). Read on the
+  command onsets themselves, the shipped circuit's ratio is 0.98 [0.77, 1.27] and the
+  pre-#215 one's 1.15 [0.95, 1.40]: the reversal decision is not detectably gated by
+  dC/dt. The numbers above are kept as what they measured; the older configurations
+  were not re-audited, and a ratio is only comparable across a turn change on command
+  onsets.
+
 - **Aerotaxis still underperforms its wiring.** The first reading was "does not work at
   all" — 20.9% oxygen occupied against an ambient 21%, where N2 prefers 5–12% — despite
   URX/AQR/PQR making 44 contacts onto the backward command pool. Oxygen sensing has both
