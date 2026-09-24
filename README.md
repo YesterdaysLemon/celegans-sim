@@ -120,10 +120,12 @@ statement of that line.
 ```
 worm/       the model: params (every constant with provenance), nervous, muscle,
             body, world, senses, modulators, sleep, pharynx, egglaying, engine, server
-tools/      ~75 measurement instruments; tools/README.md is the index
+tools/      ~65 measurement instruments plus the build and check machinery;
+            tools/README.md is the index
 wasm/       the browser runtime and its test suites
 web/        the viewer: native ES modules, no build step, no dependencies
-tests/      the Python suite (~37 min) — the load-bearing behavioural checks
+tests/      the Python suite (about an hour run serially; CI shards it to ~20 minutes)
+            — the load-bearing behavioural checks
 data/       the derived connectome dataset, hash-pinned to its inputs
 ```
 
