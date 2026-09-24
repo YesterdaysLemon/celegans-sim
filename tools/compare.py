@@ -38,7 +38,7 @@ import sys
 import numpy as np
 
 from tools.assays import ASSAYS, DURATIONS, ORDER, THROUGHPUT, WORKERS, _dispatch, pooled
-from tools.stats import BOOTSTRAP, bootstrap_ci, fmt, mde, paired_ci, ratio_ci, verdict
+from tools.stats import BOOTSTRAP, fmt, mde, paired_ci, ratio_ci, verdict
 from worm.params import Params
 
 # Per-animal metrics, keyed by assay. Each is (label, extractor, format, higher_is_better).

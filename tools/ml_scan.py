@@ -46,7 +46,6 @@ def describe(tr, dt=2e-4):
     swing = tr.max(axis=0) - tr.min(axis=0)
     x = tr - tr.mean(axis=0)
     up = (x[:-1] < 0) & (x[1:] >= 0)
-    idx = np.arange(x.shape[0] - 1)[:, None]
     counts = up.sum(axis=0)
     first = np.where(counts > 0, np.argmax(up, axis=0), 0)
     last = np.where(counts > 0, (x.shape[0] - 2) - np.argmax(up[::-1], axis=0), 0)

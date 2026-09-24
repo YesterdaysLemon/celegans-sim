@@ -221,7 +221,7 @@ The current classification of every switch is in
 
 ### What the runtime is checked against
 
-- `tools/conform.py` + `wasm/conform.mjs` — step-for-step, noise off, six cases, to
+- `tools/conform.py` + `wasm/conform.mjs` — step-for-step, noise off, nine cases, to
   5e-13 mm on node positions and 5e-11 mV on membrane potentials.
 - `tools/parity.py` — the noisy paths, compared statistically, because the two draw from
   different generators and always will.

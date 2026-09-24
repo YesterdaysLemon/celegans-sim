@@ -7,15 +7,24 @@ kymograph does not.
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
-
 import numpy as np
 
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
+from tools.assays import apply_overrides
 from tools.diagnose_loop import bare_world
 
 SHADE = " .:-=+*#"
+
+
+# Short names for the knobs this is usually turned by. Any dotted path works too
+# (`sensory.omega_tau=2.0`), through the same apply_overrides every comparison uses.
+KEYS = {
+    "ca": "neural.ca_ratio", "k": "neural.adapt_ratio", "tau": "neural.adapt_tau",
+    "gnmj": "muscle.g_nmj", "moment": "muscle.peak_moment",
+    "pg": "sensory.proprio_gain", "head": "sensory.head_proprio_gain",
+    "reach": "sensory.proprio_reach",
+}
 
 
 def main(argv) -> int:
@@ -25,24 +34,17 @@ def main(argv) -> int:
         k, _, v = a.partition("=")
         if k == "medium":
             medium = v
+        elif k in KEYS or "." in k:
+            over[KEYS.get(k, k)] = float(v)
         else:
-            over[k] = float(v)
+            print("unknown knob %r; use one of %s, or a dotted path" % (k, ", ".join(KEYS)))
+            return 2
 
-    p = Params()
-    p = replace(
-        p,
-        neural=replace(p.neural,
-                       ca_g=over.get("gca", p.neural.ca_g),
-                       adapt_g=over.get("gk", p.neural.adapt_g),
-                       adapt_tau=over.get("tau", p.neural.adapt_tau)),
-        muscle=replace(p.muscle,
-                       g_nmj=over.get("gnmj", p.muscle.g_nmj),
-                       peak_moment=over.get("moment", p.muscle.peak_moment)),
-        sensory=replace(p.sensory,
-                        proprio_gain=over.get("pg", p.sensory.proprio_gain),
-                        head_proprio_gain=over.get("head", p.sensory.head_proprio_gain),
-                        proprio_reach=over.get("reach", p.sensory.proprio_reach)),
-    )
+    # These used to be replaced field by field, and two of the fields (neural.ca_g and
+    # neural.adapt_g) were renamed to ratios -- so the tool died with an AttributeError
+    # before simulating anything, for its whole recorded history. apply_overrides names a
+    # missing field instead of letting a rename break every run.
+    p = apply_overrides(Params(), over)
     sim = Simulation(p, seed=3, world=bare_world(p))
     sim.body.medium = MEDIA[medium]
     sim.run(6.0)

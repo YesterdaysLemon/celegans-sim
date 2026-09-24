@@ -11,7 +11,7 @@ That is the defensible way to get the benefit: revisit the number I invented, no
 the number somebody measured.
 """
 from __future__ import annotations
-import multiprocessing as mp, sys
+import multiprocessing as mp
 from dataclasses import replace
 import numpy as np
 from tools.diagnose_loop import bare_world, travelling_index

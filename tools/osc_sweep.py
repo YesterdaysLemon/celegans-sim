@@ -7,7 +7,6 @@ coherence, net progress) on the real body rather than on a single unit.
 import dataclasses
 import itertools
 import multiprocessing as mp
-import sys
 
 import numpy as np
 

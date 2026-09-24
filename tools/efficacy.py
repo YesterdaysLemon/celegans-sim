@@ -13,7 +13,7 @@ the head to 0.29 at the tail, and this model copies that as efficacy_head/effica
 that helps entrain the chain. Here it may simply be starving the posterior.
 """
 from __future__ import annotations
-import multiprocessing as mp, sys
+import multiprocessing as mp
 from dataclasses import replace
 import numpy as np
 from tools.diagnose_loop import bare_world, travelling_index

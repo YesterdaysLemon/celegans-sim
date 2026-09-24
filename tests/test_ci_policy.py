@@ -331,6 +331,9 @@ NO_CI_NEEDED = {
     "Dockerfile": "the production image is built by deploy.yml on pull requests and main; "
                   ".github/scripts/deploy-policy.test.mjs pins that separate release "
                   "gate, while this table models the Python and viewer path filters",
+    ".dockerignore": "the Dockerfile's build context, and it schedules what the Dockerfile "
+                     "schedules: deploy.yml's path filter names it, pinned by "
+                     ".github/scripts/deploy-policy.test.mjs.",
     ".github/workflows/deploy.yml":
         "the release workflow self-gates on pull requests and its trigger, image-build, "
         "selective-CI, current-SHA, opt-in, and signed-webhook contracts are pinned by "

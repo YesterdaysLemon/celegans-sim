@@ -32,7 +32,6 @@ import sys
 
 import numpy as np
 
-from worm.body import Body
 from worm.engine import Simulation
 from worm.params import MEDIA, Params
 from worm.senses import _receptive_fields

@@ -1,6 +1,6 @@
 # tools/ — the instrument shelf
 
-Seventy-odd files live here and they are not the same kind of thing. Some are load-bearing
+Ninety-odd files live here and they are not the same kind of thing. Some are load-bearing
 infrastructure that half the repository imports; some are maintained instruments you should
 reach for by name; most of the rest are one-shot probes that answered a question once and
 have not been touched since.
@@ -15,7 +15,7 @@ and several of the ones below are cited by name in `docs/research-log/`.
 |---|---|
 | **CORE_INFRASTRUCTURE** | Part of the build, export, data or check pipeline. Breaking it breaks CI or the artifacts. |
 | **MEASUREMENT_LIBRARY** | Imported by many other tools. The blast radius of an edit is the whole tooling layer. |
-| **MAINTAINED_INSTRUMENT** | A measurement you are meant to reach for. Documented in `README.md`, and expected to still work. |
+| **MAINTAINED_INSTRUMENT** | A measurement you are meant to reach for. Listed with a line each in `docs/deploy.md`, and expected to still work. |
 | **ACTIVE_EXPERIMENT** | Its question is **still open** in `NEXT.md`. |
 | **ANSWERED_PROBE** | Asked a sharp question, got an answer, and the answer is load-bearing. A sacrifice branch: it did its job. Kept executable because the result is a do-not-repeat. |
 | **UNCERTAIN** | No importers, and untouched since the first days. *Probably* a finished one-shot — but "probably" is the honest word, none has been confirmed dead, and six of them **are** referenced — see the section's own note. |
@@ -32,8 +32,14 @@ weight. It is reproducible by exactly one command, stated here so a future reade
 rather than trust it:
 
 ```bash
-grep -rlE "from tools\.<name> import|import tools\.<name>\b" --include="*.py" tools tests | grep -v "tools/<name>.py" | wc -l
+grep -rlE "from tools\.<name> import|import tools\.<name>\b|from tools import ([A-Za-z_]+, )*<name>\b|from \.<name> import" \
+  --include="*.py" tools tests | grep -v "tools/<name>.py" | wc -l
 ```
+
+(Re-measured 2026-09-24. The earlier form of this command matched only the first two import
+styles, so `from tools import audit` and `from .raw_sources import ...` counted as nothing --
+`audit.py` read 0 importers with a test importing it. A 0 here is safe to act on only if
+the command that produced it could have seen the import.)
 
 An earlier version of this index also carried a `ref` column defined as "files mentioning its
 path". That definition did not reproduce its own numbers — four plausible readings of it gave
@@ -59,11 +65,12 @@ Touch these and something else stops building.
 | `conform.py` | 0 | Reference trajectories the WebAssembly port is checked against. Paired with `wasm/conform.mjs`. |
 | `build_dataset.py` | 0 | Raw anatomy → validated `data/celegans.json`. Assertion-heavy on purpose. |
 | `fetch_raw.py`, `fetch_raw.sh` | 0 | Download the exact bytes approved in `data/raw_sources.json`, fail-closed on hash. |
-| `raw_sources.py` | 1 | The pinned source manifest and its verification helpers. |
+| `raw_sources.py` | 3 | The pinned source manifest and its verification helpers. |
 | `check_model_artifacts.py` | 1 | Fails when committed browser artifacts are stale against a fresh export. |
 | `manifest.py` | 0 | Content-hashes the runtime assets so `immutable` caching is safe. Run by the Docker build. |
-| `audit.py` | 0 | Breaks things on purpose and reports which check notices. The meta-check. |
+| `audit.py` | 1 | Breaks things on purpose and reports which check notices. The meta-check. Every mutation's pattern is pinned by `tests/test_audit.py`, because one stale pattern stops the whole audit. |
 | `parity.py` | 0 | Python vs WASM, noise **on**, compared statistically. |
+| `ci_test_targets.py` | 1 | The Python suite's CI matrix: which files run together, and the dense ones sharded by test id. `--json` lists the targets, `--run T` runs one. |
 | `check_all.mjs` | 0 | Runs every gate CI would, in the workflows' order. A skip is never a pass. |
 | `check_web.mjs` | 0 | Viewer module graph: cycles, unresolved imports, leftovers. |
 | `check_cache_headers.mjs` | 0 | Every served asset has a deliberate cache policy. |
@@ -78,15 +85,16 @@ came to be misread as one-offs, but their importers outnumber every other file h
 
 | tool | imp | the imported surface |
 |---|---|---|
-| `diagnose_loop.py` | **47** | `analyse`, `bare_world`, `travelling_index`, `_dominant`. `analyse`'s return dict is this project's operational definition of "what the gait is doing". |
-| `assays.py` | **37** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`, `apply_overrides`, `current_params`. |
-| `stats.py` | 6 | `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict`, `fmt`, `BOOTSTRAP`, `clears_zero`, `two_sample_ci`. Reached transitively by everything through `assays`. |
+| `diagnose_loop.py` | **49** | `analyse`, `bare_world`, `travelling_index`, `_dominant`. `analyse`'s return dict is this project's operational definition of "what the gait is doing". |
+| `assays.py` | **40** | `pooled`, `estimate`, `run_trial`, `reversals`, `SAMPLE_DT`, `ASSAYS`, `DURATIONS`, `ORDER`, `THROUGHPUT`, `WORKERS`, `_dispatch`, `_clean_plate`, `_chemo_placement`, `_chemo_score`, `apply_overrides`, `current_params`. |
+| `stats.py` | 7 | `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict`, `fmt`, `BOOTSTRAP`, `clears_zero`, `two_sample_ci`. Reached transitively by everything through `assays`. |
 | `coherence.py` | 3 | `profile` — per-position wave coherence. A small library rather than a hub, but it has importers and no documentation elsewhere. |
 
-Four of those symbols are private by name and imported across modules anyway: `_dispatch`,
-`_clean_plate`, `_dominant`, and (from `worm/senses.py`) `_output_position`. Renaming one is
+Six of those symbols are private by name and imported across modules anyway: `_dispatch`,
+`_clean_plate`, `_chemo_placement`, `_chemo_score`, `_dominant`, and (from `worm/senses.py`)
+`_output_position`. Renaming one is
 a cross-module change. The two `tools/` modules that own one now say so — `assays.py` for
-`_dispatch` and `_clean_plate`, `diagnose_loop.py` for `_dominant`. `worm/senses.py`'s does
+`_dispatch`, `_clean_plate` and the two `_chemo_` helpers, `diagnose_loop.py` for `_dominant`. `worm/senses.py`'s does
 not, because this pass keeps the change surface under `worm/` at zero.
 
 Changing what a key of `analyse` *means*, or how an assay is *scored*, silently makes every
@@ -95,7 +103,7 @@ nothing to fail. Add keys and assays; do not repurpose them.
 
 ## MAINTAINED_INSTRUMENT
 
-Documented in `README.md`'s layout table and expected to still work. Reach for these by name.
+Listed in `docs/deploy.md` with a line each, and expected to still work. Reach for these by name.
 
 | tool | does |
 |---|---|
@@ -125,7 +133,7 @@ Documented in `README.md`'s layout table and expected to still work. Reach for t
 | `self_contact.py` | Does the body pass through itself, and when would it start. |
 | `moment_ceiling.py` | Can the mechanics make the turn the circuit cannot? |
 | `turn_scaling.py` | What sets that ceiling: the medium, or the body? |
-| `optimise.py` | Fits the handful of unmeasured parameters against behavioural targets. **See the open question in `NEXT.md`** — its `SPACE` overlaps `worm/genome.py::BOUNDS` and only one of the two lists is pinned by a test. |
+| `optimise.py` | Fits the handful of unmeasured parameters against behavioural targets. Its `SPACE` overlaps `worm/genome.py::BOUNDS`, and both lists are pinned (`tests/test_genome.py`). |
 
 ## ACTIVE_EXPERIMENT
 
@@ -133,7 +141,7 @@ Two. Their questions are open in `NEXT.md`.
 
 | tool | last | open question |
 |---|---|---|
-| `head_cascade.py` | 2026-08-04 | Should the cascade be adopted? It matches the shipped frequency with `head_delay = 0` and improves the wave, so it is live **as a simplification** — the mechanism argument it was built for was refuted by `head_medium.py` below. Adoption is blocked on a scorecard/ethogram baseline and a runtime port. Now also load-bearing for the amine path, which runs on it. |
+| `head_cascade.py` | 2026-08-04 | Should the cascade be adopted? It matches the shipped frequency with `head_delay = 0` and improves the wave, so it is live **as a simplification** — the mechanism argument it was built for was refuted by `head_medium.py` below. The runtime port is done (2026-08-14; its constructor allocation corrected 2026-09-24), so adoption waits only on a scorecard/ethogram baseline. Now also load-bearing for the amine path, which runs on it. |
 | `amine_gait.py` | 2026-08-13 | How far toward the animal can the amine load-sensing path be calibrated, and should it be adopted? Measured three times: the third calibration reaches 85% of the way along the animal's chord (baseline endpoint 35%), buffer at 89% of the swim frequency, agar untouched every time, K ≈ 8 saturation gone; the cliff and the settle guard are in the tool. Calibration knobs and adoption preconditions in `NEXT.md`; lifecycle in `docs/runtime-parity.md`. |
 
 ## ANSWERED_PROBE — sacrifice branches
@@ -148,9 +156,14 @@ do-not-repeats, and because a probe is cheap to keep and expensive to reconstruc
 | `lag_span.py` | 2026-08-04 | If the fixed lag pins the swimming end, does cutting it widen the span? **Barely** — 1.29× → 1.40× for a fourfold cut, which retracted the diagnosis the same day it was written. The tool fixed its own success criteria before the run; that is why the retraction was clean. |
 | `force_velocity.py` | 2026-08-04 | Does a Hill-type force-velocity curve widen the span? **It narrows it**, monotonically, 1.27× → 1.17×. Its own header predicted this failure mode before the run. |
 | `damping_sweep.py` | 2026-08-04 | Is the buffer-end frequency set by the body's internal damping rather than the medium? **No** — zero internal damping buys 0.03 Hz. An existing assumption checked outside the regime it was made in. |
-| `flambda_locus.py` | 2026-08-12 | Does the model's (f, λ) locus lie on the animal's crawl→swim line, or slide off it as the medium sweeps? **On it, but bunched** — perpendicular drift never exceeds 0.10 L while the model traverses 11% of the chord, 89% of its frequency motion above K = 9. One saturating coupling moves f and λ together; the two-independent-knobs suspicion is dead, and the flat wavelength is not its own problem. |
-| `loop_medium.py` | 2026-08-13 | Which stage of the loop feels the medium, and why does it stop by K = 9? **The passive body, alone** — tension→curvature moves +40° from K = 40 → 7.9 while every other stage moves ≤0.2°, both body-reflex arms identical, knee where τ = c_n/(EI·k⁴) put it in a prediction committed mid-run. Open-loop phase + analytic receptor predicts the closed-loop frequency at every medium to ≤1.5%, so gait-modulation candidates can now be screened without closed-loop sweeps. |
+| `flambda_locus.py` | 2026-08-12 | Does the model's (f, λ) locus lie on the animal's crawl→swim line, or slide off it as the medium sweeps? **On it, but bunched** — perpendicular drift never exceeds 0.10 L while the model traverses 11% of the chord, 89% of its frequency motion above K = 9. One saturating coupling moves f and λ together; the two-independent-knobs suspicion is dead, and the flat wavelength is not its own problem. **Also a library**: `amine_gait.py` (active), `loop_medium.py` and `fv_phase.py` import its sweep, chord geometry and plotting. |
+| `loop_medium.py` | 2026-08-13 | Which stage of the loop feels the medium, and why does it stop by K = 9? **The passive body, alone** — tension→curvature moves +40° from K = 40 → 7.9 while every other stage moves ≤0.2°, both body-reflex arms identical, knee where τ = c_n/(EI·k⁴) put it in a prediction committed mid-run. Open-loop phase + analytic receptor predicts the closed-loop frequency at every medium to ≤1.5%, so gait-modulation candidates can now be screened without closed-loop sweeps. **Also a library**: `fv_phase.py` imports its job, lock-in and receptor phase. |
 | `fv_phase.py` | 2026-08-13 | Is muscle force-velocity a load-scaled time, or a brake that cancels out of the span? **A load-scaled time, backwards and knee-bound** — it brakes hardest in thin fluid (−16.8° of plant phase on agar, −34.9° in buffer) and its load-dependence saturates at the same K ≈ 8, because it reads the body's motion. Retired for modulation with its mechanism named; the screen reproduced the closed-loop fv = 500 record (span 1.170 predicted vs 1.167 measured), its second validation. |
+| `clamp_occupancy.py` | 2026-08-26 | Should proprioception act as a conductance rather than a current? **No** (#194) — better on every forward-gait guardrail, and it abolishes spontaneous reversals (2.03/min → 0 in clean space): a conductance shunts as well as drives, so the backward command pushes on a leakier membrane. Its docstring holds THE BATTERY, the behavioural tables that refused it. |
+| `buffer_basin.py` | 2026-08-26 | Does the swimming animal have a second, coiled attractor? **No** (#195) — at the shipped defaults the coil-up is a recurrent, self-ending ~15 s episode no seed stays in; a real bistability appears only at muscle coefficients ≥ 0.7. Now a protocol guard: any buffer measurement must not let an episode hide in its window. |
+| `turn_depth.py` | 2026-08-27 | What held the omega turn shallow? **The bias lifetime, not its amplitude** (#196) — at `omega_tau = 1.5` the bias decayed inside one undulation; 2.5 restores the animal's ~35% deep turns, adopted on fit-maintenance grounds. (That it was not the taxis bottleneck is `chemo_power.py`'s answer.) |
+| `sleep_surface.py` | 2026-08-26 | What does sleep look like from outside? **Duration is the circuit's, timing the ecology's** (#197) — bouts last ≈ tau_sleep·ln(0.69/0.25) ≈ 46 s nearly deterministically, while intervals run 114 ± 114 s on the animal's own foraging. The run also caught the dish rim dropping a roamer (#211). |
+| `thermo_memory.py` | 2026-08-27 | Can the learned thermotaxis setpoint steer through a tonic input to AFD? **No** (#198) — the memory learns where the animal was fed and ships live, but every tonic routing was refused: AFD steers through its transient, not its level. The recorded follow-up is a setpoint-conditional differential. |
 | `chemo_power.py` | 2026-08-28 | Did clearing the turn-depth ceiling (#215) re-open chemotaxis? **No** — 16/16 paired seeds, every metric no-effect (CI −0.045 [−0.154, +0.034]). Its pirouette rows were then audited by the next entry and belong to the detector. |
 | `pirouette_audit.py` | 2026-09-24 | Was the deep-turn animal's pirouette flip (1.41 → 0.79) the detector or the circuit? **The detector** — the circuit's up-gradient command rate held (3.65 → 3.51/min) while the longer omega made more of the ~0.35 s commands visible to `assays.reversals` (35% → 59%); neither circuit conditions detectably on command onsets (0.98, 1.15). Its `omega` counterfactual found the turn backing the body up (+0.88 s uncommanded tail-first per command), which is open in `NEXT.md`. |
 
@@ -173,7 +186,7 @@ is, the model's own parameter file points at them to say *how this number was ca
 and a sixth is cited from another tool. The "cited in" column below names them. This matters
 beyond bookkeeping: `docs/project-architecture.md` makes "every constant carries its source"
 a load-bearing root, so archiving one of those five would break a provenance reference in
-`params.py`. `NEXT.md` records the disposition question accordingly. Each answered a specific question during a specific investigation; several are
+`params.py`. The disposition was settled (b1227cc, 2026-08-25): they stay. Each answered a specific question during a specific investigation; several are
 cited by name in the research log, which is why none has been moved.
 
 **Do not delete these on the strength of this table.** "No importers" is evidence, not proof,
@@ -222,5 +235,7 @@ the repository alone.
   suite, and report completed jobs rather than estimating from a partial run.
 - Order a sweep seed-major, not stage-major, so a run cut short still answers something —
   and report `n` per row.
-- Population and sweep drivers should call `worm.threads.pin_blas_threads(1)` **before**
-  importing numpy.
+- Sweep drivers get one BLAS thread per worker for free: `tools/assays.py` sets the BLAS
+  thread variables before numpy loads, and `pooled()`'s workers inherit them. A driver that
+  does not import `assays` first can call `worm.threads.pin_blas_threads(1)` before numpy
+  itself; none currently needs to.

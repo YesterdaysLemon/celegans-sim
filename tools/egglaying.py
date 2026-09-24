@@ -46,7 +46,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tools.stats import bootstrap_ci, paired_ci, fmt, mde, verdict   # noqa: E402
+from tools.stats import bootstrap_ci, paired_ci, fmt, verdict   # noqa: E402
 from worm.params import Params                                       # noqa: E402
 
 MINUTES = 8

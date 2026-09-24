@@ -605,3 +605,19 @@ def test_interrupted_detector_kills_child_tree_and_cleans_worktree(
     assert not _pid_is_running(child_pid)
     assert isolated_path is not None and not isolated_path.exists()
     assert list(workspaces.iterdir()) == []
+
+
+def test_every_mutation_still_finds_its_site_exactly_once():
+    """A stale pattern does not fail a mutation, it stops the audit.
+
+    `apply` returns PATTERN NOT FOUND and run_audit exits "incomplete" -- which is what
+    viewer/hidden-layers did for a month after style.css was reformatted, with nothing
+    noticing because the audit is not in CI. Exactly once, because apply() replaces the
+    first match: a pattern that also matches elsewhere can mutate the wrong site.
+    """
+    root = Path(__file__).resolve().parent.parent
+    for mut in audit.MUTATIONS:
+        text = (root / mut["file"]).read_text(encoding="utf8")
+        for find, _ in mut.get("edits") or [(mut["find"], mut["repl"])]:
+            assert text.count(find) == 1, (
+                "%s: %r occurs %d times in %s" % (mut["name"], find[:60], text.count(find), mut["file"]))

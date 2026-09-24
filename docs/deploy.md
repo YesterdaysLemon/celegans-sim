@@ -24,8 +24,8 @@ ablated cells are silent rather than merely quiet, and four animals contesting o
 agree on what each of them ate and on what is left in the cells they were eating it from.
 The Docker build runs that check and **fails if the port has drifted**.
 
-The sixth case disagreed the first time it ran, and **the model moved rather than the
-port**. The two settled contested feeding onto identical allocations and then took the food
+The multi-animal case disagreed the first time it ran, and **the model moved rather than
+the port**. The two settled contested feeding onto identical allocations and then took the food
 out of different cells: 7.5e-04 apart on the plate at the moment it happened, 4.7e-02 mV on
 membrane potentials four seconds later. Python spread each withdrawal with a linear program
 so that every cell in the union lost the same fraction; the runtime, which has to settle
@@ -35,8 +35,8 @@ same bacteria really do take more out of the ground they share, so `World.eat_ba
 runs the runtime's rule — at the cost of the maximum-throughput and max-min-fairness
 guarantees the linear program bought. `wasm/README.md` has the account.
 
-Five of those six cases exist because a coverage audit found the earlier ones passing
-without covering anything. `tools/audit.py` breaks things on purpose and reports which
+Most of those cases exist because a coverage audit found the earlier ones passing without
+covering anything. `tools/audit.py` breaks things on purpose and reports which
 check notices; `wasm/README.md` has the account.
 
 One worm runs at **2.36× real time** in the browser and two at 1.20× — faster than the

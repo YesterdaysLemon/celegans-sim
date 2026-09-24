@@ -114,7 +114,7 @@ def _job(job):
     every = max(1, int(round(0.05 / sim.dt)))
     start, t0 = sim.body.centroid().copy(), sim.t
     prev, path = start.copy(), 0.0
-    was, rev_n = True, 0
+    rev_n = 0
     for i in range(int(MEASURE / sim.dt)):
         sim.step()
         if i % every == 0:
@@ -130,7 +130,6 @@ def _job(job):
             events.append(len(heading) - 1)
             durs.append(rev_n * sim.dt)
             rev_n = 0
-        was = fw
 
     span = sim.t - t0
     speed = float(np.linalg.norm(sim.body.centroid() - start)) / span

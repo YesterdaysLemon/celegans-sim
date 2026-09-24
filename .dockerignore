@@ -1,0 +1,14 @@
+# The build copies worm/ tools/ data/ wasm/ web/ and regenerates everything it serves, so
+# none of this is needed -- it was only ever uploaded as build context. (The deploy
+# workflow's path filter has named this file since before it existed.)
+.git
+.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+data/raw
+scratch
+.*cache*
+web/conform.json
+web/traj-wasm.*
+web/egg-events.json

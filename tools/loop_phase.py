@@ -182,7 +182,6 @@ def main():
     def wrap(d):
         return (d + 180.0) % 360.0 - 180.0
 
-    p = Params().sensory
     print("  stage phases in degrees, relative to the injected sinusoid.")
     print("  'plant' is the whole open loop from current to head curvature.\n")
     print("   f Hz | body gain  dt ms |  neuron  release  muscle  curvature | plant gain")

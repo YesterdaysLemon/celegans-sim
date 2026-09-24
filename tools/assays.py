@@ -26,7 +26,7 @@ papers do, so the numbers are comparable to something:
 Run one:   PYTHONPATH=. .venv/bin/python tools/assays.py chemotaxis
 Run all:   PYTHONPATH=. .venv/bin/python tools/assays.py all
 
-THIS IS ALSO INFRASTRUCTURE. It is imported by **39** other modules, which makes it the
+THIS IS ALSO INFRASTRUCTURE. It is imported by **40** other modules, which makes it the
 second-largest hub in `tools/` after `diagnose_loop`, and the imported surface is wider
 than the assay list above:
 
@@ -35,7 +35,7 @@ than the assay list above:
     reversals(...), SAMPLE_DT         shared trajectory conventions
     ASSAYS, DURATIONS, ORDER,         the assay registry, read by tools/compare.py
     THROUGHPUT, WORKERS, _dispatch
-    _clean_plate                      private by name; imported by two sweeps regardless
+    _clean_plate                      private by name; imported by three modules regardless
     _chemo_placement, _chemo_score    the chemotaxis trial's plate and scoring, for audits
 
 `_dispatch`, `_clean_plate` and the two `_chemo_` helpers are load-bearing despite the
@@ -173,12 +173,6 @@ def reversals(tr):
     vx = np.convolve(vx, k, mode="same")
     vy = np.convolve(vy, k, mode="same")
     return (vx * tr["dir_x"] + vy * tr["dir_y"]) < 0
-
-
-def onsets(mask):
-    """Indices where a boolean run turns on -- one event per reversal, not per sample."""
-    return np.flatnonzero(mask.astype(int) > 0 if mask.ndim == 0
-                          else np.diff(mask.astype(int)) > 0)
 
 
 RATE = 0.58        # x real time, one trial on one core -- measured, see module notes

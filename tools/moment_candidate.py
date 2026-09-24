@@ -7,7 +7,7 @@ this reports absolute amplitudes alongside, and the region-wise travelling index
 what actually decides whether the animal moves.
 """
 from __future__ import annotations
-import multiprocessing as mp, sys
+import multiprocessing as mp
 from dataclasses import replace
 import numpy as np
 from tools.diagnose_loop import bare_world, travelling_index

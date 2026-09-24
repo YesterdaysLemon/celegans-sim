@@ -54,14 +54,17 @@ Gates that rewrite tracked files are held back behind `--rebuild`, because regen
 `web/worm.model` and `web/worm.wasm` underneath a viewer you have open, or an
 `evolve.mjs` run in another terminal, hands it a torn artifact set.
 
-`tests/test_local_checks.py` pins the runner against all three workflows: a named CI step that no
+`tests/test_local_checks.py` pins the runner against every workflow (the dispatch-only
+`scorecard.yml` and `repo-tidy.yml` are excused, with the reasons in the test): a named CI step that no
 gate claims fails the suite, and so does a gate claiming a step name no workflow declares.
 The list is allowed to be smaller than CI only where someone wrote down why.
 
 The individual commands, if you want one of them on its own:
 
 ```bash
-node tools/check_cache_headers.mjs        # every served asset has a deliberate cache policy
+node tools/check_cache_headers.mjs http://127.0.0.1:8080
+                                          # every served asset has a deliberate cache policy --
+                                          # against nginx on that port (npm run check starts it)
 node tools/check_web.mjs                  # module graph: cycles, unresolved imports, leftovers
 node --test tools/sim_rate.test.mjs       # the rate readouts measure what their labels claim
 node --test wasm/conform-inputs.test.mjs  # the conformance inputs are present and not stale

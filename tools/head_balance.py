@@ -7,7 +7,7 @@ the balance is completely different: the head's in-phase drive to the anterior m
 the main thing holding the travelling-wave index down at +0.5.
 """
 from __future__ import annotations
-import multiprocessing as mp, sys
+import multiprocessing as mp
 from dataclasses import replace
 import numpy as np
 from tools.diagnose_loop import bare_world, travelling_index

@@ -163,7 +163,7 @@ import numpy as np
 
 from tools.assays import pooled
 from tools.diagnose_loop import analyse, bare_world
-from tools.flambda_locus import CRAWL, SWIM, TWI_FLOOR, _chord_coords, _plot, media_sweep
+from tools.flambda_locus import TWI_FLOOR, _chord_coords, _plot, media_sweep
 from worm.engine import Simulation
 from worm.params import Params
 
