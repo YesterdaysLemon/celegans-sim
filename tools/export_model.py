@@ -130,8 +130,9 @@ NEURAL_SCALARS = ("beta", "ca_slope", "ca_offset", "k_slope", "E_K", "E_Ca", "E_
 MUSCLE_SCALARS = ("g_leak", "E_leak", "beta", "v_half", "rest_tension")
 # `nose_touch_gain` was the last name on the sensory list below and has been removed rather
 # than added, because there is nothing for it to carry yet. Both implementations drive nose
-# touch with the *same* expression -- `worm/senses.py:284` uses `p.touch_gain * 0.5`
-# and `wasm/assembly/index.ts:1035` uses `gene(GENE_SEN_TOUCH_GAIN) * 0.5` -- so the 0.5 is
+# touch with the *same* expression -- `Senses.sense` in worm/senses.py uses
+# `p.touch_gain * 0.5` and `sense()` in wasm/assembly/index.ts uses
+# `gene(GENE_SEN_TOUCH_GAIN) * 0.5` -- so the 0.5 is
 # a shared literal, not a runtime constant standing in for a parameter Python has. Giving
 # the nose its own gain is a new degree of freedom: it needs a field on `SensoryParams`, a
 # use in `worm/senses.py`, a matching edit in the runtime, and it changes the .model

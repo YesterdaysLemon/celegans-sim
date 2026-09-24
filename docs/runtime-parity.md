@@ -109,9 +109,16 @@ does; see below.
 
 ## Route 3 — the Python-only paths
 
-Five families, two of which crossed into the runtime on 2026-08-14 (the cascade and the
-amine path — see their entries). **All are off by default**, and the three still
-Python-only are what `tests/test_runtime_parity.py` pins.
+Seven families, all **off by default**. One crossed fully into the runtime on 2026-08-14
+(the cascade — Route 2 now, see its entry). One crossed half-way: the amine path runs per
+worm behind `setAminePath`, but the runtime's defaults for it are hard-coded zeros rather
+than exported values, so flipping a default in `Params()` would not reach the browser —
+which is why `tests/test_runtime_parity.py` still pins it. That registry,
+`tools/export_model.py::RUNTIME_UNSUPPORTED`, holds ten keys in six families: force-velocity,
+the amine path (five keys), the thermotaxis setpoint route, proprio-as-conductance, the
+AS-class field and omega wave suppression. The world's obstacles are Python-only as well,
+but they are dish furniture rather than a model switch — see the note at the end of this
+section.
 
 ### `sensory.load_gain` (+ `load_half`, `proprio_reach_swim`, `modulator.dopamine_head_lag`, `modulator.dopamine_reach_swim`, `modulator.dopamine_muscle_rate`) — the amine load-sensing path
 **Runtime: implemented (2026-08-14 port), off by default. Lifecycle: `REFERENCE_CANDIDATE`.**
@@ -165,6 +172,13 @@ stage chain runs in both reflex forms, and `setHeadCascade` configures it per wo
 shipped stages = 1 the single-lag path is untouched byte for byte. Adoption is still its
 own decision; what this port removes is only the parity blocker.
 
+*Corrected 2026-09-24:* "Route 2 now" was true of `setHeadCascade` and false of the export.
+The constructor sized the stage chain for zero extra stages regardless of `HEAD_STAGES`, and
+the stage loop writes through `unchecked()`, so a payload EXPORTED with `head_stages > 1`
+stepped past the end of the chain — memory corruption with two worms, a trap with one. The
+`cascade` conformance case configures its worm through `setHeadCascade`, which allocates
+correctly, so it could not see it. The constructor now sizes the chain from the export.
+
 Replaces the single first-order lag on the head stretch reflex with N stages in series, so
 phase *adds* rather than averaging. At `head_stages = 4`, `head_stage_tau = 0.125`,
 `head_delay = 0` it matches the shipped frequency and improves the travelling wave, net speed
@@ -207,7 +221,7 @@ lineage that has to pay for shortening velocity is a different question from whe
 reference animal's span widens. Nothing in the repository has asked that question.
 
 ### `sensory.as_field_gain` (+ `as_field_direction`) — the AS-class receptive field
-**Runtime: not implemented. Lifecycle: `REFERENCE_CANDIDATE`.**
+**Runtime: not implemented. Lifecycle: `HISTORICAL_NEGATIVE` — refused 2026-08-26 (#193).**
 
 The last field-blind cord motor class given the same anterior/posterior receptive-field
 machinery DA/DB/VA/VB carry, behind a ratio gain shipping at `0.0` — the field matrix is
@@ -220,9 +234,35 @@ anterior field, **every gait guardrail improves at once** — speed 0.281 → 0.
 travelling index +0.886 → +0.936, dorsoventral antagonism −0.758 → −0.843, frequency
 stable — 16/16 seeds keep the head-to-tail wave, and the gain helps in all three media.
 The direction itself was a finding: Tolstenkov 2018's A-biased wiring suggested the
-posterior side, and the sweep overruled it. Adoption is gated in `NEXT.md` item 1¾ —
-scorecard/ethogram against frozen main, backward locomotion and omega depth, then the
-port this entry exists to demand.
+posterior side, and the sweep overruled it.
+
+*Refused* (2026-08-26, #193; tables at `SensoryParams.as_field_gain`): the behavioural
+battery said no twice. At 1.0 turns deepen but the animal veers (heading drift 2.9 → 8.2
+°/s, spontaneous reversals double, pirouette conditioning collapses); at 0.5 the drift
+stays detectable and the navigation gains are gone. A standing field rides the direction
+gate all the time, so depth and drift arrive together at every gain. Do not retry it as a
+standing field; the recorded follow-up is a turn-phase-gated one (#196).
+
+### `sensory.thermo_setpoint_gain` — the thermotaxis memory's route into AFD
+**Runtime: not implemented. Lifecycle: `HISTORICAL_NEGATIVE` for tonic routings.**
+
+The setpoint memory itself ships live in both implementations (#198: it learns where the
+animal is fed, dopamine-gated, and is bit-identical in a never-fed animal). What is Python-
+only is this gain, a TONIC current into AFD proportional to how far below the learned
+setpoint the animal sits — and every tonic routing was measured and refused: AFD steers
+through its transient, not its level, so the transfer curve is flat. The follow-up is a
+setpoint-conditional differential (warming is good below home, bad above), which wants its
+own paired gate. All four measurements: `tools/thermo_memory.py`.
+
+### `sensory.proprio_conductance` (+ `proprio_E_rev`) — proprioception as a conductance
+**Runtime: not implemented. Lifecycle: `HISTORICAL_NEGATIVE` (#194).**
+
+The body A/B proprioceptive drive as a pair of saturating conductances instead of an
+injected current. Better on every forward-gait guardrail and refused on the behavioural
+battery: it abolishes spontaneous reversals, because a conductance shunts as well as drives
+and the backward command then pushes on a leakier membrane. Current mode stays the animal.
+Tables: `tools/clamp_occupancy.py` (THE BATTERY). Do not retry as a gain on the same
+conductance pair.
 
 ### `sensory.omega_wave_suppression` — standing the body wave down during a turn
 **Runtime: not implemented. Lifecycle: `HISTORICAL_NEGATIVE`.**
@@ -243,6 +283,15 @@ directly: what the turn needs is more headroom in the motor units, or the static
 applied where it does not compete with the oscillation for the same dynamic range.
 
 ---
+
+### Not a switch: the world's obstacles
+**Runtime: not implemented.** `World.add_obstacle` and the obstacle term in
+`World.contact_force` exist only in Python: `default_world` stands four pillars on the
+Python plate (and so on the `?server` viewer's dish), while the runtime has the wall and
+self-contact and no way to add a pillar, and the browser plate stands none. No conformance
+case places one, so the gap is invisible to it by construction. A dish that wants pillars in
+the browser needs them ported — `index.ts`'s body-step comment that mentions obstacles
+describes the Python contact pass, not its own.
 
 ## Route 2 — the runtime implements both branches
 
@@ -265,28 +314,32 @@ Almost every name in `tools/export_model.py`'s `NEURAL_SCALARS`, `MUSCLE_SCALARS
 so that list cannot silently lose an entry — which is how `sen_nose_touch_gain` was lost once,
 and why it cannot be lost again.
 
-**Three of those names are exported and then not read by the runtime**, so "it is in the
+**Four of those names are exported and then not read by the runtime**, so "it is in the
 scalar list" is not by itself evidence that the runtime honours it:
 
 | exported constant | what it actually is |
 |---|---|
-| `MUS_REST_TENSION` | Route **1**. `rest_tension` is consumed inside `Muscles._balance` and reaches the animal baked into the exported muscle `G`; `index.ts` never reads the scalar. |
+| `EGL_RESOURCE_TAU`, `EGL_VM_TAU` | the time constants behind the egg-laying rates; the runtime reads the exported rates (`index.ts` only *mentions* the taus, in the comments explaining the exact updates). |
 | `WORLD_INGESTION_RATE` | dead on both sides. `worm/genome.py` already names `world.ingestion_rate` among "known dead parameters". |
 | `WORLD_RADIUS` | redundant. The runtime uses `WORLD_EXTENT`, exported separately from the same `p.radius`. |
 
-Verified by checking each `export const` in `model_gen.ts` for a `G.<name>` reference in
-`index.ts`, **restricted to the eight scalar-group names above** (every `SLP_*` scalar is
-read by `stepSleep`, so the sleep group adds nothing to the unread count) — that
-restriction matters:
-run unrestricted, the same method also returns `BODY_LENGTH`, `BODY_RADIUS_MAX`, the four
-`MED_*` medium constants, `ODOUR_DECAY`, `TOUCH_DECAY` and `N_NODES`, none of which
-`index.ts` reads either. So the honest count of exported-but-unread constants is around
-twelve; three is the number *within the seven scalar lists this paragraph is about*. Run
-without that restriction over **all** 371 `export const`s the count is 101, because the
-layout constants (`LEN_*`, `OFF_*`, `ROWS_*`, `COLS_*`) are addressed through generated
-accessors rather than by name. Harmless today
-— `rest_tension` still reaches the animal, the rest are inert on both sides — but an audit run
-from this document alone would otherwise conclude the runtime honours constants it ignores.
+`MUS_REST_TENSION` used to head this table and no longer belongs in it. For the canonical
+animal it is still Route 1 -- consumed inside `Muscles._balance` and baked into the exported
+muscle `G` -- but the runtime now reads the scalar too: `rebalanceMuscles`, which
+`developWorm` runs for every hatchling that carries heritable weights, bisects each cell
+back to it.
+
+Verified by stripping comments from `index.ts` and checking each `export const` in
+`model_gen.ts` for a `G.<name>` reference (2026-09-24; an earlier count matched comment
+mentions too, and so read the two egg-laying taus as used). Over all 423 exported
+constants, 105 are never named; 92 of those are layout constants (`LEN_*`, `OFF_*`,
+`ROWS_*`, `COLS_*`) addressed through generated accessors, which leaves thirteen genuinely
+unread: the four above, plus `BODY_LENGTH`, `BODY_RADIUS_MAX`, `N_NODES` and the four `MED_*`
+medium constants (the viewer reads the medium pair from the model header, not from the
+runtime), and `ODOUR_DECAY`/`TOUCH_DECAY` (the runtime runs on the exported *rates*, as
+`worm/senses.py` does). Harmless today -- every one is inert on both sides or reaches the
+animal another way -- but an audit run from this document alone would otherwise conclude
+the runtime honours constants it ignores.
 
 ## Route 1 — construction-time, baked
 

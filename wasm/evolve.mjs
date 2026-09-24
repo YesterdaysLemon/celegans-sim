@@ -409,9 +409,10 @@ export function assay(E, ids, steps, opts = {}) {
     ingested: E.getIngested(id),
     laid: E.getEggsLaid(id),
     // The uterus fill, in eggs. Recorded alongside `laid` because over any assay this
-    // file can afford, `laid` is almost always zero -- 11 eggs/hour is 0.06 eggs in 20 s
-    // -- and a fitness that is zero for every individual gives selection nothing to act
-    // on. See the `eggs` measure below.
+    // file can afford, `laid` is the same for everyone -- 11 eggs/hour of *production*
+    // is 0.06 eggs in 20 s, so what gets laid is the starting fill (one egg each, in
+    // eggs-fitness.test.mjs) -- and a fitness that is one constant for every individual
+    // gives selection nothing to act on. See the `eggs` measure below.
     held: E.getEggsHeld(id),
     drag: drag[i],
     path: path[i],
@@ -448,9 +449,10 @@ export function fitness(rec, opts = {}) {
    * the assays this file can afford is intake wearing a hat. Both halves of that are worth
    * having in the code rather than in a comment on an issue.
    *
-   * `laid` alone is unusable: 11.0 eggs/hour is 0.061 eggs in 20 s, `eglLaid` is an integer
-   * count, so every animal in the population scores zero and truncation selection has
-   * nothing to sort. Getting to a countable number needs about an hour per animal, which is
+   * `laid` alone is unusable: 11.0 eggs/hour is 0.061 eggs produced in 20 s, `eglLaid` is an
+   * integer count, and what an animal lays that early comes out of the EGGS_INITIAL fill it
+   * started with -- one egg each, measured in eggs-fitness.test.mjs -- so every animal in
+   * the population scores the same and truncation selection has nothing to sort. Getting to a countable number needs about an hour per animal, which is
    * 43 hours per seed per arm at this throughput.
    *
    * So the measure is eggs *produced*, laid plus still held, which moves on the feeding

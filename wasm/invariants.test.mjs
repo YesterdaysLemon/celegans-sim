@@ -79,6 +79,34 @@ test('a body folded past the link limit is caught', () => {
   assert.equal(code, CURVATURE, `expected the curvature code, got ${code}`);
 });
 
+test('the dish ends where worm/world.py says it does', () => {
+  // LEFT_THE_DISH, which no test used to trigger. The line is the world's escape margin
+  // (World.ESCAPE_MARGIN, 0.5 mm past the rim), not the rim: the wall zone holds a node a
+  // hair outside, and the rim itself was the zero-margin cliff #211 removed from Python.
+  const head = JSON.parse(new TextDecoder().decode(modelBuf.subarray(12, 12 + headLen)));
+  const extent = head.scalars.world_extent;
+  const w = E.createWorm(0, 0.0, 0.0, 0.0);
+  const outermost = () => {
+    const n = head.ints.n_nodes;
+    const xs = new Float64Array(E.memory.buffer, E.ptrNodesX(w), n);
+    const ys = new Float64Array(E.memory.buffer, E.ptrNodesY(w), n);
+    let r = 0, xmax = -Infinity;
+    for (let i = 0; i < n; i++) { r = Math.max(r, Math.hypot(xs[i], ys[i])); xmax = Math.max(xmax, xs[i]); }
+    return { r, xmax };
+  };
+  const put = (target) => {
+    for (let k = 0; k < 3; k++) E.translateWorm(w, target - outermost().xmax, 0.0);
+    return outermost().r;
+  };
+  let r = put(extent + 0.3);
+  assert.ok(r > extent && r < extent + 0.5, `placed at ${r} for extent ${extent}`);
+  assert.equal(E.checkInvariants(w), OK, 'a node the wall is holding has not left');
+  r = put(extent + 0.6);
+  assert.ok(r > extent + 0.5, `placed at ${r}`);
+  assert.equal(E.checkInvariants(w), E.INVARIANT_LEFT_THE_DISH.valueOf(),
+    'past the escape margin it has');
+});
+
 test('the guard reports the first failure rather than a boolean', () => {
   // Distinct codes are what let an evaluator say which invariant a lineage broke, instead
   // of recording that something, somewhere, went wrong.

@@ -160,9 +160,11 @@ heavily gap-coupled cells so `rebuildGap` has something to do, and one pharyngea
 which reaches the rest of the animal through a single gap junction and nothing else.
 
 Those figures are the rounding granularity of the reference file, so the two agree to at
-least the precision the reference stores. Everything is ported: nervous system, muscle,
-body, senses, modulators, sleep, pharynx, egg-laying, world — including the plate's
-chemistry, which
+least the precision the reference stores. Everything the canonical animal runs on is
+ported: nervous system, muscle, body, senses, modulators, sleep, pharynx, egg-laying, world
+— except the world's **obstacles**, which only Python has (`World.add_obstacle`; the
+default Python plate stands four pillars on it, the browser plate stands none, and no
+conformance case has one) — including the plate's chemistry, which
 diffuses and decays on its own clock. That last one was missing for a while, and the way
 it was missed is instructive: the conformance plate was an empty dish, and a field of
 zeros diffuses to zeros, so nothing disagreed. It surfaced only once the plate had a lawn
@@ -283,9 +285,12 @@ The browser is now faster than the Python it was ported from (numpy manages 1.01
 2279 chemical synapses in a 302×302 grid, 552 gap junctions, 45 non-zeros in the head
 reflex map. Dense multiplication spent 556,000 mul-adds a step to accumulate about 4,500
 that were not zero. In compressed sparse row form the same step is 2.7× faster and the
-model file went from 3.08 MB to **0.31 MB**.
+model file went from 3.08 MB to **0.35 MB** (349,678 B at the time of writing — heritable
+weights, morphology and metabolism have each added payload since the 0.31 MB this first
+read).
 
-Over the wire the whole animal is now **~55 kB gzipped** — 36 kB model plus 19 kB wasm.
+Over the wire the whole animal is now **~64 kB gzipped** — about 32 kB each of model and
+wasm.
 
 **In memory, an animal is 240,304 bytes -- 235 kB.** The 302² matrices are anatomy and
 shared between animals, and so is the runtime's per-step scratch, so a second worm
@@ -305,17 +310,19 @@ of lines of the largest per-worm array has to be the measured one.
 So nine tenths of an animal is a ring buffer for the model's least-defended constant. If the
 head cascade under test in `worm/params.py` survives its remaining checks, `head_delay` goes
 to zero and that ring goes with it -- four scalars a joint instead of 561 -- and a population
-of 100 stops costing 22.8 MB. A population of 100 is 22.8 MB, on top of a shared `World` whose six
-256² f64 grids — food, attractant, repellent, oxygen, the diffusion scratch, and the
-attractant source added by #48 — come to 3,145,728 bytes, plus 606,208 for the egg record.
+of 100 stops costing 22.9 MB. A population of 100 is 22.9 MB (`memory.mjs` measures it), on
+top of a shared `World` whose six 256² f64 grids — food, attractant, repellent, oxygen, the
+diffusion scratch, and the attractant source added by #48 — come to 3,145,728 bytes, plus
+638,976 for the egg record (positions, times, parents and genes, and since heritable
+wiring and morphology, a pointer per egg to each).
 
 **A bacterial lawn is 1,048,576 bytes**, which since #48 is not a rounding either. A patch
 caches the attractant and oxygen shapes it sources, so that eating it can scale them
 instead of recomputing 65,536 `Math.exp` calls per patch fifty times a second — see
 `addPatch`. A lawn is therefore four animals. The plate is capped at
-`MAX_FOOD_PATCHES = 16`; `addFood` refuses past that and counts the refusal, which
-`foodPatchCount()` and `foodPatchesRefused()` report so the viewer does not paint a marker
-for a lawn the plate declined.
+`MAX_FOOD_PATCHES = 16`; `addFood` refuses past that and counts the refusal
+(`foodPatchesRefused()`), and the viewer compares `foodPatchCount()` before and after a drop
+so it does not paint a marker for a lawn the plate declined.
 
 That figure is measured rather than estimated. `node wasm/memory.mjs` reads it off the
 allocator's own per-worm stride through `ptrV`, cross-checks it against the summed array
@@ -367,10 +374,12 @@ per-neuron arrays. Indexing an eight-byte array by neuron runs off its end into 
 array the exporter laid down next, silently, producing a plausible finite number for every
 cell -- and the first symptom was a zero pivot three hundred columns later.
 
-`_balance` is the other half and it needs one thing this did not. The exported muscle `G` is
-*post*-balance, so the balance can be neither recomputed nor checked from the payload as it
-stands; the raw `G` has to go out alongside it. That is a payload addition, not a format
-change.
+`_balance` is the other half, and it needed one thing this did not: the exported muscle `G`
+is *post*-balance, so the raw `G` had to go out alongside it. It does now (`mus_raw_*`):
+`checkBalance()` reruns the balance from the raw conductances and reports the worst
+deviation from the shipped matrix (pinned in `invariants.test.mjs`), and
+`rebalanceMuscles` is what `developWorm` runs at every hatch that carries heritable
+weights, so an evolved matrix is rebalanced and checked with no Python in the loop.
 
 ## Running measurements on it
 
