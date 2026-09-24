@@ -142,7 +142,9 @@ function dial(url) {
     const magic = dv.getUint32(0, true);
     if (magic === FIELD_MAGIC) {
       const n = dv.getUint32(4, true);
-      S.field = { n, data: new Uint8Array(ev.data, 8, n * n * 3) };
+      // Stamped on arrival: drawFields caches its image on the stamp, and without one the
+      // dish kept painting the first field this socket ever sent.
+      S.field = { n, data: new Uint8Array(ev.data, 8, n * n * 3), stamp: performance.now() };
     } else if (magic === MAGIC) {
       onFrame(ev.data, dv);
     } else if (magic === MAGIC_V1) {
@@ -217,19 +219,26 @@ function onFrame(buf, dv) {
   const kappa = new Float32Array(buf, p, nJoint); p += nJoint * 4;
   // Two planes rather than interleaved pairs, because that is the shape local.js hands
   // the dish and drawEggs should not have to know which feed it is drawing.
-  S.eggs = nEggs
+  const eggs = nEggs
     ? { n: nEggs, x: new Float32Array(buf, p, nEggs),
         y: new Float32Array(buf, p + nEggs * 4, nEggs) }
     : null;
+  const frame = { t, speed, food, dir, achieved, sensed, nodes, act, V, tension, kappa,
+                  running, pumpRate, pumping, lumen, vulva, eggsHeld, eggsLaid, eglActive };
+  frame.cx = nodes.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / nNodes;
+  frame.cy = nodes.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0) / nNodes;
 
-  S.frame = { t, speed, food, dir, achieved, sensed, nodes, act, V, tension, kappa, running,
-              vulva, eggsHeld, eggsLaid, eglActive };
+  // Parked in the past, the ring owns the screen. A paused server still sends its frame
+  // at 30 Hz; recording it is harmless (the ring skips a t it already has), but painting
+  // it overwrote the scrubbed moment's senses, lamps, stats and camera every frame.
+  if (S.playhead !== null) { record([frame], eggs, t); return; }
+
+  S.eggs = eggs;
+  S.frame = frame;
+  const { cx, cy } = frame;
   drawSenses(sensed);
   updatePump(pumpRate, pumping);
   updateEggs(eggsLaid, eggsHeld, eglActive);
-
-  const cx = nodes.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / nNodes;
-  const cy = nodes.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0) / nNodes;
   follow(cx, cy);
 
   /* The dish draws every body out of `S.worms`, and this feed is one animal.
@@ -250,11 +259,10 @@ function onFrame(buf, dv) {
    * copy of it -- one object, so the panels and the dish cannot disagree about what is on
    * screen. Focus is pinned because this feed has nobody else to focus.
    */
-  S.frame.cx = cx;
-  S.frame.cy = cy;
   S.worms = [S.frame];
   S.focus = 0;
-  record(S.worms, S.eggs);
+  S.dishT = S.frame.t;          // one animal, created with the dish: its age is dish time
+  record(S.worms, S.eggs, S.dishT);
 
   const last = S.trail[S.trail.length - 1];
   if (!last || Math.hypot(cx - last[0], cy - last[1]) > 0.02) {

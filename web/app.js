@@ -7,8 +7,8 @@
  *
  *   viewer/state.js       shared state, DOM helpers, canvas fitting   (imports nothing)
  *   viewer/scales.js      colour ramps
- *   viewer/themes.js      the three dish palettes
- *   viewer/worm.js        body geometry and the three body painters
+ *   viewer/themes.js      the two dish palettes
+ *   viewer/worm.js        body geometry and the two body painters
  *   viewer/dish.js        plate, fields, overlays, camera transforms
  *   viewer/panels.js      neurons, muscle, kymograph, traces, receptor bars
  *   viewer/stats.js       header readouts, undulation frequency, legend
@@ -24,15 +24,20 @@
 import { LocalEngine } from './local.js';
 import { loadSeed } from './deal.js';
 import { ArenaEngine } from './arena-engine.js';
-import { S, el } from './viewer/state.js';
+import { S, el, esc } from './viewer/state.js';
 import { wire, goLive } from './viewer/controls.js';
+import { setCam } from './viewer/dish.js';
+import { flashHint } from './viewer/gestures.js';
 import { connect } from './viewer/transport.js';
 import { start } from './viewer/loop.js';
 import { reset as historyReset } from './viewer/history.js';
 
 /* Local by default: the point of the WASM port is that no server is involved. `?server`
  * falls back to the WebSocket feed, which is still how the Python model is driven. */
-if (location.search.includes('debug')) window.__sim = S;   // for poking from the console
+// Parameters, not substrings: `?utm_source=discord-server` used to put a visitor into
+// socket mode, facing "Nothing is listening".
+const query = new URLSearchParams(location.search);
+if (query.has('debug')) window.__sim = S;   // for poking from the console
 /* The deal this load plays, shared by both dishes: ?dish=N replays it, the Share
  * button writes it (web/deal.js). */
 S.dealSeed = loadSeed();
@@ -55,25 +60,45 @@ const engines = { animal: null, arena: null };
 const DISH_VIEW = { animal: { span: 6.5, cam: 'follow', layers: { attractant: true } },
                     arena: { span: 26, cam: 'free', layers: { attractant: true } } };
 
+const loading = {};
+const pressTab = (name) => document.querySelectorAll('#dish-tabs [data-dish]').forEach((o) =>
+  o.setAttribute('aria-pressed', String(o.dataset.dish === name)));
+
 async function switchDish(name) {
   if (S.playhead !== null) goLive();
+  // The last dish asked for wins. The engine is assigned after an await, so a second
+  // click during the arena's load used to finish with the arena on stage under a pressed
+  // "The Animal" -- and a double click built two arenas. One load per dish, shared.
+  S.wantDish = name;
   if (!engines[name]) {
     el('banner').classList.remove('gone');
     el('banner').firstElementChild.innerHTML = name === 'arena'
       ? '<b>Opening the arena&hellip;</b>a second dish, its own world'
       : '<b>Loading the animal&hellip;</b>302 neurons, compiled to WebAssembly';
     try {
-      engines[name] = name === 'arena'
-        ? await new ArenaEngine(undefined, { dealSeed: S.dealSeed }).init()
-        : await new LocalEngine(undefined, { dealSeed: S.dealSeed }).init(2);
+      loading[name] ??= name === 'arena'
+        ? new ArenaEngine(undefined, { dealSeed: S.dealSeed }).init()
+        : new LocalEngine(undefined, { dealSeed: S.dealSeed }).init(2);
+      engines[name] = await loading[name];
     } catch (err) {
-      el('banner').firstElementChild.innerHTML =
-        `<b>Could not start the ${name} engine</b>${err}`;
+      delete loading[name];
       console.error(err);
+      if (S.engine) {
+        // Another dish is running under the banner: give it back rather than leaving a
+        // full-screen notice over it that nothing dismisses.
+        el('banner').classList.add('gone');
+        pressTab(el('app').dataset.dish);
+        flashHint(`could not open the ${name} dish`);
+      } else {
+        el('banner').firstElementChild.innerHTML =
+          `<b>Could not start the ${name} engine</b>${esc(err)}`;
+      }
       return;
     }
+    if (S.wantDish !== name) return;
     el('banner').classList.add('gone');
   }
+  if (S.wantDish !== name) return;
   /* Everything accumulated is about the other dish's animals: panels, trails, ring,
    * frequency and speed windows all start over. S.meta = null is the reset signal
    * loop.js already honours -- it rebuilds the selector, the traces and the trails on
@@ -85,10 +110,11 @@ async function switchDish(name) {
   S.kymo = null; S.freqBuf = []; S.speedWin = [];
   S.corpses = null; S.field = null;
   S.focus = 0;
+  S.focusHandle = undefined;    // handles are per engine, and both number from 0
   historyReset();
   const v = DISH_VIEW[name];
   S.view.span = v.span; S.view.cx = 0; S.view.cy = 0;
-  S.cam = v.cam;
+  setCam(v.cam);                // not S.cam directly: the Follow/Free buttons say it too
   S.recentre = v.cam === 'follow';
   for (const [k, on] of Object.entries(v.layers)) {
     S.layers[k] = on;
@@ -100,10 +126,18 @@ async function switchDish(name) {
     ? 'descent with modification on a finite plate'
     : '<em>C.&nbsp;elegans</em> &mdash; 302 neurons, 95 muscles, one dish';
   el('o-zoom').textContent = `${S.view.span.toFixed(1)} mm`;
-  // The Weather slider is one control over two dishes: whatever it reads, the dish now
-  // on stage obeys -- otherwise switching dishes silently forks the knob from the wind.
-  const wx = el('r-weather');
-  if (wx && S.engine.setWeather) S.engine.setWeather(parseFloat(wx.value));
+  // The footer's controls are one set over two dishes: whatever they read, the dish now
+  // on stage obeys -- otherwise switching silently forks a knob from what it drives.
+  // Re-firing each control's own handler applies it exactly as a touch would. (Only
+  // Weather used to be re-applied: the arena ran at 1x under a Rate reading 3.2x.)
+  for (const id of ['r-rate', 'r-weather']) el(id)?.dispatchEvent(new Event('input'));
+  document.querySelector('[data-medium][aria-pressed="true"]')?.click();
+  pressTab(name);
+  // The address names the dish on stage, so Share (which copies it) and a reload land here.
+  try {
+    history.replaceState(null, '',
+      `${location.pathname}${location.search}${name === 'arena' ? '#arena' : ''}`);
+  } catch (e) { /* file:// */ }
   // The arena tab's discovery dot has done its job once the dish has been seen.
   if (name === 'arena') {
     try { localStorage.setItem('celegans-arena-seen', '1'); } catch (e) { /* private mode */ }
@@ -111,7 +145,7 @@ async function switchDish(name) {
   }
 }
 
-if (location.search.includes('server')) {
+if (query.has('server')) {
   el('dish-tabs').style.display = 'none';    // the socket feeds one animal; no second dish
   // Preserve needs the local engine to read genes and morphology; over the socket there
   // is none, and an enabled button that silently does nothing is worse than a disabled
@@ -132,6 +166,9 @@ if (location.search.includes('server')) {
   // Weather is a local-engine field pass; the socket protocol has no wind command.
   const wg = el('r-weather');
   if (wg) wg.closest('.group').style.display = 'none';
+  // One animal, and no command to add or remove one: +/- were enabled and did nothing,
+  // with an empty selector beside them. The group goes the way Preserve's reasoning says.
+  el('b-worm-add').closest('.group').style.display = 'none';
   el('dish-hint').innerHTML =
     'drag to pan &middot; scroll to zoom &middot; double&#8209;click to drop a lawn';
   connect();
@@ -139,15 +176,12 @@ if (location.search.includes('server')) {
   S.switchDish = switchDish;
   el('app').dataset.dish = 'animal';
   const first = location.hash === '#arena' ? 'arena' : 'animal';
-  if (first === 'arena') {
-    document.querySelectorAll('[data-dish]').forEach((o) =>
-      o.setAttribute('aria-pressed', String(o.dataset.dish === 'arena')));
-  }
+  if (first === 'arena') pressTab('arena');
   el('banner').firstElementChild.innerHTML =
     '<b>Loading the animal&hellip;</b>302 neurons, compiled to WebAssembly';
   switchDish(first).catch((err) => {
     el('banner').firstElementChild.innerHTML =
-      `<b>Could not start the local engine</b>${err}<code>?server</code>`;
+      `<b>Could not start the local engine</b>${esc(err)}<code>?server</code>`;
     console.error(err);
   });
 }

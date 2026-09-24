@@ -50,9 +50,18 @@ export const S = {
    * express the first, and code that tried would resume playback every time the ring
    * turned over. */
   playhead: null,
+  // Dish time of what is on screen -- the engine's dishT live, the entry's t when
+  // scrubbing. Distinct from S.frame.t, which is the focused animal's own age.
+  dishT: 0,
 };
 
 export const el = (id) => document.getElementById(id);
+
+/* Text bound for innerHTML. Neuron metadata is not always ours: with ?server&ws= it comes
+ * from whatever socket the link names, and a cell named `<img onerror=...>` ran its
+ * handler the moment the neuron panel took focus. */
+export const esc = (v) => String(v).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 /* The cells ablated in the animal the panels are about.
  *

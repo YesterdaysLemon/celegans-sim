@@ -142,27 +142,36 @@ where that window sits in the dish. Every side panel collapses from its header, 
 whole rail folds away for a full-width view of the animal. `f` toggles follow, `h` hides
 the rail, `1`/`2` switch the mode.
 
-Four measurement views: all 302 neurons ordered head to tail and coloured by activation,
-hover for identity and click to plot; the four muscle quadrants; a scrolling curvature
-kymograph; live membrane traces. Transport controls change the medium under the animal
+The measurement rail: all 302 neurons ordered head to tail and coloured by activation
+(hover for identity, click to plot; **Wiring** recolours them by how far each cell's
+synapses have drifted from wild-type); the four muscle quadrants; a scrolling curvature
+kymograph; live membrane traces; what the animal senses, receptor by receptor; and on the
+arena dish, the lineage. Transport controls change the medium under the animal
 live, poke it at either end, and ablate neurons by clicking them. A lamp in the header
 flashes once per pharyngeal pump — at 250 a minute on food that is a flicker, and off
 food an occasional blink. A well-fed animal eventually sleeps: it stops moving and
 pumping, gets z's drawn over it, and a poke wakes it — the lamp going dark over a
 motionless worm is quiescence, not a hang.
 
-And you can reach into the dish. A **dropper** on the plate chooses what a double-click
-puts down — a bacterial lawn, or a dose of repellent that diffuses, decays and blows
-around like anything else on the plate. **Shift-drag an animal** to pick it up with the
+And you can reach into the dish. The **pipette** holds four bottles — a bacterial lawn,
+crumbs, a scent with no meal under it, and a dose of repellent — and a click drops the
+one in hand; everything dropped diffuses, decays and blows around like anything else on
+the plate. **Shift-drag an animal** (or hold a finger on it) to pick it up with the
 tweezers and put it down somewhere else: the runtime translates the pose rigidly, so
-gait phase and every neuron ride along — moving the animal, not resetting it. On the
-arena dish a **Weather** slider scales the wind live, from a still room to a gusty one
+gait phase and every neuron ride along — moving the animal, not resetting it. A
+**Weather** slider scales the wind live on either dish, from a still room to a gusty one
 (all three are local-engine tools; the `?server` feed keeps plain lawn-dropping).
 
-**And the transport bar scrubs.** The media-player metaphor at the top of this file was
-missing the one control that makes it one, because there was no history to scrub — every
-frame was drawn once and dropped. `viewer/history.js` keeps a ring of past frames and the
-slider walks it; dragging pauses, and dragging to the right-hand end resumes live.
+Two dishes share the page as tabs: **The Animal** and **The Arena**. **Share dish** copies
+a link that replays this load's exact deal (`?dish=N`, and `#arena` for the arena), and
+**Preserve** records the focused animal's walk cycle, genes and shape as a specimen for
+the museum's shelf.
+
+**And the transport bar scrubs.** The media-player metaphor in the README was missing the
+one control that makes it one, because there was no history to scrub — every frame was
+drawn once and dropped. `viewer/history.js` keeps a ring of past frames and the slider
+walks it; dragging pauses, and dragging to the right-hand end returns to the live frame,
+still paused — Play carries on from there. A paused dish adds nothing to the ring.
 
 Two things about that ring are worth stating because both were bugs first. It **copies**:
 `LocalEngine.frame(i)` hands out `act`, `V`, `tension` and `kappa` as views into WASM linear
@@ -171,8 +180,6 @@ memory, so storing those objects would hold thousands of aliases of one live ani
 costs **3,376 B per animal**, measured, so a fixed frame count would quietly mean a 27 MB
 ring on a populated plate. 24 MB buys about 7,100 frames with one animal and about 930 with
 eight, and the readout says how many seconds are actually held.
-
-## Layout
 
 ## Layout
 

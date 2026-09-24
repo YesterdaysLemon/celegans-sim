@@ -101,6 +101,17 @@ const VIEWPORTS = [
   { name: 'phoneSE', width: 320,  height: 568, touch: true },
 ];
 
+// Footer controls running past the footer's own box or the viewport. Overflow is hidden,
+// so such a control is not scrolled to -- it is gone. #156's header rule, for the footer.
+const footerClipped = (page) => page.evaluate(() => {
+  const vw = innerWidth, foot = document.querySelector('footer').getBoundingClientRect();
+  return [...document.querySelectorAll('footer button, footer input, footer .readout')]
+    .filter((e) => { const r = e.getBoundingClientRect();
+      return r.width > 0 && (r.right > Math.min(vw, foot.right) + 1
+                             || r.left < Math.max(0, foot.left) - 1); })
+    .map((e) => e.id || (e.textContent || '').trim().slice(0, 16));
+});
+
 // Ids that must exist and be visible at every viewport. These are the controls, not the
 // readouts: a missing readout is a bug, a missing control is an unusable page.
 const REQUIRED = [
@@ -275,6 +286,9 @@ try {
      * 1. Header navigation must be INSIDE the viewport. Overflow is hidden, so a header
      *    element past the right edge is not scrolled-to, it is gone -- which is how the
      *    museum door vanished from phones while the overflow check above stayed green.
+     *    The footer's controls are held to the same rule, and to their footer's own box:
+     *    the history readout overran it at 390px and Preserve was cut off at 320px, both
+     *    with this check green because it only looked at the header.
      * 2. Visible dish controls must not overlap each other. A chip under the mode
      *    switch is two controls answering one tap.
      * 3. The first measurement panel must start within 1.7 viewport heights, so the
@@ -303,6 +317,9 @@ try {
     });
     check(vp.name, reach.clipped.length === 0,
           `header navigation clipped out of the viewport: ${reach.clipped.join(', ')}`);
+    const footEarly = await footerClipped(page);
+    check(vp.name, footEarly.length === 0,
+          `footer controls run past the footer or the viewport: ${footEarly.join(', ')}`);
     check(vp.name, reach.collisions.length === 0,
           `dish controls overlap: ${reach.collisions.slice(0, 4).join(', ')}`);
     check(vp.name, reach.railVH <= 1.7,
@@ -1515,6 +1532,12 @@ try {
       check(vp.name, scrub.backToLive === null,
         'dragging the scrubber to the end did not return the viewer to live');
     }
+
+    // Again once the viewer has settled: the touch layout rehomes controls after start,
+    // and the 390px readout overrun only existed in the settled footer.
+    const footLate = await footerClipped(page);
+    check(vp.name, footLate.length === 0,
+          `footer controls run past the footer or the viewport after the run: ${footLate.join(', ')}`);
 
     console.log(`  ${vp.name.padEnd(8)} ${vp.width}x${vp.height}@${vp.dpr || 1}x  ` +
                 `${errors.length} console errors, ${failed.length} failed requests, ` +

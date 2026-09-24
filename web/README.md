@@ -13,29 +13,39 @@ belongs on `S` instead.
 
 | module | owns | imports |
 |---|---|---|
-| `viewer/state.js` | `S`, `el`, `fitCanvas`, `visible`, CSS custom-property lookup | *nothing* |
-| `viewer/scales.js` | sequential and diverging colour ramps | — |
-| `viewer/themes.js` | the three dish palettes, the agar noise tile | state |
-| `viewer/worm.js` | body geometry, and the three body painters | state, scales |
+| `viewer/state.js` | `S`, `el`, `esc`, `fitCanvas`, `visible`, CSS custom-property lookup | *nothing* |
+| `viewer/scales.js` | sequential and diverging colour ramps | *nothing* |
+| `weight-drift.js` | which heritable synapses moved from wild-type, and how far. ONE home, shared with the node drivers | *nothing* |
+| `deal.js` | the seeded deal both dishes play, and `?dish=N` to replay it | *nothing* |
+| `viewer/themes.js` | the two dish palettes, the agar noise tile | state |
+| `viewer/worm.js` | body geometry, and the two body painters | state, scales |
 | `viewer/dish.js` | plate, grid, chemical fields, obstacles, trails, minimap, scale bar, camera transforms | state, themes, worm |
-| `viewer/panels.js` | neuron grid, muscle sheet, kymograph, membrane traces, receptor bars, neuron hit-testing | state, scales |
+| `viewer/panels.js` | neuron grid, muscle sheet, kymograph, membrane traces, lineage, receptor bars, neuron hit-testing | state, scales, weight-drift |
 | `viewer/stats.js` | header readouts, undulation frequency, pump lamp, dish legend | state |
 | `viewer/history.js` | the bounded ring of past frames behind the scrubber | *nothing* |
+| `viewer/specimen.js` | Preserve: a captured walk cycle, genes and shape, as a museum specimen | state |
 | `viewer/transport.js` | the WebSocket feed, and `send()` — the command seam | state, panels, stats, dish, history |
 | `viewer/gestures.js` | everything ON the dish canvas: wheel/pinch zoom, pan, both tweezers, the pipette | state, dish, transport |
-| `viewer/controls.js` | every other event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, stats, transport, history, gestures |
-| `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls, history |
-| `app.js` | bootstrap: pick a transport, wire, start; the dish tabs and `S.switchDish` | all of the above |
-| `local.js` | the WASM engine itself — model loading, stepping budget, the two rate readouts, frame extraction | — |
+| `viewer/controls.js` | every other event listener; worm selector, ablation mode, tooltip, scrubber | state, themes, dish, panels, weight-drift, stats, transport, history, specimen, gestures |
+| `viewer/loop.js` | the local-engine read-out and `requestAnimationFrame` | state, dish, panels, stats, controls, history, specimen |
+| `local.js` | the WASM engine itself — model loading, stepping budget, dish clock, the two rate readouts, frame extraction | deal, weight-drift |
 | `arena-policy.js` | the arena's decisions — incubation, mutation at hatch, starvation and the cull, corpses becoming food. ONE home, imported by the browser engine and by `wasm/arena.mjs` alike | *nothing* |
-| `arena-engine.js` | the arena as a second engine: `ArenaEngine extends LocalEngine`, own WebAssembly instance, policy wired in, per-worm style and dish stats | local, arena-policy |
+| `arena-engine.js` | the arena as a second engine: `ArenaEngine extends LocalEngine`, own WebAssembly instance, policy wired in, per-worm style and dish stats | local, arena-policy, deal |
+| `app.js` | bootstrap: pick a transport, wire, start; the dish tabs and `S.switchDish` | all of the above |
+
+Three pages: `index.html` is the viewer (both dishes, as tabs), `museum.html` renders
+`museum.md` and the specimen shelf, and `arena.html` only forwards old links to
+`index.html#arena`. `worm.js` and `worm.d.ts` beside them are the AssemblyScript
+compiler's raw bindings, regenerated with every build; `local.js` instantiates the
+module itself and imports neither.
 
 ## Where a fix goes
 
 - **It looks wrong** → the renderer that owns those pixels (`dish.js`, `worm.js`,
   `panels.js`).
-- **It reacts wrong** → `controls.js`. Every listener in the viewer is registered there,
-  so there is exactly one place to look for "what happens when I click this".
+- **It reacts wrong** → `gestures.js` if it happened on the dish canvas, `controls.js` for
+  everything else. Between them they register every listener in the viewer, so there are
+  exactly two places to look for "what happens when I click this".
 - **The number is wrong** → `stats.js` if it is in the header, `panels.js` if it is in a
   panel, `local.js` if it came out of the simulation.
 - **It differs between `?server` and the default** → `transport.js` and `loop.js` are the
@@ -43,7 +53,7 @@ belongs on `S` instead.
   lamp, the frequency estimate — is deliberately factored out into a single function that
   both call, because the two copies had already started to drift apart before they were.
 - **It is a palette** → `themes.js` for the dish, `scales.js` for the data. The panels stay
-  in the data palette in all three dish modes; they are measurements and should not be
+  in the data palette in both dish modes; they are measurements and should not be
   dressed up.
 
 ## Two transports

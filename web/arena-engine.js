@@ -242,6 +242,7 @@ export class ArenaEngine extends LocalEngine {
    * time, so this neither forks the seeded mutation stream nor desynchronises a replay
    * beyond the wind itself -- turning the knob is weather, not a new dish. */
   setWeather(x) {
+    this._weatherX = x;
     if (!this.arena) return;
     if (this._wind0 === undefined) this._wind0 = this.arena.opt.wind;
     this.arena.opt.wind = this._wind0 * Math.max(0, x);
@@ -284,9 +285,12 @@ export class ArenaEngine extends LocalEngine {
     this.worms = [];
     this._widthCache.clear();
     this.simT = 0;
+    this.dishT = 0;
     this._policyT = 0;
     this._intakeT = 0;
     this._acc = 0;
     this._wirePolicy();
+    // The new policy starts from the baseline wind; the slider still reads what it read.
+    if (this._weatherX !== undefined) { this._wind0 = undefined; this.setWeather(this._weatherX); }
   }
 }

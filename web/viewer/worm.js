@@ -13,7 +13,7 @@ import { S } from './state.js';
 import { div } from './scales.js';
 
 // Shared geometry: screen-space centreline, outward normals and radii. Every painter
-// works from this, so the three modes are guaranteed to draw the same animal.
+// works from this, so both modes are guaranteed to draw the same animal.
 //
 // `f.widthScale`, when present, is a per-node multiplier on the anatomy's radius
 // profile -- the arena's heritable width made visible. Absent (every reference animal),
@@ -38,8 +38,8 @@ export function geometry(f, X, Y, scale) {
 }
 
 /* Dynasty identity, drawn UNDER the body: a soft halo along the centreline in the
- * lineage's hue, dimmed with the animal's energy store. Under rather than over, so all
- * three painters keep their own look and the halo reads as light on the plate around
+ * lineage's hue, dimmed with the animal's energy store. Under rather than over, so both
+ * painters keep their own look and the halo reads as light on the plate around
  * the animal -- at arena zoom it is what makes ten small bodies tell apart at a
  * glance. */
 export function identityHalo(ctx, G, style) {
@@ -78,7 +78,7 @@ function centreline(ctx, G, from = 0, to = -1) {
 
 // Data mode: each segment tinted by its own signed curvature, so the travelling wave is
 // visible as a wave rather than as a wiggle.
-function drawWormDigital(ctx, G) {
+function drawWormDigital(ctx, G, f) {
   const k = G.kappa;
   for (let i = 0; i < G.n - 1; i++) {
     const kv = k.length ? k[Math.min(k.length - 1, Math.max(0, i - 1))] / 7.0 : 0;
@@ -97,7 +97,7 @@ function drawWormDigital(ctx, G) {
   ctx.beginPath();
   ctx.arc(G.px[0], G.py[0], Math.max(1.6, G.r[0] * 0.45), 0, Math.PI * 2);
   ctx.fill();
-  pumpMark(ctx, G, '#fff');
+  pumpMark(ctx, G, '#fff', f);
 }
 
 // Plate mode: a translucent amber body with a darker gut running down it and a specular
@@ -159,14 +159,18 @@ function drawWormRealistic(ctx, G, f) {
   ctx.restore();
 
   ctx.restore();
-  pumpMark(ctx, G, 'rgba(255,255,255,0.95)');
+  pumpMark(ctx, G, 'rgba(255,255,255,0.95)', f);
 }
 
 // One flash per pharyngeal pump, at the animal's mouth. At 250 a minute on food this is a
 // shimmer at the nose; off food it is an occasional twitch. It is the only part of the
 // pharynx that was ever going to be visible from outside.
-function pumpMark(ctx, G, colour) {
-  if (S.pumpFlash <= 0) return;
+//
+// The flash is the focused animal's pump lamp, so only the focused animal wears it: drawn
+// on every body, the whole plate -- sleepers and the starving included -- pumped in
+// unison with whichever worm the panels happened to be about.
+function pumpMark(ctx, G, colour, f) {
+  if (S.pumpFlash <= 0 || f !== S.worms[S.focus]) return;
   const a = Math.min(1, S.pumpFlash);
   const R = G.r[0] * (0.5 + 0.9 * a);
   ctx.save();

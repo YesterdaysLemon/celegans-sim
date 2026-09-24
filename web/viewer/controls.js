@@ -7,7 +7,7 @@
  * renderer that owns the pixels.
  */
 
-import { S, el, ablated, pruneAblations } from './state.js';
+import { S, el, esc, ablated, pruneAblations } from './state.js';
 import { theme } from './themes.js';
 import { setCam, zoom } from './dish.js';
 import { neuronAt, neuronCentre, neuronStep, invalidateLayout, wiringDrift, lineageHit } from './panels.js';
@@ -136,6 +136,7 @@ export function buildWormSel() {
 function focusWorm(i) {
   if (!S.engine || i < 0 || i >= S.engine.worms.length) return;
   S.focus = i;
+  S.focusHandle = S.engine.worms[i];
   S.recentre = true;
   // The panels are about one animal, so their history has to start again when it changes.
   S.kymo = null;
@@ -169,7 +170,22 @@ function focusWorm(i) {
  */
 export function clampFocus() {
   const n = S.engine ? S.engine.worms.length : 0;
-  if (S.focus >= 0 && S.focus < n) return true;
+  /* Focus follows the ANIMAL. S.focus is a position, and in the arena a death at a lower
+   * index renumbers everyone after it: focus stayed on the slot and so moved -- camera,
+   * panels, Preserve -- onto a different animal under an unchanged selector, which
+   * defeated the lineage panel's "click to follow". The handle is the identity; the
+   * position is re-found from it every frame. */
+  if (n > 0 && S.focusHandle !== undefined) {
+    const at = S.engine.worms.indexOf(S.focusHandle);
+    if (at === S.focus) return true;
+    if (at >= 0) { S.focus = at; buildWormSel(); updateAblateUI(); return true; }
+    // It died: back to the first animal, as an out-of-range focus always has been, with
+    // the panels started over for it.
+    focusWorm(0);
+    return true;
+  }
+  // No animal remembered yet -- a fresh dish, or just reset: adopt the one in focus.
+  if (S.focus >= 0 && S.focus < n) { S.focusHandle = S.engine.worms[S.focus]; return true; }
   if (n > 0) { focusWorm(0); return true; }
   // An empty dish. #35 lets the population reach zero, so this needs a defined answer
   // rather than an index into nothing: keep focus somewhere valid for when an animal
@@ -210,10 +226,14 @@ function updateNeuronActions() {
     bp.disabled = !has;
     bp.textContent = has ? `Plot ${name}` : 'Plot';
   }
+  const ba = el('b-ablate');
   if (coarse()) {
-    const ba = el('b-ablate');
     ba.disabled = !has;
     ba.textContent = has ? `Ablate ${name}` : 'Ablate';
+  } else {
+    // A mode toggle beside a mouse, always available -- and a convertible that left
+    // tablet mode with nothing selected used to keep the touch flow's disabled state.
+    ba.disabled = false;
   }
 }
 
@@ -318,10 +338,10 @@ export function wire() {
     }
   });
 
-  // The weather knob, arena only: a multiplier on the dish's baseline wind. It reaches
-  // into the live policy options, which the wind pass reads every tick, so the gusts
-  // respond immediately -- and it consumes no rng, so a seeded run's mutation stream
-  // is not forked by playing with the weather.
+  // The weather knob, on either dish: a multiplier on the dish's baseline wind. It reaches
+  // into the live wind the drift pass reads every tick, so the gusts respond immediately
+  // -- and it consumes no rng, so a seeded run's mutation stream is not forked by playing
+  // with the weather.
   const weather = el('r-weather');
   if (weather) {
     weather.addEventListener('input', (e) => {
@@ -335,10 +355,10 @@ export function wire() {
   // The dish tabs. The actual switch lives in app.js (it owns the engines); the wiring
   // lives here with every other listener. S.switchDish is absent in ?server mode, where
   // the tabs are hidden and there is nothing to switch to.
-  document.querySelectorAll('[data-dish]').forEach((b) => b.addEventListener('click', () => {
+  // Scoped to the tabs: #app carries data-dish too (it is what the CSS keys on), and the
+  // bare selector gave the wrapper div an aria-pressed. switchDish presses the tab.
+  document.querySelectorAll('#dish-tabs [data-dish]').forEach((b) => b.addEventListener('click', () => {
     if (!S.switchDish) return;
-    document.querySelectorAll('[data-dish]').forEach((o) =>
-      o.setAttribute('aria-pressed', String(o === b)));
     S.switchDish(b.dataset.dish);
   }));
 
@@ -387,6 +407,7 @@ export function wire() {
       const b = el(id);
       if (b && b.parentElement !== home) home.appendChild(b);
     }
+    updateAblateUI();          // the two flows label and enable Ablate differently
   };
   placeNeuronActions();
   matchMedia('(pointer: coarse)').addEventListener?.('change', placeNeuronActions);
@@ -456,7 +477,7 @@ export function wire() {
     if (S.engine) {
       S.engine.reset();
       S.trails = S.engine.worms.map(() => []);
-      S.focus = 0; S.recentre = true;
+      S.focus = 0; S.focusHandle = undefined; S.recentre = true;
       buildWormSel();
     } else {
       send({ cmd: 'reset' });
@@ -500,6 +521,8 @@ export function wire() {
 
   addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
+    // Bare keys only: Ctrl/Cmd+F is the browser's find, not "toggle follow".
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === 'f') { setCam(S.cam === 'follow' ? 'free' : 'follow'); if (S.cam === 'follow') S.recentre = true; }
     if (e.key === 'h') el('b-rail').click();
     if (e.key === '1' || e.key === '2') {
@@ -520,10 +543,10 @@ function wireNeuronPanel() {
 
   const describe = (i) => {
     const n = S.meta.neurons[i];
-    let base = `<b>${n.name}</b> &middot; ${n.cls}<br>
-      <span class="k">kind</span> ${n.kind}${n.modality ? ' &middot; ' + n.modality : ''}<br>
-      <span class="k">ganglion</span> ${n.ganglion}<br>
-      <span class="k">transmitter</span> ${n.tx}${n.inh ? ' (inhibitory)' : ''}<br>
+    let base = `<b>${esc(n.name)}</b> &middot; ${esc(n.cls)}<br>
+      <span class="k">kind</span> ${esc(n.kind)}${n.modality ? ' &middot; ' + esc(n.modality) : ''}<br>
+      <span class="k">ganglion</span> ${esc(n.ganglion)}<br>
+      <span class="k">transmitter</span> ${esc(n.tx)}${n.inh ? ' (inhibitory)' : ''}<br>
       <span class="k">V</span> ${S.frame.V[i].toFixed(1)} mV &nbsp;
       <span class="k">activity</span> ${(S.frame.act[i] * 100).toFixed(0)}%`;
     // In the wiring view the tooltip names WHAT MOVED: the cell's most-drifted synapses,
@@ -533,7 +556,7 @@ function wireNeuronPanel() {
       const top = id === undefined ? [] : neuronTopSynapses(S.engine.E, id, S.meta.wiring, i);
       base += top.length
         ? '<br><span class="k">wiring</span> ' + top.map((t) =>
-            `${t.name} ×${Math.pow(2, t.log2).toFixed(2)}`).join('<br>')
+            `${esc(t.name)} ×${Math.pow(2, t.log2).toFixed(2)}`).join('<br>')
         : '<br><span class="k">wiring</span> wild-type here';
     }
     return base;
@@ -542,9 +565,11 @@ function wireNeuronPanel() {
   nc.addEventListener('mousemove', (e) => {
     const i = neuronAt(nc, e.clientX, e.clientY);
     S.hover = i;
-    if (i == null || !S.frame) { hideTip(); el('neuron-hint').textContent = 'hover a neuron'; return; }
+    if (i == null || !S.frame) { hideTip(); updateAblateUI(); return; }
     showTip(e, describe(i));
-    el('neuron-hint').textContent = 'click to plot';
+    // What a click will do. In ablate mode that is destructive, and this line used to
+    // promise "click to plot" over it.
+    el('neuron-hint').textContent = S.ablateMode ? 'click to silence this cell' : 'click to plot';
   });
   // A tap's selection survives the pointer leaving; a mouse's hover does not. The tap
   // fires synthetic mouse events, so both departure paths guard on the pointer kind --

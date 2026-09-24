@@ -90,7 +90,10 @@ html, body {
 }
 /* Showcase: the rail folds away and the dish takes the whole width. */
 #app.norail { grid-template-columns: minmax(0, 1fr) 0px; }
-#app.norail aside { opacity: 0; pointer-events: none; }
+/* visibility too, delayed until the fade ends: opacity alone left the hidden panels in the
+   tab order, and focusing the invisible neuron canvas popped its tooltip. */
+#app.norail aside { opacity: 0; pointer-events: none; visibility: hidden;
+                    transition: opacity 160ms ease, visibility 0s linear 160ms; }
 
 /* ---------------------------------------------------------------- header ------ */
 header {
@@ -230,7 +233,8 @@ html[data-arena-seen="1"] .new-dot { display: none; }
 .floating.bl { bottom: 10px; left: 10px; }
 
 .dish-hint {
-  position: absolute; bottom: 12px; right: 12px; z-index: 3;
+  /* right: clear of the minimap the dish draws in this corner (84px + 12px inset). */
+  position: absolute; bottom: 12px; right: 108px; z-index: 3;
   font-size: 10px; color: var(--text-muted); pointer-events: none;
   text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
@@ -249,7 +253,7 @@ html[data-arena-seen="1"] .new-dot { display: none; }
   cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M3 21 L8 16" stroke="%23111" stroke-width="3" stroke-linecap="round"/><path d="M3 21 L8 16" stroke="%23f2efe2" stroke-width="1.4" stroke-linecap="round"/><path d="M6.5 14 l3.5 3.5 6.5-6.5 c1.4-1.4 1.4-3 0-4.4 -1.4-1.4-3-1.4-4.4 0 l-6.5 6.5 z" fill="%23f2efe2" stroke="%23111" stroke-width="1.3"/><circle cx="18.5" cy="5.5" r="3.2" fill="%23f2efe2" stroke="%23111" stroke-width="1.3"/></svg>') 3 21, crosshair;
 }
 
-/* The controls float on the plate, so on the two light plates they have to invert or
+/* The controls float on the plate, so on the light plate they have to invert or
    they read as smudges. The chrome is not part of the illusion -- it should stay legible
    in every mode rather than joining in. */
 #dish[data-plate="light"] .seg,
@@ -337,6 +341,7 @@ aside {
   display: flex; flex-direction: column;
   gap: var(--gap);
   min-height: 0;
+  overflow-y: auto;             /* only when the floors below cannot all fit */
   transition: opacity 160ms ease;
 }
 
@@ -355,9 +360,20 @@ aside {
   flex: 1 1 var(--basis, 150px);
   min-height: 0;
 }
+/* Floors for the panels whose drawing has a legible minimum. Shrinking in proportion
+   is right until a panel passes it: the arena's extra Lineage panel pushed the muscle
+   sheet's four rows under their 10px labels, which overprinted, and clipped the last
+   receptor rows off the senses grid -- and flooring only those two moved the squeeze
+   onto the traces, whose labels then ran off the top. The neuron grid alone scales with
+   whatever it gets. Past the floors the rail scrolls. */
+.panel[data-panel="muscle"] { min-height: 100px; }
+.panel[data-panel="kymo"]   { min-height: 80px; }
+.panel[data-panel="trace"]  { min-height: 96px; }
+.panel[data-panel="senses"] { min-height: 160px; }
+.panel[data-panel="lineage"] { min-height: 90px; }
 /* Collapsed panels give their space back to the ones still open, rather than every
    panel shrinking to fit. */
-.panel.collapsed { flex: 0 0 auto; }
+.panel.collapsed { flex: 0 0 auto; min-height: 0; }
 .panel.collapsed .pbody { display: none; }
 
 /* Corner ticks: the terminal chrome's registration marks, one at the top-left and one
@@ -442,7 +458,10 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
 /* The scrubber takes whatever width the footer has left. It is the one control here that
    is a position in something rather than a value, so a fixed 116px would make a minute of
    history and ten seconds of it feel identical to drag through. */
-.group.grow { flex: 1 1 200px; min-width: 170px; }
+/* No explicit min-width: a flex item's automatic minimum is its content, and the fixed
+   170px floor this had was ~60px under the label + slider + readout, so at 390px wide
+   the scrubber's group squeezed in beside Playback and pushed its readout off the edge. */
+.group.grow { flex: 1 1 200px; }
 .group.grow input[type="range"] { width: auto; flex: 1 1 auto; min-width: 90px; }
 #o-scrub { min-width: 82px; text-align: right; }
 
@@ -615,9 +634,20 @@ input[type="range"] { width: 116px; accent-color: var(--accent); }
    rule it inherits above is tallness for tallness' sake. Buttons keep their 44px. */
 @media (max-width: 480px) {
   footer { padding: 6px 10px; gap: 8px 12px; }
-  .group { gap: 5px; }
+  /* wrap, not clip: the page hides horizontal overflow, so a group wider than the
+     footer loses its last control outright -- at 320px that was Preserve. */
+  .group { gap: 5px; flex-wrap: wrap; }
   input[type="range"] { height: 36px; }
   .legend { font-size: 10px; gap: 7px; }
+}
+/* ...and on the narrowest phones the Worms group is wider than the footer by under a
+   pixel, so whether it wraps depends on the font -- and wrapping it puts Preserve on a
+   row of its own, 49px of the 1.7-viewport budget above. Dissolving the group into the
+   footer's own flow lets Preserve share the Panels row instead, whatever the metrics.
+   Every control in it names itself, and the caption was aria-hidden already. */
+@media (max-width: 340px) {
+  .group[aria-label="Worms"] { display: contents; }
+  .group[aria-label="Worms"] > .cap { display: none; }
 }
 
 /* The touch flow's Plot button: redundant beside a fine pointer, whose hover-preview and

@@ -22,9 +22,6 @@ const SHELF_CAP = 20;           // localStorage is ~5 MB; a specimen is ~60 kB
 
 let active = null;              // { frames, lastT } while a capture is running
 
-function preserving() { return active !== null; } // kept private until a caller exists
-void preserving;
-
 export function startPreserve() {
   // Say no OUT LOUD (#138): a silently-discarded click is a button the user cannot
   // distinguish from a broken one. The socket feed has no engine to read genes and
@@ -78,11 +75,11 @@ function finish(f) {
   const spec = {
     kind: 'celegans-sim specimen',
     version: 1,
-    name: `${S.meta && S.meta.arena ? 'arena' : 'animal'}-t${Math.round(f.t)}s-`
+    name: `${S.meta && S.meta.arena ? 'arena' : 'animal'}-t${Math.round(S.dishT)}s-`
       + Math.random().toString(36).slice(2, 6),
     captured: new Date().toISOString(),
     dish: S.meta && S.meta.arena ? 'arena' : 'animal',
-    dishTime: Math.round(f.t * 10) / 10,
+    dishTime: Math.round(S.dishT * 10) / 10,
     sampleDt: SAMPLE_DT,
     style: f.style || null,
     widthScale: f.widthScale ? Array.from(f.widthScale, (v) => Math.round(v * 1e3) / 1e3)
