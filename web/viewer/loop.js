@@ -111,8 +111,8 @@ function localTick(now) {
     if (lastT === null || f0.t > lastT) {
       w.push([f0.t, c0[0], c0[1]]);
       while (w.length > 1 && f0.t - w[0][0] > 2.0) w.shift();
-      // Two simulated seconds at the slowest rate the slider offers is forty wall-clock
-      // seconds of frames, so the timestamp trim alone is not a bound. This is.
+      // Two simulated seconds at the slowest rate the slider offers (0.1x) is twenty
+      // wall-clock seconds of frames, so the timestamp trim alone is not a bound. This is.
       if (w.length > SPEED_CAP) w.splice(0, w.length - SPEED_CAP);
     }
     const a = w[0], b = w[w.length - 1];
@@ -120,22 +120,24 @@ function localTick(now) {
     S.frame.speed = span > 0.2 ? Math.hypot(b[1] - a[1], b[2] - a[2]) / span : 0;
   }
 
-  const sensed = Object.assign({}, f0.sensed, {
-    pumpNorm: f0.pumpRate / 6.0, lumenNorm: f0.lumen / 0.05,
-    vulva: f0.vulva, eggsNorm: f0.eggsHeld / 15.0,
-  });
-  drawSenses(sensed);
+  S.dishT = eng.dishT;
+  drawSenses(senseRows(f0));
   updatePump(f0.pumpRate, f0.pumping);
   updateEggs(f0.eggsLaid, f0.eggsHeld, f0.eglActive);
 
   pushKymo(f0.kappa, f0.t);
-  S.selected.forEach((idx, k) => {
-    const tr = S.traces[k] || (S.traces[k] = []);
-    tr.push(f0.V[idx]);
-    if (tr.length > 420) tr.shift();
-  });
+  // One sample per step of the animal, not per animation frame: paused, the old push
+  // flat-lined all three traces within seven seconds.
+  if (S.traceT !== f0.t || S.traceFocus !== S.focus) {
+    S.traceT = f0.t; S.traceFocus = S.focus;
+    S.selected.forEach((idx, k) => {
+      const tr = S.traces[k] || (S.traces[k] = []);
+      tr.push(f0.V[idx]);
+      if (tr.length > 420) tr.shift();
+    });
+  }
   updateFreq(f0.kappa[Math.floor(f0.kappa.length / 2)], f0.t);
-  updateStats(f0.t, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running, eng.computeRate);
+  updateStats(S.dishT, S.frame.speed, f0.food, f0.dir, eng.achieved, f0.running, eng.computeRate);
 
   // The dish's own tiles and overlays, for an engine that has them -- the arena's
   // population, births, deaths and energy. The reference engine has neither method and
@@ -160,7 +162,17 @@ function localTick(now) {
   samplePreserve();
 
   // Last, because it snapshots what is about to be drawn and S.eggs is only settled above.
-  record(S.worms, S.eggs);
+  record(S.worms, S.eggs, S.dishT);
+}
+
+// The receptor rows, with the four the panel derives from the animal's own readouts.
+// Shared with applyHistory: the ring stores the readouts, and rebuilding the rows from
+// raw `sensed` alone showed a scrubbed animal pumping 0/min with no eggs held.
+function senseRows(f) {
+  return Object.assign({}, f.sensed, {
+    pumpNorm: f.pumpRate / 6.0, lumenNorm: f.lumen / 0.05,
+    vulva: f.vulva, eggsNorm: f.eggsHeld / 15.0,
+  });
 }
 
 /* Draw a moment out of the ring instead of out of the engine.
@@ -176,36 +188,51 @@ function applyHistory() {
   if (!e || !e.worms.length) return;
   S.worms = e.worms;
   S.eggs = e.eggs;
+  S.dishT = e.t;
   // Focus is a live setting, so it may name an animal that did not exist at this instant.
   const f = e.worms[Math.min(S.focus, e.worms.length - 1)];
   S.frame = f;
-  drawSenses(f.sensed);
+  drawSenses(senseRows(f));
   updatePump(f.pumpRate, f.pumping);
   updateEggs(f.eggsLaid, f.eggsHeld, f.eglActive);
 }
 
 let lastTick = 0;
 
+// One bad frame must not end the animation. The next frame used to be requested on the
+// last line of tick(), so any exception above it -- a lineage canvas squeezed small enough
+// to hand ctx.arc a negative radius was the one found -- froze the viewer until a reload,
+// even after the window was resized back. Now the next frame is armed first and every
+// stage runs under its own guard: a failing stage skips that frame and is reported once,
+// not sixty times a second.
+const failed = new Set();
+function guard(name, fn) {
+  try { fn(); } catch (err) {
+    if (!failed.has(name)) { failed.add(name); console.error(`viewer: ${name} failed`, err); }
+  }
+}
+
 function tick(now) {
+  requestAnimationFrame(tick);
   // The flash decays in wall-clock time so it looks the same however fast the simulation
   // is being run, and however many frames arrive.
   const dt = lastTick ? Math.min(0.1, (now - lastTick) / 1000) : 0;
   lastTick = now;
   if (S.pumpFlash > 0) S.pumpFlash = Math.max(0, S.pumpFlash - dt * 6.5);
   // Parked in the past, the ring is the source of frames and the engine is paused, so
-  // localTick would only overwrite what applyHistory just restored. The socket feed cannot
-  // be stopped from here, but it records and returns without touching the display.
-  if (S.playhead !== null) applyHistory();
-  else if (S.engine) localTick(now);
-  syncScrub(now);
+  // localTick would only overwrite what applyHistory just restored.
+  guard('step', () => {
+    if (S.playhead !== null) applyHistory();
+    else if (S.engine) localTick(now);
+  });
+  guard('scrubber', () => syncScrub(now));
 
-  drawDish();
-  drawNeurons();
-  drawMuscles();
-  drawKymo();
-  drawTraces();
-  drawLineage();
-  requestAnimationFrame(tick);
+  guard('dish', drawDish);
+  guard('neurons', drawNeurons);
+  guard('muscles', drawMuscles);
+  guard('kymograph', drawKymo);
+  guard('traces', drawTraces);
+  guard('lineage', drawLineage);
 }
 
 export function start() { requestAnimationFrame(tick); }

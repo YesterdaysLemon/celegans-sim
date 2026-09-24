@@ -17,7 +17,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from tools.diagnose_loop import analyse, bare_world, travelling_index
+from tools.diagnose_loop import bare_world, travelling_index
 from worm.engine import Simulation
 from worm.params import Params
 

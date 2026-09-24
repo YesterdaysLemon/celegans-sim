@@ -93,9 +93,9 @@ match the shipped frequency, improve the wave in every medium, and retire the la
 number in the model. **The argument it was built for was refuted** — it does not fix gait
 modulation — so it is a simplification, not a mechanism, and that is the claim to weigh.
 
-Blocking work, in order: `tools/scorecard.py` and `tools/ethogram.py` against the frozen
-baseline on identical seeds; then the port, because `head_stages`/`head_stage_tau` are
-Python-only and cannot become a default until the runtime has them
+Blocking work: `tools/scorecard.py` and `tools/ethogram.py` against the frozen baseline on
+identical seeds. The port is done (2026-08-14 — and a constructor allocation that would have
+corrupted memory on a `head_stages > 1` export was fixed 2026-09-24), so the flip is Route 2
 ([`docs/runtime-parity.md`](docs/runtime-parity.md)).
 
 **3. Second tier.** Subordinate to the above — changing the shared gait moves every
@@ -197,5 +197,5 @@ This file is the frontier only. If what you want is not above, it is not next:
 | What was already tried, and what it measured | [`docs/research-log/`](docs/research-log/) |
 | What the project is for, and the two-track boundary | [`docs/project-architecture.md`](docs/project-architecture.md) |
 | Whether the runtime implements a path, and that path's lifecycle | [`docs/runtime-parity.md`](docs/runtime-parity.md) |
-| How to run the gates, and why CI is paused | [`README.md`](README.md) → *Running the checks yourself* |
+| How to run the gates | [`CONTRIBUTING.md`](CONTRIBUTING.md) → *Running the checks yourself* |
 | Which tool measures what | [`tools/README.md`](tools/README.md) |

@@ -208,7 +208,6 @@ def report(rows: list, top: int = 10) -> None:
     rows = sorted(rows, key=lambda r: r["score"])
     baseline = [r for r in rows if r.get("tag") == "baseline"]
     print("%d evaluations; best %d\n" % (len(rows), min(top, len(rows))))
-    keys = ["speed", "net_ratio", "freq", "wavelength", "kappa_max", "dv_corr"]
     print("%6s  %8s %8s %6s %7s %8s %7s  %s"
           % ("score", "net mm/s", "net/path", "Hz", "lambda", "kappa_max", "dv", "parameters"))
     for r in rows[:top]:

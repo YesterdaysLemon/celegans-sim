@@ -237,8 +237,12 @@ class Senses:
         # than an error.
         self.prop_g = None
         self.prop_g_inh = None
-        # Every one-minus-a-decay below is `-expm1(-x)` rather than `1 - exp(-x)`, and the
-        # reason is reproducibility rather than accuracy.
+        # Every rate below that leaves in the exported model is `-expm1(-x)` rather than
+        # `1 - exp(-x)`, and the reason is reproducibility rather than accuracy. (Four
+        # quantities still leave as DECAYS -- chem, therm, head and head-stage -- and both
+        # implementations form `1 - decay` from the exported number at the point of use,
+        # which keeps them functions of the file. Switching those to rates is a format
+        # change for the exporter and the runtime together, not a Python edit.)
         #
         # These x are dt/tau, which at dt = 0.5 ms runs from 5.6e-07 to 1.4e-03. So
         # exp(-x) is a hair under 1, and subtracting it from 1 throws away most of the
@@ -292,7 +296,6 @@ class Senses:
         I = np.zeros(n)
 
         nose = nodes[0]
-        mid = nodes[len(nodes) // 2]
         tail = nodes[-1]
 
         # ---------------------------------------------------------------- chemosensation
@@ -357,7 +360,10 @@ class Senses:
             self.t_adapt = p.cultivation_temp
         dT = T - self.t_adapt
         self.t_adapt += (T - self.t_adapt) * (1.0 - self._therm_decay)
-        # AFD is a warm receptor above the cultivation temperature and silent below it.
+        # AFD reports warming against its own adapting baseline (t_adapt, which starts at
+        # the cultivation temperature and follows T over thermo_tau_adapt), and cooling
+        # only down to a floor half a degree below it. The link to WHERE the animal was
+        # fed is the setpoint memory below, not this term.
         I[self.afd] += p.thermo_gain * np.clip(dT, -0.5, None)
         # The setpoint memory (issue #198). The animal migrates to the temperature at
         # which it was FED and re-learns a new one within hours of cultivation there

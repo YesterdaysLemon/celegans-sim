@@ -30,7 +30,7 @@ import numpy as np
 from tools.assays import pooled
 from tools.diagnose_loop import analyse, bare_world
 from worm.engine import Simulation
-from worm.params import MEDIA, Params
+from worm.params import Params
 
 MEASURE = 40.0
 SEEDS = (0, 1, 3, 5, 7)

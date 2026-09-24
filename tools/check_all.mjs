@@ -11,7 +11,7 @@
  *
  * WHY THIS FILE EXISTS AT ALL, GIVEN README ALREADY LISTS THE COMMANDS.
  *
- * Because the list is in three places -- two workflow files and a README section -- and the
+ * Because the list is in several places -- the workflow files and CONTRIBUTING.md -- and the
  * order inside a job is load-bearing rather than decorative. `every module parses` runs
  * before the browser check because a module that does not parse reaches the browser as
  * nothing but a blank rectangle, and the parse error is the message you want. Rebuilding
@@ -19,7 +19,7 @@
  *
  * A SKIP IS NOT A PASS, AND THIS FILE IS BUILT AROUND SAYING SO.
  *
- * NEXT.md names this project's most repeated bug: a check that runs, passes, and covers
+ * The research log names this project's most repeated bug: a check that runs, passes, and covers
  * less than its own comment claims. The empty conformance dish that hid the missing field
  * diffusion, the lawn-less plate that hid the food skirt, and an egg-laying comparison that
  * printed a perfect 0.000e+0 from comparing zero fields are all one mistake. A local runner

@@ -1005,7 +1005,12 @@ class Worm {
   headStageDecay: f64 = G.HEAD_STAGE_DECAY;
   headStageTau: f64 = G.HEAD_STAGE_TAU;
   headDelayN: i32 = G.HEAD_DELAY_N;
-  headChain: StaticArray<f64> = new StaticArray<f64>(0);
+  // Sized for the EXPORTED stage count, as setHeadCascade sizes it for its own. This was
+  // length 0 unconditionally, and the stage loop writes through unchecked(): a payload
+  // exported with head_stages > 1 stepped past the end of the chain -- memory corruption
+  // with two worms, a trap with one -- on the path runtime-parity.md calls safe to flip.
+  headChain: StaticArray<f64> = new StaticArray<f64>(
+    (G.HEAD_STAGES > 1 ? G.HEAD_STAGES - 1 : 0) * (G.HEAD_DISTRIBUTED ? G.N_NEURONS : 1));
   // The amine load-sensing path (worm/params.py, the provenance at load_gain). All five
   // coefficients default to zero, which is the canonical animal untouched -- the same
   // off-is-identical contract the Python side proves by bit-identity. setAminePath turns
@@ -1310,12 +1315,13 @@ class Worm {
     }
 
     for (let i = 0; i < n; i++) {
-      if (this.anyDead && !unchecked(this.alive[i])) {
-        unchecked(this.V[i] = m(G.OFF_E_leak, 0));
-        unchecked(this.sv[i] = 0.0);
-        continue;
-      }
-      unchecked(this.V[i] = clamp(unchecked(sVn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
+      // A dead cell sits at rest and releases nothing -- but its slow state (the K gate
+      // and the depression resource) keeps evolving, as worm/nervous.py evolves it for
+      // every cell. Skipping those updates here cost nothing while the cell stayed dead
+      // and diverged from the reference the moment Restore brought it back.
+      const dead = this.anyDead && !unchecked(this.alive[i]);
+      unchecked(this.V[i] = dead ? m(G.OFF_E_leak, 0)
+                                 : clamp(unchecked(sVn[i]), G.V_CLAMP_LO, G.V_CLAMP_HI));
       // Release is driven by the *pre-update* voltage, so the network has one consistent
       // step of delay everywhere rather than an index-order dependence.
       const V = unchecked(sVold[i]);
@@ -1325,7 +1331,8 @@ class Worm {
       const rise = G.NEURAL_A_RISE * phi;
       const rate = rise + G.NEURAL_A_DECAY;
       const sInf = rise / rate;
-      unchecked(this.sv[i] = sInf + (unchecked(this.sv[i]) - sInf) * Math.exp(-rate * dt));
+      unchecked(this.sv[i] = dead ? 0.0
+                                  : sInf + (unchecked(this.sv[i]) - sInf) * Math.exp(-rate * dt));
       if (G.ANY_DEPRESS) {
         const rec = 1.0 / G.NEURAL_DEPRESSION_TAU;
         const dr = rec + m(G.OFF_depress_use, i) * phi;
@@ -1607,11 +1614,11 @@ class Worm {
     for (let i = 0; i < n; i++) unchecked(this.theta[i] += unchecked(Q[2 + i]) * dt);
     // The amine path reads the drag force the cuticle bore, and the metabolic work cost
     // reads the drag power -- both need the qdot that produced this step's positions,
-    // the same pairing worm/body.py::drag_load uses. Only kept when a consumer is on;
-    // the canonical animal skips the copy.
-    if (this.amLoadGain != 0.0 || this.metabWork > 0.0) {
-      for (let i = 0; i < N; i++) unchecked(this.qdotSave[i] = unchecked(Q[i]));
-    }
+    // the same pairing worm/body.py::drag_load uses. Kept every step: it used to be kept
+    // only while one of those consumers was on, which left the exported getDragPower
+    // reading a stale (zero) qdot for any other animal -- and it is N_LINKS + 2 stores
+    // against a full body solve.
+    for (let i = 0; i < N; i++) unchecked(this.qdotSave[i] = unchecked(Q[i]));
     this.updateNodes();
   }
 
@@ -1708,7 +1715,8 @@ class Worm {
 
   /* --------------------------------------------------------------------- modulators --
    * One slow scalar each, produced by named source neurons in proportion to their
-   * activity. An ablated source is masked out elsewhere; here every cell is alive. */
+   * activity. An ablated source is masked in modLevel below: a deviation of zero, kept
+   * in the denominator. */
   stepModulators(): void {
     this.modDA  = this.modLevel(this.modDA,  G.OFF_idx_mod_dopamine,  G.LEN_idx_mod_dopamine,  G.MOD_RATE_DOPAMINE);
     this.modSER = this.modLevel(this.modSER, G.OFF_idx_mod_serotonin, G.LEN_idx_mod_serotonin, G.MOD_RATE_SEROTONIN);
@@ -2248,10 +2256,14 @@ class Worm {
     if (this.eglRestN < G.EGL_REST_SAMPLES) {
       this.eglRestN++;
       const k = 1.0 / <f64>this.eglRestN;
-      let acc: f64 = 0.0;
-      for (let i = 0; i < G.LEN_idx_egl_vc; i++) acc += unchecked(this.act[mi(G.OFF_idx_egl_vc, i)]);
-      const mean = G.LEN_idx_egl_vc > 0 ? acc / <f64>G.LEN_idx_egl_vc : 0.0;
-      this.eglVcRest += (mean - this.eglVcRest) * k;
+      // Over the LIVING VCs, the pool dVc is read from below (worm/egglaying.py).
+      let acc: f64 = 0.0; let live = 0;
+      for (let i = 0; i < G.LEN_idx_egl_vc; i++) {
+        const c = mi(G.OFF_idx_egl_vc, i);
+        if (this.anyDead && !unchecked(this.alive[c])) continue;
+        acc += unchecked(this.act[c]); live++;
+      }
+      if (live > 0) this.eglVcRest += (acc / <f64>live - this.eglVcRest) * k;
     }
 
     // HSN as ABSOLUTE activation -- it is the driver, and a deviation term contributes no
@@ -2505,12 +2517,6 @@ export function getGene(w: i32, slot: i32): f64 {
 }
 // Put an animal back to the unmutated model, which is also what a fresh worm starts as.
 export function resetGenes(w: i32): void { byId(w).resetGenes(); }
-// Configure the head cascade per worm: stage count, per-stage decay exp(-dt/stage_tau),
-// and the transport-delay length in steps. Exists so conformance can exercise the
-// cascade against the same payload the canonical animal ships with; the exported
-// defaults (G.HEAD_STAGES = 1) leave the single-lag reflex byte-identical. delayN is
-// clamped to the ring the worm was built with -- it can be shortened at runtime but not
-// lengthened past the payload's allocation.
 // Recompute the per-cell muscle balance from the RAW conductances in the payload and
 // report the worst absolute deviation from the shipped balanced matrix. This is
 // worm/muscle.py::_balance ported line for line -- row equalisation, then a 70-iteration
@@ -2772,12 +2778,20 @@ export function developWorm(w: i32): f64 {
 
 // NOTE: no default on stageTau -- an optional parameter on a raw-bindings export traps
 // on the arguments-length check. Pass 0.0 to keep the exported G.HEAD_STAGE_TAU.
+// Configure the head cascade per worm: stage count, per-stage decay exp(-dt/stage_tau),
+// and the transport-delay length in steps. Exists so conformance can exercise the
+// cascade against the same payload the canonical animal ships with; the exported
+// defaults (G.HEAD_STAGES = 1) leave the single-lag reflex byte-identical. delayN is
+// clamped to the ring the worm was built with -- it can be shortened at runtime but not
+// lengthened past the payload's allocation.
 export function setHeadCascade(w: i32, stages: i32, stageDecay: f64, delayN: i32,
                                stageTau: f64): void {
   const worm = byId(w);
   worm.headStages = stages < 1 ? 1 : stages;
   worm.headStageDecay = stageDecay;
-  worm.headStageTau = stageTau > 0.0 ? stageTau : G.HEAD_STAGE_TAU;
+  // Zero means "subdivide head_tau", as it does in worm/senses.py -- not the exported
+  // per-stage value, which is head_tau over the EXPORTED stage count.
+  worm.headStageTau = stageTau > 0.0 ? stageTau : G.HEAD_TAU / <f64>worm.headStages;
   worm.headDelayN = delayN < 0 ? 0 : (delayN > G.HEAD_DELAY_N ? G.HEAD_DELAY_N : delayN);
   const S = worm.headStages - 1;
   worm.headChain = new StaticArray<f64>(S * (G.HEAD_DISTRIBUTED ? G.N_NEURONS : 1));
@@ -2923,6 +2937,9 @@ function applyMorphology(wm: Worm, ctl: StaticArray<f64>, dev: f64): void {
   wm.mRho = rho; wm.mMaskRho = maskRho; wm.mMaskSqrt = maskSqrt; wm.mRhoMax = rhoMax;
   wm.mK = kArr; wm.mKmat = kMat; wm.mBmat = bMat; wm.mMusGain = musGain;
   wm.ownMorph = true;
+  // bodyL just changed: the nodes move now, not at the next body step, or one sense()
+  // and one self-contact pass read the old length.
+  wm.updateNodes();
 }
 
 /* Give one animal a heritable chain morphology. Twelve control points, three profiles
@@ -2963,6 +2980,7 @@ export function clearMorphology(w: i32): void {
   wm.contactScale = 1.0;
   wm.mRho = null; wm.mMaskRho = null; wm.mMaskSqrt = null; wm.mRhoMax = null;
   wm.mK = null; wm.mKmat = null; wm.mBmat = null; wm.mMusGain = null;
+  wm.updateNodes();                               // back to the reference length, now
 }
 export function hasOwnMorphology(w: i32): i32 { return byId(w).ownMorph ? 1 : 0; }
 /* Clamped control point i (0..11), or the reference 1.0 for a worm with none -- so a
@@ -3041,7 +3059,9 @@ export function getMediumCN(): f64 { return worldCN; }
 
 // Drive the body directly, which is what the conformance test for the mechanics needs:
 // a prescribed moment, no biology, the same numbers on both sides.
-export function setMoment(w: i32, j: i32, v: f64): void { unchecked(byId(w).moment[j] = v); }
+export function setMoment(w: i32, j: i32, v: f64): void {
+  if (j >= 0 && j < G.N_JOINTS) unchecked(byId(w).moment[j] = v);   // as every setter checks
+}
 export function stepBodyOnly(w: i32, dt: f64, steps: i32): void {
   const wm = byId(w);
   for (let i = 0; i < steps; i++) { wm.contact(); wm.stepBody(dt); wm.t += dt; }
@@ -3204,6 +3224,9 @@ export function ptrExportedVth(): usize { return B + G.OFF_V_th; }
 
 export const INVARIANT_NODES_NOT_FINITE: i32 = 4;
 export const INVARIANT_LEFT_THE_DISH: i32 = 5;
+// worm/world.py World.ESCAPE_MARGIN: how far past the rim a node may be while the wall is
+// still holding it. The rim itself was the old cliff (#211).
+const ESCAPE_MARGIN: f64 = 0.5;
 
 export function checkInvariants(w: i32): i32 {
   const wm = byId(w);
@@ -3228,7 +3251,7 @@ export function checkInvariants(w: i32): i32 {
   for (let i = 0; i <= n; i++) {
     const x = unchecked(wm.nodesX[i]), y = unchecked(wm.nodesY[i]);
     if (!isFinite(x) || !isFinite(y)) return INVARIANT_NODES_NOT_FINITE;
-    if (Math.sqrt(x * x + y * y) > world.extent) return INVARIANT_LEFT_THE_DISH;
+    if (Math.sqrt(x * x + y * y) > world.extent + ESCAPE_MARGIN) return INVARIANT_LEFT_THE_DISH;
   }
   return INVARIANT_OK;
 }

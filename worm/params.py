@@ -12,11 +12,12 @@ Unit convention (used consistently everywhere):
     torque      uN*mm
     viscosity   uN*s/mm^2   (== Pa*s, since 1 Pa*s = 1 N*s/m^2 = 1 uN*s/mm^2)
 
-Two of these deserve a note. Electrical quantities are in the pF/nS/mV/pA family, which
-is self-consistent: C dV/dt = I with C in pF, V in mV and I in pA gives dV/dt in mV/ms,
-so every rate constant in the neural model is per millisecond and is converted once, at
-the point of use, by NervousSystem. Mechanical quantities are in the mm/s/uN family
-because at C. elegans scale SI numbers are all 1e-9 and unreadable.
+Two of these deserve a note. Electrical quantities are in the pF/nS/mV/pA family, and
+time is in seconds everywhere -- every rate constant is per second and every tau is in
+seconds. The one conversion is capacitance: NervousSystem takes C_m from pF to nF once,
+so that nF * mV/s == pA and nS * mV == pA and every neural equation is second-based.
+Mechanical quantities are in the mm/s/uN family because at C. elegans scale SI numbers
+are all 1e-9 and unreadable.
 """
 
 from __future__ import annotations
@@ -1039,7 +1040,7 @@ class WorldParams:
     # ended up pressed against the wall. That showed up first as a habituation test
     # failing -- sustained wall contact re-depletes the mechanoreceptor -- and it would
     # have quietly corrupted every taxis assay too.
-    radius: float = 45.0            # mm  a 50 mm petri dish
+    radius: float = 45.0            # mm  a 90 mm petri dish
     grid: int = 256          # 0.35 mm cells across a 9 cm plate
 
     # Oxygen. Ambient air is 21%; a dense lawn respires it down, and the depression has a
@@ -1104,7 +1105,7 @@ class SensoryParams:
     # of what the reference whole-connectome implementations use.
     chemo_gain: float = 26.0         # pA per unit normalised concentration
     chemo_tau_adapt: float = 3.5     # s   adaptation time constant
-    thermo_gain: float = 9.0         # pA per degC deviation from the cultivation temperature
+    thermo_gain: float = 9.0         # pA per degC of warming against AFD's adapting baseline
     thermo_tau_adapt: float = 12.0   # s
     cultivation_temp: float = 20.0   # degC
     # Thermotaxis memory (issue #198). The animal migrates to the temperature at which
@@ -2742,6 +2743,18 @@ class Params:
                         "the head cascade's per-stage time constant works out at %r, which "
                         "is a denominator; set sensory.head_stage_tau > 0 or give "
                         "sensory.head_tau a positive value" % (effective,))
+
+        # The sleep module's two divisors: FLP-11 release is scaled by 1 - release_threshold,
+        # and bout depth by the Schmitt gap threshold_on - threshold_off. Either at zero was
+        # a ZeroDivisionError on the first bout rather than a refusal here.
+        rel = values["sleep.release_threshold"]
+        if isinstance(rel, Real) and math.isfinite(rel) and rel >= 1.0:
+            problems.append("sleep.release_threshold must be < 1 (got %r)" % (rel,))
+        on, off = values["sleep.threshold_on"], values["sleep.threshold_off"]
+        if (isinstance(on, Real) and isinstance(off, Real)
+                and math.isfinite(on) and math.isfinite(off) and on <= off):
+            problems.append("sleep.threshold_on must be > sleep.threshold_off "
+                            "(got %r <= %r)" % (on, off))
 
         nonnegative("body.internal_damping")
         if (isinstance(values["medium.c_normal"], Real)

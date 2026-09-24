@@ -1,6 +1,6 @@
 """The dish: a two-dimensional world with food, chemical gradients, heat and obstacles.
 
-This is a standard chemotaxis plate rendered as a simulation. A 50 mm agar dish holds one
+This is a standard chemotaxis plate rendered as a simulation. A 90 mm agar dish holds one
 or more lawns of E. coli; the bacteria emit a diffusible attractant and consume oxygen, so
 each lawn sits at the centre of both a chemical gradient and an oxygen depression. A linear
 thermal gradient runs across the plate. The worm eats what it walks over, which slowly
@@ -97,7 +97,6 @@ class World:
         # docstring and `_refresh_sources` -- rather than derived pointwise from the food
         # density, for the reason in `oxygen`.
         self.o2_deficit = np.zeros((g, g))
-        self.food_initial_total = 0.0
         # The sampling fast paths -- see `sample` and `_field_is_zero`.
         self._field_epoch = 0
         self._zero_memo: dict = {}
@@ -234,7 +233,6 @@ class World:
         for k in range(len(self._patch_att)):
             self._patch_frac[k] = self._patch_fraction(k)
         self._rebuild_sources()
-        self.food_initial_total = float(self.food.sum())
 
     # ------------------------------------------------------- standing bacterial mass
     def _patch_food(self, k: int) -> float:
@@ -308,6 +306,7 @@ class World:
     def add_repellent_source(self, x: float, y: float, strength: float = 1.0,
                              length_scale: float = 6.0) -> None:
         """A drop of a noxious chemical -- copper, SDS, high osmolarity."""
+        self._field_epoch += 1   # writes the repellent field; see _field_is_zero
         d = np.hypot(self.gx - x, self.gy - y)
         self.repellent += strength * np.exp(-d / length_scale)
         self.repellent *= self.inside
@@ -544,7 +543,8 @@ class World:
         """Is this field identically zero right now? Cached per field per epoch.
 
         The epoch counter is bumped by every method that writes a field --
-        `add_food_patch`, `_rebuild_sources`, `eat`, `eat_batch`, `step` -- so a stale
+        `add_food_patch`, `add_repellent_source`, `_rebuild_sources`, `eat`, `eat_batch`,
+        `step` -- so a stale
         answer is impossible as long as that list stays complete. **A new field-writing
         method must bump `_field_epoch`**; the failure mode of forgetting is an empty
         reading from a non-empty dish, which the sensory assays would not stay quiet
@@ -588,10 +588,10 @@ class World:
         # clips its cell indices, so a nose momentarily past the rim reads the rim
         # cell rather than laundering garbage. Past the margin it is a real escape.
         radius = np.hypot(x, y)
-        if np.any(radius > self.extent + 0.5):
+        if np.any(radius > self.extent + self.ESCAPE_MARGIN):
             raise DivergentSimulation(
-                "animal left the dish (radius %.6g mm > %.6g mm + 0.5 margin)"
-                % (float(np.max(radius)), self.extent))
+                "animal left the dish (radius %.6g mm > %.6g mm + %.6g margin)"
+                % (float(np.max(radius)), self.extent, self.ESCAPE_MARGIN))
         if key is not None:
             self._valid_memo = key
 
@@ -654,6 +654,12 @@ class World:
     # what a real dish edge is. Every pinned assay runs at the plate's centre; widening
     # the zone moved none of them.
     WALL_ZONE = 0.5
+    # How far past the rim a node may be before the animal has LEFT, rather than being
+    # held by the wall. One line for the world's validation and Simulation.check_invariants
+    # (and the runtime's checkInvariants): they used to disagree, the invariant keeping the
+    # zero-margin cliff #211 removed from here, so run() could call divergent an animal
+    # the world was treating as held.
+    ESCAPE_MARGIN = 0.5
 
     def contact_force(self, nodes: np.ndarray, stiffness: float = 40.0) -> np.ndarray:
         """Repulsion from the dish wall and any obstacles, as a force on each body node."""

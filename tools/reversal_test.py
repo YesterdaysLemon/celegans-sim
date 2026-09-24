@@ -8,7 +8,6 @@ the body axis so that a good reversal scores positively.
 from __future__ import annotations
 
 import dataclasses
-import itertools
 
 import numpy as np
 
@@ -31,7 +30,6 @@ def _job(job):
     p = dataclasses.replace(p, neural=dataclasses.replace(p.neural, a_class_scale=scale))
     sim = Simulation(p, seed=seed, world=_bare(p), placement=(0.0, 0.0, 0.0))
     names = list(sim.conn.names)
-    ava = [i for i, n in enumerate(names) if n.startswith("AVA")]
     avb = [i for i, n in enumerate(names) if n.startswith("AVB")]
     dt = p.neural.dt
 
@@ -40,7 +38,6 @@ def _job(job):
         # held up. Clamping is blunt but unambiguous, which is what a test wants.
         if mode == "backward":
             sim.nervous.V[avb] = -60.0
-            sim.nervous.I_ext[ava] = 0.0
 
     for _ in range(int(WARMUP / dt)):
         drive()

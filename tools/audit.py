@@ -320,8 +320,9 @@ MUTATIONS = [
          # not catch it. Twice this mutation was aimed at a single line and twice the miss
          # was the mutation's fault, not the coverage's. Breaking every site that provides
          # the behaviour is the question worth asking.
-         edits=[("        unchecked(this.sv[i] = 0.0);\n        continue;",
-                 "        continue;"),
+         edits=[("      unchecked(this.sv[i] = dead ? 0.0\n"
+                 "                                  : sInf + ",
+                 "      unchecked(this.sv[i] = sInf + "),
                 ("      unchecked(wm.sv[i] = 0.0);", "      // cleared elsewhere")],
          find=None, repl=None,
          expect=["conform"]),
@@ -434,8 +435,11 @@ MUTATIONS = [
     dict(name="viewer/hidden-layers", file="web/style.css", rebuild=None,
          imitates="the real regression the smoke test was written for: layer toggles "
                   "display:none below 1080px, removing the only way to see the fields.",
-         find="  .chips { flex-direction: row; flex-wrap: wrap; align-items: center; }",
-         repl="  .chips { display: none; }",
+         # Two lines, because the rule's body line is shared with .traywrap. The one-line
+         # form of this rule was reformatted away in e28c460 and the pattern went stale for
+         # a month, which stopped the whole audit; tests/test_audit.py now pins every one.
+         find="  .chips {\n    flex-direction: row; flex-wrap: nowrap; align-items: center;",
+         repl="  .chips {\n    display: none;",
          expect=["viewer"]),
 
     dict(name="viewer/broken-import", file="web/viewer/controls.js", rebuild=None,
@@ -801,20 +805,23 @@ def apply(mut, root):
     either alone is an equivalent mutant. Asking whether the *behaviour* is covered means
     breaking every site that provides it."""
     path = _safe_repo_path(root, mut["file"])
-    original = io.open(path, encoding="utf8").read()
+    with io.open(path, encoding="utf8") as f:
+        original = f.read()
     edits = mut.get("edits") or [(mut["find"], mut["repl"])]
     text = original
     for find, repl in edits:
         if find not in text:
             return None, "PATTERN NOT FOUND -- the mutation is stale, not the code"
         text = text.replace(find, repl, 1)
-    io.open(path, "w", encoding="utf8").write(text)
+    with io.open(path, "w", encoding="utf8") as f:
+        f.write(text)
     return original, None
 
 
 def restore(mut, original, root):
     if original is not None:
-        io.open(_safe_repo_path(root, mut["file"]), "w", encoding="utf8").write(original)
+        with io.open(_safe_repo_path(root, mut["file"]), "w", encoding="utf8") as f:
+            f.write(original)
 
 
 def _detector_result(command_result):

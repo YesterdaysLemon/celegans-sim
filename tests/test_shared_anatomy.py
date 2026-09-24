@@ -115,6 +115,27 @@ def test_simulation_pickle_compatibility_and_copy_on_ablation():
     assert restored.muscles.G.flags.writeable
 
 
+def test_a_stepped_animal_survives_pickle_then_ablation():
+    """The test above restores an animal that never stepped, and so missed this.
+
+    Arithmetic on the immutable anatomy used to return the immutable subclass, whose
+    reducer rebuilds read-only -- so every per-animal array computed from the anatomy
+    (V, V_th, g_rest, muscle state) came back from a pickle frozen, and the restored
+    animal's first ablation raised "assignment destination is read-only".
+    """
+    params = Params()
+    sim = Simulation(params, seed=3, world=World(params.world, np.random.default_rng(0)))
+    for _ in range(20):
+        sim.step()
+    for name in ("V", "V_th", "g_rest"):
+        assert type(getattr(sim.nervous, name)) is np.ndarray, name
+    restored = pickle.loads(pickle.dumps(sim))
+    restored.set_ablated(["AVBL"])
+    restored.step()
+    for name in NUMERIC_CONNECTOME_FIELDS:
+        _assert_immutable(getattr(restored.conn, name))
+
+
 def test_neural_anatomy_is_shared_across_per_animal_parameters():
     root = Params()
     conn = dataset.load(e_exc=root.neural.E_exc, e_inh=root.neural.E_inh)

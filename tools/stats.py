@@ -28,7 +28,7 @@ The bootstrap is seeded, so a reported interval is reproducible. That is not a d
 error bar that moves when you look at it again is worse than no error bar, because it
 invites exactly the "run it until it agrees" search these intervals exist to prevent.
 
-INFRASTRUCTURE. Imported by 6 modules directly, and by everything else transitively through
+INFRASTRUCTURE. Imported by 7 modules directly, and by everything else transitively through
 `tools/assays.py` -- so in practice every error bar this project has ever quoted came out of
 here. `bootstrap_ci`, `paired_ci`, `ratio_ci`, `mde`, `verdict` and `fmt` are the public
 surface, and `BOOTSTRAP` (the seed and resample count) is read by `tools/compare.py`.
@@ -148,14 +148,15 @@ def spread(values) -> float:
     return float(v.std(ddof=1) / np.sqrt(v.size)) if v.size > 1 else float("nan")
 
 
-def mde(values, conf: float = CONF) -> float:
+def mde(values) -> float:
     """Roughly the smallest effect this sample size could have detected.
 
     Two standard errors, which is the usual rule of thumb for a difference of means to
     clear a 95% interval. Reported alongside a null result so that "no effect" can be read
     as "no effect larger than this", which is the only thing the measurement supports.
+    (It took a `conf` argument that multiplied by 1.0 either way; no caller passed it.)
     """
-    return 2.0 * spread(values) * (1.0 if conf == CONF else 1.0)
+    return 2.0 * spread(values)
 
 
 def fmt(point, lo, hi, spec: str = "%+.3f") -> str:

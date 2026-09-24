@@ -27,8 +27,9 @@ conformance case fires an omega turn, and so it PASSES even at 1.0. `tools/confo
 records the same shape of miss letting the serotonin-gated chloride path reach the runtime
 unported.
 
-So this file is a second, earlier, better-named detector for two of the three registered
-paths -- and the only detector for the third. `tools/export_model.py::RUNTIME_UNSUPPORTED`
+So this file is a second, earlier, better-named detector for the registered paths that move
+a conformance trajectory -- and the only detector for those that are inert across every
+conformance case (omega_wave_suppression is the worked example above). `tools/export_model.py::RUNTIME_UNSUPPORTED`
 names each path and the value the runtime is equivalent to; the assertion below is that
 `Params()` still sits there.
 

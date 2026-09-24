@@ -40,7 +40,6 @@ from __future__ import annotations
 import numpy as np
 
 from tools.assays import SAMPLE_DT, estimate, pooled, reversals, run_trial
-from worm.params import Params
 from worm.world import World
 
 DURATION = 200.0        # s per animal, after the 6 s settle the harness discards
@@ -121,7 +120,6 @@ def _reorientation(tr, spans, settle=2.0, skip=5.0):
 
 def _job(job):
     condition, seed = job
-    p = Params()
     tr = run_trial(PLATES[condition], (0.0, 0.0, float((seed % 8) * np.pi / 4)),
                    DURATION, seed)
     span = tr["t"][-1] - tr["t"][0]

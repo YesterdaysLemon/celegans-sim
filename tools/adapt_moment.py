@@ -1,9 +1,9 @@
 """With the receptor adapting, recover the curvature amplitude via muscle strength."""
 from __future__ import annotations
-import multiprocessing as mp, sys
+import multiprocessing as mp
 from dataclasses import replace
 import numpy as np
-from tools.diagnose_loop import analyse, bare_world, travelling_index
+from tools.diagnose_loop import bare_world, travelling_index
 from worm.engine import Simulation
 from worm.params import Params
 

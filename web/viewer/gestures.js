@@ -101,7 +101,7 @@ export function wireGestures({ focusWorm, coarse }) {
   // Local engines only: the socket protocol has no such command, and the ?server dish
   // simply pans as before.
   let drag = null;
-  let tweeze = null;               // { i } while an animal is held
+  let tweeze = null;               // { h }: the held animal's handle
   let lastMoved = 0;               // how far the finished drag travelled, for click's guard
   let longPress = null;            // pending touch-tweezers timer
   let justTweezed = false;         // a long-press release must not also drop or select
@@ -143,7 +143,7 @@ export function wireGestures({ focusWorm, coarse }) {
       const [x, y] = worldAt(dish, e);
       const best = grabIndex(x, y, false);
       if (best >= 0) {
-        tweeze = { i: best };
+        tweeze = { h: S.engine.worms[best] };
         try { dish.setPointerCapture(e.pointerId); } catch (err) { /* synthetic pointer */ }
         dish.classList.add('dragging');
         return;
@@ -162,7 +162,7 @@ export function wireGestures({ focusWorm, coarse }) {
         longPress = setTimeout(() => {
           longPress = null;
           drag = null;
-          tweeze = { i: best };
+          tweeze = { h: S.engine.worms[best] };
           justTweezed = true;
           if (navigator.vibrate) navigator.vibrate(30);
         }, 450);
@@ -186,18 +186,20 @@ export function wireGestures({ focusWorm, coarse }) {
       }
     }
     if (tweeze) {
-      const eng = S.engine, f = S.worms[tweeze.i];
-      if (!eng || !f) { tweeze = null; return; }
+      // The grip holds an animal, not a slot: in the arena a death at a lower index
+      // renumbers everyone after it, and a slot would hand you somebody else mid-drag.
+      const eng = S.engine, i = eng ? eng.worms.indexOf(tweeze.h) : -1, f = S.worms[i];
+      if (i < 0 || !f) { tweeze = null; return; }
       const [x, y] = worldAt(dish, e);
       // Hold the body where the pointer is, kept inside the glass. The clamp is on the
       // *destination* so a fling at the rim lands at the rim rather than outside it.
       const R = S.meta.world.radius - 0.8;
       const d = Math.hypot(x, y);
       const tx = d > R ? x * (R / d) : x, ty = d > R ? y * (R / d) : y;
-      eng.E.translateWorm(eng.worms[tweeze.i], tx - f.cx, ty - f.cy);
+      eng.E.translateWorm(tweeze.h, tx - f.cx, ty - f.cy);
       // The trail would draw the teleport as a stroke across the dish; the animal's
       // history restarts where it was put down.
-      if (S.trails[tweeze.i]) S.trails[tweeze.i].length = 0;
+      if (S.trails[i]) S.trails[i].length = 0;
       return;
     }
     if (!drag) return;

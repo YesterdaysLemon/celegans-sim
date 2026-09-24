@@ -18,8 +18,10 @@ import json
 import os
 import socketserver
 import struct
+import math
 import threading
 import time
+import traceback
 
 import numpy as np
 
@@ -50,6 +52,16 @@ FIELD_SIZE = 128
 EGG_LIMIT = 512
 
 
+TAP_S = 0.05     # s a Poke is held for -- the tap tools/habituation.py times
+
+
+def _finite(v) -> float:
+    x = float(v)
+    if not math.isfinite(x):
+        raise ValueError(f"{v!r} is not a finite number")
+    return x
+
+
 class Runner:
     """Owns the simulation and steps it on a background thread."""
 
@@ -69,6 +81,8 @@ class Runner:
         self.running = True
         self.rate = 1.0                # requested multiple of real time
         self.achieved = 0.0
+        self._tap = None               # (where, strength) while a poke is being held
+        self._tap_steps = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True)
 
@@ -91,8 +105,20 @@ class Runner:
                 self.achieved = 0.0
                 continue
             with self.lock:
-                for _ in range(chunk):
-                    self.sim.step()
+                try:
+                    for _ in range(chunk):
+                        if self._tap_steps > 0:
+                            self.sim.poke(*self._tap)
+                            self._tap_steps -= 1
+                        self.sim.step()
+                except Exception:
+                    # The thread outlives the animal. Uncaught, one divergence ended the
+                    # loop for the rest of the session: frames kept streaming a frozen
+                    # animal and a reset built a Simulation nothing ever stepped. Pause,
+                    # say why, and let reset + play carry on.
+                    traceback.print_exc()
+                    self.running = False
+                    continue
             window_steps += chunk
             next_t += chunk * dt / max(self.rate, 1e-6)
             slack = next_t - time.perf_counter()
@@ -113,6 +139,9 @@ class Runner:
 
     # ------------------------------------------------------------------------- commands
     def command(self, msg: dict) -> None:
+        # Every number is checked finite before anything is changed: json.loads accepts NaN
+        # and Infinity, and one NaN lawn put NaN into every food cell and killed the
+        # simulation on the next step. A refusal raises, and the socket handler reports it.
         kind = msg.get("cmd")
         with self.lock:
             if kind == "play":
@@ -120,7 +149,7 @@ class Runner:
             elif kind == "pause":
                 self.running = False
             elif kind == "rate":
-                self.rate = float(np.clip(float(msg.get("value", 1.0)), 0.05, 12.0))
+                self.rate = float(np.clip(_finite(msg.get("value", 1.0)), 0.05, 12.0))
             elif kind == "medium":
                 name = str(msg.get("value", "agar"))
                 if name in MEDIA:
@@ -132,11 +161,14 @@ class Runner:
                     # worse than one that is simply wrong, because nothing on screen says
                     # so. See #47.
                     self.medium = name
-                    self.sim.body.medium = MEDIA[name]
-                    self.sim.p = self.sim.p.with_medium(name)
+                    self.sim.set_medium(name)
             elif kind == "poke":
-                self.sim.poke(str(msg.get("where", "anterior")),
-                              float(msg.get("strength", 1.0)))
+                # Held for TAP_S, stepped in by the loop: a poke lasts one step, and one
+                # 2 ms step of force into a receptor that averages over tens of ms was no
+                # touch at all. This is the tap tools/habituation.py delivers.
+                self._tap = (str(msg.get("where", "anterior")),
+                             _finite(msg.get("strength", 1.0)))
+                self._tap_steps = max(1, round(TAP_S / self.sim.dt))
             elif kind == "reset":
                 self.seed = int(msg.get("seed", self.seed + 1))
                 # Carries the medium across. A reset re-seeds the animal and re-lays the
@@ -144,8 +176,11 @@ class Runner:
                 self.sim = Simulation(self.params.with_medium(self.medium), seed=self.seed)
                 self.ablated.clear()
             elif kind == "drop_food":
+                r = _finite(msg.get("r", 3.0))
+                if r <= 0:
+                    raise ValueError(f"lawn radius {r}")
                 self.sim.world.add_food_patch(
-                    float(msg["x"]), float(msg["y"]), float(msg.get("r", 3.0)),
+                    _finite(msg["x"]), _finite(msg["y"]), r,
                     density=1.0, attractant=1.0, length_scale=7.0)
             elif kind == "ablate":
                 self._ablate(msg.get("neurons", []))
@@ -258,10 +293,16 @@ class Runner:
         return struct.pack("<2I", FIELD_MAGIC, n) + payload.tobytes()
 
 
+class _ReusableServer(socketserver.ThreadingTCPServer):
+    # A class attribute, because server_bind() runs inside the constructor: set on the
+    # instance afterwards it did nothing, and a quick restart hit EADDRINUSE.
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 def serve_static(port: int, ws_port: int) -> threading.Thread:
     handler = functools.partial(_QuietHandler, directory=WEB, ws_port=ws_port)
-    httpd = socketserver.ThreadingTCPServer(("127.0.0.1", port), handler)
-    httpd.allow_reuse_address = True
+    httpd = _ReusableServer(("127.0.0.1", port), handler)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     return t
@@ -315,8 +356,8 @@ async def _client(runner: Runner, websocket) -> None:
     last_field = time.monotonic()
     try:
         while True:
-            # frame() takes the simulation lock and packs a few hundred kB of numpy, so it
-            # runs on a worker thread rather than on the event loop.
+            # frame() takes the simulation lock and packs a few kB of numpy, so it runs on a
+            # worker thread rather than on the event loop.
             await websocket.send(await asyncio.to_thread(runner.frame))
             now = time.monotonic()
             if now - last_field > 2.0:

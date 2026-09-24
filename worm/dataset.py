@@ -40,8 +40,8 @@ class _ImmutableArray(np.ndarray):
     ``flags.writeable = False`` alone is reversible when an array owns mutable memory.
     Building the view from ``bytes`` makes NumPy itself reject re-enabling writes. The
     custom reducer restores that backing after pickle instead of NumPy allocating ordinary
-    mutable storage. Explicit arithmetic results and ``copy()`` remain writable, which is
-    exactly what per-animal copy-on-ablation needs.
+    mutable storage. Arithmetic results and ``copy()`` are ordinary writable arrays, which
+    is exactly what per-animal copy-on-ablation needs.
     """
 
     def __new__(cls, value):
@@ -50,6 +50,21 @@ class _ImmutableArray(np.ndarray):
 
     def __array_finalize__(self, _source):
         pass
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        """Compute on plain views, so a result is a plain array.
+
+        Arithmetic writes fresh memory, but NumPy hands the result back as this subclass --
+        and with it the reducer below, which rebuilds read-only. That leaked into every
+        per-animal array derived from the anatomy (V, V_th, g_rest, muscle state...): an
+        animal that had stepped, been pickled and been restored then refused its first
+        ablation with "assignment destination is read-only". Views of the anatomy stay
+        this type; only computed results come out plain.
+        """
+        plain = lambda x: x.view(np.ndarray) if isinstance(x, _ImmutableArray) else x
+        if "out" in kwargs:
+            kwargs["out"] = tuple(plain(o) for o in kwargs["out"])
+        return getattr(ufunc, method)(*map(plain, inputs), **kwargs)
 
     def __reduce_ex__(self, _protocol):
         return _rebuild_immutable_array, (self.dtype, self.shape, self.tobytes())

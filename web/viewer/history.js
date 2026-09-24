@@ -77,16 +77,24 @@ function sizeOf(entry) {
  * Scalars are kept per animal rather than only for the focused one, so that scrubbing back
  * and *then* changing focus shows that animal's past rather than a blank panel.
  */
-export function record(worms, eggs) {
+export function record(worms, eggs, t) {
   if (!worms || !worms.length) return;
+  // A frame the engine never stepped is the previous frame again. This runs every
+  // animation frame, paused or not, so without the check a paused dish refilled the ring
+  // with copies of one instant -- about a minute paused and the history you paused in
+  // order to scrub was gone.
+  if (ring.length && ring[ring.length - 1].t === t) return;
   const entry = {
-    t: worms[0].t,
+    t,
     worms: worms.map((w) => ({
       nodes: copy(w.nodes), act: copy(w.act), V: copy(w.V),
       tension: copy(w.tension), kappa: copy(w.kappa),
       cx: w.cx, cy: w.cy, t: w.t, food: w.food, dir: w.dir, running: w.running,
       pumpRate: w.pumpRate, pumping: w.pumping, lumen: w.lumen,
       vulva: w.vulva, eggsHeld: w.eggsHeld, eggsLaid: w.eggsLaid, eglActive: w.eglActive,
+      // What the dish paints an arena animal with. widthScale is the engine's per-id
+      // cache, never written after it is built, so a reference is a copy.
+      id: w.id, style: w.style, asleep: w.asleep, widthScale: w.widthScale,
       // `sensed` is a plain object of numbers built fresh each frame, so a shallow copy is
       // a real copy. Spread rather than reference anyway: the local feed reuses one object
       // per animal on some paths and a reference would track it forward.

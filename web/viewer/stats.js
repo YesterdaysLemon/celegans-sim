@@ -13,8 +13,8 @@ import { S, C, el } from './state.js';
 const FREQ_WINDOW = 12;    // seconds of simulated history the estimate is over
 // A defensive bound, and not a redundant one. The window above is in *simulated* seconds,
 // so the number of samples inside it is (frame rate / speed multiplier): at the slowest
-// rate the slider offers, 0.05x, twelve simulated seconds is four minutes of wall clock
-// and about fifteen thousand frames. The estimate does not get better past a few hundred
+// rate the slider offers, 0.1x, twelve simulated seconds is two minutes of wall clock
+// and about seven thousand frames. The estimate does not get better past a few hundred
 // samples, and every one of them is scanned twice per frame.
 const FREQ_CAP = 2048;
 export function updateFreq(k, t) {
@@ -123,7 +123,7 @@ export function updateDishStats(d) {
 }
 
 // The legend explains whatever the dish is currently saying, which is different in each
-// mode: digital colours the body by curvature, the other two do not.
+// mode: digital colours the body by curvature, realistic does not.
 export function buildLegend() {
   const rows = S.theme === 'digital'
     ? [['var(--dorsal)', 'dorsal bend'], ['var(--ventral)', 'ventral bend'],

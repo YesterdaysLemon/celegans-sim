@@ -189,9 +189,11 @@ class Body:
         heritable, because a lineage scored on food alone would otherwise be free to evolve
         a body that folds through itself and be rewarded for it.
 
-        The nose and tail have zero radius in `radius_profile`, so the outermost node of
-        each cannot register contact at all. Its neighbours can, and they are 0.021 mm
-        away, so nothing passes through the body -- but the very tip is not a collider.
+        The nose and tail radii in `radius_profile` are vanishing (about 0.05 um), not
+        zero. Contact is decided by the SUM of two nodes' radii, so the tip still registers
+        against any node thick enough to reach it -- a nose 0.02 mm from a mid-body node
+        feels ~0.9 uN -- and its neighbours, 0.021 mm away, cover the rest: nothing passes
+        through the body.
 
         THE BROAD PHASE, and why it is exact rather than approximate. The full pairwise
         check ran every step and returned zeros essentially always (the docstring above
@@ -372,9 +374,7 @@ class Body:
         factors. It is a read-only diagnostic of the *previous* step's velocities, which
         is the same one-step lag every other sensory pathway carries.
         """
-        qdot = getattr(self, "qdot", None)
-        if qdot is None:
-            return 0.0
+        qdot = self.qdot
         u = np.stack([np.cos(self.theta), np.sin(self.theta)], axis=1)
         nvec = np.stack([-u[:, 1], u[:, 0]], axis=1)
         # Velocity at each segment midpoint: the head node's translation plus the
@@ -386,12 +386,3 @@ class Body:
         v_n = np.einsum("mi,mi->m", vmid, nvec)
         f = np.hypot(self.medium.c_tangential * v_t, self.medium.c_normal * v_n)
         return float(f.mean())
-
-    def speed(self) -> float:
-        """Instantaneous speed of the body centroid, mm/s."""
-        u = np.stack([np.cos(self.theta), np.sin(self.theta)], axis=1)
-        nvec = np.stack([-u[:, 1], u[:, 0]], axis=1)
-        # d(centroid)/dt from qdot, averaged over nodes
-        w = (self.n + 1 - np.arange(1, self.n + 1)) / (self.n + 1)
-        v = self.qdot[:2] + self.l * (w[:, None] * nvec * self.qdot[2:, None]).sum(axis=0)
-        return float(np.hypot(*v))

@@ -39,7 +39,13 @@ async function assetUrls() {
  * fraction of real time the machine can manage, the viewer says so honestly in SIM RATE,
  * and the page stays at 60 fps regardless. */
 const BUDGET_MS = 7;
+// A 404 read as bytes surfaced as "expected magic word" or a RangeError; say what failed.
+const body = (r) => {
+  if (!r.ok) throw new Error(`${r.url} answered ${r.status} ${r.statusText}`);
+  return r.arrayBuffer();
+};
 const CHUNK = 20;           // steps between clock checks; checking every step is not free
+const TAP_S = 0.05;         // s: the Poke buttons' tap, as tools/habituation.py times one
 
 /* How much *wall* time each rate estimate is averaged over.
  *
@@ -90,6 +96,11 @@ export class LocalEngine {
      * 140 ms of animal as 20x, because the stalled second never entered the denominator. */
     this.achieved = 0.0;
     this.computeRate = 0.0;
+    /* Dish time: simulated seconds this dish has actually run. Each animal's own clock
+     * (`getTime`) is its AGE -- it starts at zero when the animal is created -- so it is
+     * the wrong clock for the header, the history ring and anything stamped in dish time
+     * (the arena's corpses): pressing + used to set the header back to 0.3 s. */
+    this.dishT = 0;
     this.worms = [];
     this.meta = null;
     this._acc = 0;
@@ -109,8 +120,8 @@ export class LocalEngine {
   async init(nWorms = 2) {
     const [modelUrl, wasmUrl] = await assetUrls();
     const [wasmBuf, modelBuf] = await Promise.all([
-      fetch(wasmUrl).then((r) => r.arrayBuffer()),
-      fetch(modelUrl).then((r) => r.arrayBuffer()),
+      fetch(wasmUrl).then(body),
+      fetch(modelUrl).then(body),
     ]);
 
     // model file: 'WORM' + version, u32 header length, JSON header, raw payload
@@ -177,22 +188,17 @@ export class LocalEngine {
     const inhOff = head.arrays.neuron_inh.offset;
     const payloadBase = this._base;
     const inhArr = new Uint8Array(this.E.memory.buffer, payloadBase + inhOff, names.length);
-    const somaOff = head.arrays.soma_pos.offset;
-    const soma = new Float64Array(this.E.memory.buffer, payloadBase + somaOff, names.length);
 
     this.meta = {
       neurons: names.map((nm, i) => ({
         name: nm, cls: cls[i] || '', kind: kind[i] || '', ganglion: gang[i] || '',
         modality: modality[i] || '', tx: tx[i] || '', inh: !!inhArr[i],
-        pos: soma[i],
       })),
       muscles: split('muscle_names').map((nm) => ({ name: nm })),
       n_nodes: this.nNodes,
       n_joints: this.nJoints,
       radius: null,
       world: { radius: head.scalars.world_extent, patches: [], obstacles: [] },
-      counts: { chem: 2279, gap: 552, nmj: 0 },
-      local: true,
     };
     // Body radius profile, for drawing.
     const rOff = head.arrays.body_radius.offset;
@@ -305,6 +311,8 @@ export class LocalEngine {
     this._acc = 0;
     this._weatherT = 0;
     this._windMark = 0;
+    this.dishT = 0;
+    this._tap = null;
   }
 
   /* Ablation applies to one animal, which is the interesting way round: kill AVB in one
@@ -378,8 +386,14 @@ export class LocalEngine {
     this.meta.world.patches.push({ x, y, r, kind: 'scent' });
     return true;
   }
+  /* A tap, not an impulse. The runtime's poke lasts exactly one step, and one step of
+   * force into a touch receptor that averages over tens of milliseconds did nothing
+   * visible: the button was inert. Held for TAP_S of dish time it is the tap
+   * tools/habituation.py and the behaviour tests deliver (50 ms at 1.4), and it is
+   * step-size independent for the same reason theirs is. advance() applies it. */
   poke(where, strength) {
-    for (const w of this.worms) this.E.pokeWorm(w, where === 'anterior' ? 1 : 0, strength);
+    this._tap = { a: where === 'anterior' ? 1 : 0, s: strength,
+                  steps: Math.max(1, Math.round(TAP_S / this.dt)) };
   }
   setMedium(ct, cn) { this.E.setMedium(ct, cn); }
 
@@ -414,6 +428,15 @@ export class LocalEngine {
     const chunkT = this.dt * CHUNK;
     const t0 = this._now();
     let steps = 0;
+    // A held tap steps one at a time: stepAll(CHUNK) would put the poke on the first of
+    // every CHUNK steps only.
+    while (this._tap && this._acc >= this.dt) {
+      for (const w of this.worms) this.E.pokeWorm(w, this._tap.a, this._tap.s);
+      this.E.stepAll(1);
+      this._acc -= this.dt;
+      steps += 1;
+      if (--this._tap.steps <= 0) this._tap = null;
+    }
     while (this._acc >= chunkT) {
       this.E.stepAll(CHUNK);
       this._acc -= chunkT;
@@ -447,6 +470,7 @@ export class LocalEngine {
       w.steps = 0; w.wall = 0; w.cpu = 0;
     }
     this._windPass(steps * this.dt);
+    this.dishT += steps * this.dt;
     return steps * this.dt;
   }
 

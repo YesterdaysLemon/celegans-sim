@@ -11,12 +11,16 @@ import { driftOf } from '../weight-drift.js';
 
 /* Wiring drift of the FOCUSED animal, cached by worm id -- weights are set at hatch and
  * never after, so a computed drift is good for the animal's whole life. Null means
- * wild-type wiring (or no local engine), and the view says so rather than painting it. */
-const driftCache = new Map();
+ * wild-type wiring (or no local engine), and the view says so rather than painting it.
+ * One cache per engine: both dishes number their animals from 0, and a shared one showed
+ * an arena hatchling's drift on the reference animal that inherited its id. */
+const driftCaches = new WeakMap();
 export function wiringDrift() {
   if (!S.engine || !S.meta || !S.meta.wiring) return null;
   const id = S.engine.worms[S.focus];
   if (id === undefined) return null;
+  let driftCache = driftCaches.get(S.engine);
+  if (!driftCache) driftCaches.set(S.engine, driftCache = new Map());
   if (!driftCache.has(id)) {
     if (driftCache.size > 64) driftCache.clear();
     const d = driftOf(S.engine.E, id, S.meta.wiring);
@@ -216,6 +220,9 @@ export function drawLineage() {
     .filter(([, v]) => (v.died === null || v.died >= t0) && v.born <= now)
     .sort((a, b) => a[1].born - b[1].born || a[0] - b[0]);
   if (!rows.length) { lineageLanes = null; return; }
+  // Below one lane plus the time axis there is nothing legible to draw -- and a negative
+  // rowH made ctx.arc throw, which used to stop the animation loop outright.
+  if (h < 24) { lineageLanes = null; return; }
   const lane = new Map();
   rows.forEach(([id], i) => lane.set(id, i));
   const rowH = Math.min(14, (h - 18) / rows.length);
@@ -366,7 +373,14 @@ export function drawTraces() {
   const { ctx, w, h } = fitCanvas(cv);
   ctx.clearRect(0, 0, w, h);
   if (!S.traces.length || !S.selected.length) return;
-  const padL = 34, padT = 8, padB = 8, padR = 8;
+  // The labels get a gutter of their own. Drawn over the live end of the lines, they sat
+  // exactly where the traces converge, so the one place identity mattered was the one
+  // place the lines covered it.
+  const labelFont = `600 ${C('--font-canvas')}`;
+  ctx.font = labelFont;
+  const gutter = Math.max(...S.selected.map((idx) =>
+    ctx.measureText(S.meta.neurons[idx].name).width));
+  const padL = 34, padT = 8, padB = 8, padR = 8 + gutter + 6;
   const lo = -80, hi = 20;
   const Y = (v) => padT + (hi - v) / (hi - lo) * (h - padT - padB);
 
@@ -391,16 +405,19 @@ export function drawTraces() {
   });
   // Direct label at the live end of each line, so identity never rests on colour alone.
   labels.sort((a, b) => a.y - b.y);
-  let prev = -1e9;
-  ctx.font = `600 ${C('--font-canvas')}`;
-  ctx.textAlign = 'right';
-  for (const L of labels) {
-    const y = Math.max(prev + 11, Math.max(padT + 9, Math.min(h - padB - 2, L.y)));
-    prev = y;
-    ctx.fillStyle = seriesColor(L.k);
-    ctx.fillText(S.meta.neurons[L.idx].name, w - padR - 2, y - 3);
+  // Push down past each other, then back up from the floor, so a stack that starts near
+  // the bottom stays on the canvas.
+  const top = padT + 4, floor = h - padB - 4, step = 12;
+  const ys = labels.map((L) => Math.max(top, Math.min(floor, L.y)));
+  for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i - 1] + step);
+  for (let i = ys.length - 1; i >= 0; i--) {
+    ys[i] = Math.min(ys[i], i === ys.length - 1 ? floor : ys[i + 1] - step);
   }
-  ctx.textAlign = 'left';
+  ctx.font = labelFont;
+  labels.forEach((L, i) => {
+    ctx.fillStyle = seriesColor(L.k);
+    ctx.fillText(S.meta.neurons[L.idx].name, w - padR + 6, ys[i] + 3);
+  });
 }
 
 /* --------------------------------------------------------------------- senses ----- */

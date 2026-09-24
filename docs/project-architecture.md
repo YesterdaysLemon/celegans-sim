@@ -132,8 +132,8 @@ closed once per tick by `worm/engine.py::Simulation.prepare_step` / `finish_step
 Supporting roots, each of which is load-bearing and none of which is decorative:
 
 - **Units.** One convention, stated once, at the top of `worm/params.py`:
-  mm · s · mV · pA · pF · nS · µN. Electrical rates are per-millisecond and are converted
-  exactly once, inside `NervousSystem`.
+  mm · s · mV · pA · pF · nS · µN. Time is in seconds throughout, rates included; the
+  one conversion, capacitance from pF to nF, happens exactly once, inside `NervousSystem`.
 - **Provenance.** Every constant in `worm/params.py` carries its source, and where the
   model departs from a published value it says which value and why.
 - **Reproducibility.** Seeded RNG; frozen parameter dataclasses; a committed dataset that
@@ -221,7 +221,7 @@ The current classification of every switch is in
 
 ### What the runtime is checked against
 
-- `tools/conform.py` + `wasm/conform.mjs` — step-for-step, noise off, six cases, to
+- `tools/conform.py` + `wasm/conform.mjs` — step-for-step, noise off, nine cases, to
   5e-13 mm on node positions and 5e-11 mV on membrane potentials.
 - `tools/parity.py` — the noisy paths, compared statistically, because the two draw from
   different generators and always will.

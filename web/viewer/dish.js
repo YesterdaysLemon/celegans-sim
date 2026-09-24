@@ -51,7 +51,7 @@ export function drawDish() {
   // soured olive one once it rots, when the policy has vented its repellent miasma. The
   // food itself is real and stays in the food field until eaten; only the marker fades.
   if (S.layers.corpses && S.corpses && S.corpses.length) {
-    const now = S.frame ? S.frame.t : 0;
+    const now = S.dishT;           // corpses are stamped in dish time, not an animal's age
     for (const c of S.corpses) {
       const age = now - c.t;
       if (age < 0 || age > 90) continue;
@@ -113,7 +113,9 @@ export function drawDish() {
       zx /= G.n; zy /= G.n;
       ctx.save();
       ctx.globalAlpha = 0.45 + 0.25 * Math.sin((S.frame ? S.frame.t : 0) * 2.5);
-      ctx.fillStyle = theme().dark ? 'rgba(233,226,214,0.85)' : 'rgba(74,66,56,0.75)';
+      // `dark` means "this plate wants dark ink" (the focus ring, minimap and scale bar
+      // all read it that way); the z's had it backwards, near-black on the black plate.
+      ctx.fillStyle = theme().dark ? 'rgba(74,66,56,0.75)' : 'rgba(233,226,214,0.85)';
       const zs = Math.max(9, 0.22 * scale);
       ctx.font = zs + 'px ui-rounded, system-ui, sans-serif';
       ctx.fillText('z', zx + 0.30 * scale, zy - 0.35 * scale);
@@ -285,9 +287,13 @@ function drawVignette(ctx, w, h) {
 
 /* ------------------------------------------------------------------- overlays ----- */
 
+// The bottom-right corner is shared: the minimap sits in it, the scale bar stands just
+// above it, and `.dish-hint` in style.css keeps clear of it (right: 108px = 84 + 12 + 12).
+const MINIMAP = { size: 84, pad: 12 };
+
 function drawMinimap(ctx, w, h, R, f) {
   const T = theme();
-  const size = 84, pad = 12;
+  const { size, pad } = MINIMAP;
   const cx = w - pad - size / 2, cy = h - pad - size / 2, s = (size / 2) / R;
   ctx.save();
   ctx.fillStyle = T.dark ? 'rgba(250,247,238,0.88)' : 'rgba(13,13,13,0.82)';
@@ -339,12 +345,18 @@ function drawMinimap(ctx, w, h, R, f) {
 function drawScaleBar(ctx, w, h, scale) {
   const T = theme();
   const mm = S.view.span > 14 ? 5 : S.view.span > 4 ? 1 : 0.2;
-  const px = mm * scale, x = 14, y = h - 16;
+  // Right-aligned just above the minimap. It used to stand in the bottom-left corner,
+  // which is where the camera, zoom and pipette controls float -- so on every layout the
+  // bar ran behind a bottle and its label was never seen.
+  const px = mm * scale, x1 = w - MINIMAP.pad, x0 = x1 - px;
+  const y = h - MINIMAP.pad - MINIMAP.size - 12;
   const ink = T.dark ? 'rgba(30,26,20,0.85)' : C('--text-muted');
   ctx.strokeStyle = ink; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + px, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
   ctx.fillStyle = ink; ctx.font = '11px system-ui';
-  ctx.fillText(mm >= 1 ? `${mm} mm` : `${mm * 1000} µm`, x, y - 5);
+  ctx.textAlign = 'right';
+  ctx.fillText(mm >= 1 ? `${mm} mm` : `${mm * 1000} µm`, x1, y - 5);
+  ctx.textAlign = 'left';
 }
 
 /* --------------------------------------------------------------------- camera ----- */
